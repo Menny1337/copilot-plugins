@@ -13,10 +13,13 @@ so you can load just what you need instead of polluting your global config.
 
 ```bash
 copilot plugin marketplace add Menny1337/copilot-plugins
+copilot plugin install core-skills@menny1337-plugins
 copilot plugin install <plugin>@menny1337-plugins
 ```
 
-Replace `<plugin>` with any plugin name from the catalog below.
+Install `core-skills` first. Copilot does not auto-install plugin dependencies, and
+agents and domain plugins invoke shared skills from this bundle by name.
+Replace `<plugin>` with another plugin name from the catalog below, such as `core-agents`.
 
 ## Plugins
 
