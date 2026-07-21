@@ -21,6 +21,16 @@ Install `core-skills` first. Copilot does not auto-install plugin dependencies, 
 agents and domain plugins invoke shared skills from this bundle by name.
 Replace `<plugin>` with another plugin name from the catalog below, such as `core-agents`.
 
+### Run core skills and agents with Agency
+
+After installing both plugins, launch one Agency session with the shared skills and agents:
+
+```bash
+agency copilot \
+  --plugin-dir "${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/menny1337-plugins/core-skills" \
+  --plugin-dir "${COPILOT_HOME:-$HOME/.copilot}/installed-plugins/menny1337-plugins/core-agents"
+```
+
 ## Plugins
 
 <!-- mnm:catalog:start -->
