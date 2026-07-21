@@ -1,0 +1,21 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate marketplace structure
+        run: node scripts/validate.mjs
+      - name: Verify CATALOG.md is up to date
+        run: node scripts/catalog.mjs --check
+      - name: Verify plugin READMEs are up to date
+        run: node scripts/plugin-readme.mjs --check

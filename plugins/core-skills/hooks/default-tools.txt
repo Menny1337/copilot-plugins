@@ -1,0 +1,137 @@
+# default-tools.txt — curated list of dev-relevant CLI tools probed at sessionStart
+# by detect-tools.{sh,ps1}. One tool name per line; blank lines and # comments are
+# ignored. Only tools actually found on PATH are reported, so this list stays cheap.
+# Keep it curated (tools an agent might realistically choose), NOT exhaustive — a
+# full $PATH dump would bloat context. Extend per-machine via ~/.copilot/env-tools.txt.
+#
+# PATH executables ONLY — by design. Detection runs in a NON-interactive shell that
+# does not source ~/.zshrc / ~/.bashrc, so tools that exist only as shell functions or
+# aliases (e.g. nvm/corepack lazy-load shims for pnpm/yarn, oh-my-zsh git aliases) are
+# intentionally NOT reported. This mirrors what an agent can actually invoke in its own
+# non-interactive shell: advertising a function-only tool would just make the agent try
+# commands that fail. To make such a tool detectable AND agent-usable, put a real binary
+# or shim on PATH (e.g. `corepack enable` for pnpm/yarn) — do not add it here expecting
+# the function form to be found.
+
+# version control / GitHub / GitLab
+git
+gh
+glab
+
+# search / files / text
+rg
+fd
+fzf
+jq
+yq
+tree
+bat
+delta
+shellcheck
+
+# HTTP / fetch
+curl
+wget
+http
+yt-dlp
+
+# containers / kubernetes
+docker
+podman
+kubectl
+helm
+kind
+minikube
+skaffold
+
+# cloud CLIs
+az
+aws
+gcloud
+doctl
+
+# infrastructure as code
+terraform
+pulumi
+ansible
+
+# languages / runtimes / package managers
+node
+npm
+pnpm
+yarn
+python3
+pip
+pipx
+uv
+go
+cargo
+rustc
+ruby
+java
+mvn
+gradle
+dotnet
+php
+composer
+
+# version / runtime managers
+mise
+asdf
+
+# security / secrets / scanning
+gitleaks
+trivy
+sops
+age
+
+# databases
+psql
+mysql
+sqlite3
+duckdb
+redis-cli
+mongosh
+
+# media (capability multipliers — non-obvious, unlock whole task classes)
+ffmpeg
+magick
+convert
+sox
+
+# documents / conversion / OCR
+pandoc
+markitdown
+pdftotext
+qpdf
+gs
+tesseract
+
+# data / metadata
+exiftool
+tokei
+
+# text processing (POSIX classics — confirm presence in minimal/container envs)
+sed
+awk
+grep
+perl
+
+# archives
+tar
+unzip
+7zz
+
+# build / misc
+make
+cmake
+ninja
+clang
+gcc
+act
+ssh
+rsync
+direnv
+pre-commit
+gpg
+openssl

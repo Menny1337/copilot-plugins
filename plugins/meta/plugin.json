@@ -1,0 +1,5 @@
+{
+  "name": "meta",
+  "version": "1.0.0",
+  "description": "Meta-tooling for designing and auditing Copilot agents and skills: agent-architect agent + agent-crafting, skill-crafting, agent-skill-audit, and hooks-crafting skills."
+}

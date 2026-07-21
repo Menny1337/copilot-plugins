@@ -1,0 +1,130 @@
+{
+  "name": "copilot-plugins",
+  "metadata": {
+    "description": "Public Copilot CLI plugin marketplace: curated, reusable agents and skills organized by domain (core, meta, docs, ui).",
+    "version": "1.0.0"
+  },
+  "owner": {
+    "name": "Menny1337",
+    "email": "noreply@github.com"
+  },
+  "plugins": [
+    {
+      "name": "core-skills",
+      "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
+      "version": "1.0.0",
+      "source": "./plugins/core-skills",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/core-skills",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "core",
+      "keywords": [
+        "memory",
+        "research",
+        "browser",
+        "prompt",
+        "prompt-engineering",
+        "azure",
+        "az-cli",
+        "narrate",
+        "tts",
+        "audio",
+        "image-generation",
+        "gpt-image",
+        "grok",
+        "x",
+        "real-time-search"
+      ]
+    },
+    {
+      "name": "core-agents",
+      "description": "Research agent that creates citation-driven academic papers, comprehensive reports, and evidence-based analyses, and answers follow-up questions about completed research.",
+      "version": "1.0.0",
+      "source": "./plugins/core-agents",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/core-agents",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "core",
+      "keywords": [
+        "research",
+        "citations",
+        "report",
+        "analysis",
+        "literature-review"
+      ]
+    },
+    {
+      "name": "meta",
+      "description": "Meta-tooling for designing and auditing Copilot agents and skills: agent-architect agent + agent-crafting, skill-crafting, agent-skill-audit, and hooks-crafting skills.",
+      "version": "1.0.0",
+      "source": "./plugins/meta",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/meta",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "meta",
+      "keywords": [
+        "meta",
+        "agent-authoring",
+        "skill-authoring",
+        "hooks",
+        "audit",
+        "architect"
+      ]
+    },
+    {
+      "name": "docs",
+      "description": "Product/work-item planning skills (no agents): write-prd, prd-to-work-items.",
+      "version": "1.0.0",
+      "source": "./plugins/docs",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/docs",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "prd",
+        "product",
+        "work-items",
+        "planning",
+        "requirements"
+      ]
+    },
+    {
+      "name": "ui",
+      "description": "UI design agents (ui-designer, ui-critic) and supporting skills (ui-generation, ui-critique, ui-design-system) for production-quality React/TypeScript/Tailwind UI.",
+      "version": "1.0.0",
+      "source": "./plugins/ui",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/ui",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "creative",
+      "keywords": [
+        "ui",
+        "react",
+        "tailwind",
+        "design-system",
+        "accessibility",
+        "web"
+      ]
+    }
+  ]
+}

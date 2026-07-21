@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "./hooks/lint-memory-advisory.sh",
+        "powershell": ". ./hooks/lint-memory-advisory.ps1",
+        "timeoutSec": 15
+      },
+      {
+        "type": "command",
+        "bash": "./hooks/detect-tools.sh",
+        "powershell": ". ./hooks/detect-tools.ps1",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}
