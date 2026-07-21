@@ -2,7 +2,7 @@
 
 # Catalog
 
-**7** plugins · **9** agents · **33** skills · **3** hooks
+**7** plugins · **9** agents · **33** skills · **5** hooks
 
 A single index of every agent, skill, and hook across all plugins in this marketplace. Source files (`SKILL.md`, `*.agent.md`, `hooks.json`) remain the only source of truth — this catalog is regenerated from their frontmatter by `scripts/catalog.mjs`.
 
@@ -18,6 +18,7 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`agent-architect`](plugins/meta/agents/agent-architect.agent.md) | agent | `meta` | Designs and improves Copilot agent systems. Use for agent or skill audits, creation, frontmatter and routing problems, hooks or plugin architecture, and evidence-based evolution. |
 | [`agent-crafting`](plugins/meta/skills/agent-crafting/SKILL.md) 🔒 | skill | `meta` | Creates and refines custom Copilot agents. Use for scaffolding, frontmatter or tool configuration, role and boundary design, invocation behavior, and troubleshooting loading or… |
 | [`agent-skill-audit`](plugins/meta/skills/agent-skill-audit/SKILL.md) 🔒 | skill | `meta` | Audits and improves Copilot agents, skills, and hooks. Use for inventory, frontmatter validation, routing or overlap issues, quality scoring, separation-of-concerns, security… |
+| [`agentStop: hooks/ado-session-sync.sh`](plugins/core-agents/hooks/ado-session-sync.sh) | hook | `core-agents` | On `agentStop` runs `hooks/ado-session-sync.sh` (timeout 20s). |
 | [`assistant`](plugins/core-agents/agents/assistant.agent.md) | agent | `core-agents` | Personal assistant for notes, tasks, reminders, and Microsoft Teams messaging. Takes meeting notes, captures ideas, tracks decisions, manages todo lists with priorities and due… |
 | [`assistant-capture`](plugins/core-agents/skills/assistant-capture/SKILL.md) 📜 | skill | `core-agents` | Structured data entry for personal assistant: note creation (meetings, decisions, ideas, scratch), task management (add, update, complete, reopen), reminder management (set,… |
 | [`assistant-query`](plugins/core-agents/skills/assistant-query/SKILL.md) 📜 | skill | `core-agents` | Search, filter, and summarize personal assistant data: find notes by keyword or date, list tasks by status or priority, check due reminders, surface related context, and generate… |
@@ -48,6 +49,7 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`researcher`](plugins/core-agents/agents/researcher.agent.md) | agent | `core-agents` | Research agent that creates academic papers, comprehensive reports, and detailed analyses with proper citations. Answers follow-up questions about completed research. |
 | [`scheduled-headless-copilot`](plugins/meta/skills/scheduled-headless-copilot/SKILL.md) 📚 | skill | `meta` | Schedules unattended Copilot CLI tasks via launchd, cron, systemd, or Windows Task Scheduler. Use to run copilot -p periodically when the terminal or session is closed. |
 | [`scheduled-skill-review`](plugins/meta/skills/scheduled-skill-review/SKILL.md) 📜 📚 | skill | `meta` | Manages the macOS daemon that reviews this marketplace's used plugin agents and skills, deploys validated improvements, and reverts regressions. |
+| [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | hook | `core-agents` | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). |
 | [`sessionStart: hooks/detect-tools.sh`](plugins/core-skills/hooks/detect-tools.sh) | hook | `core-skills` | On `sessionStart` runs `hooks/detect-tools.sh` (timeout 15s). |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | hook | `core-agents` | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). |
 | [`sessionStart: hooks/lint-memory-advisory.sh`](plugins/core-skills/hooks/lint-memory-advisory.sh) | hook | `core-skills` | On `sessionStart` runs `hooks/lint-memory-advisory.sh` (timeout 15s). |
@@ -116,6 +118,8 @@ _Source: [`plugins/core-agents/`](plugins/core-agents/)_
 | Name | Description | Triggers / Keywords |
 | --- | --- | --- |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
+| [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
+| [`agentStop: hooks/ado-session-sync.sh`](plugins/core-agents/hooks/ado-session-sync.sh) | On `agentStop` runs `hooks/ado-session-sync.sh` (timeout 20s). | — |
 
 ### `meta`
 
@@ -277,6 +281,8 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 
 | Name | Plugin | Description | Triggers / Keywords |
 | --- | --- | --- | --- |
+| [`agentStop: hooks/ado-session-sync.sh`](plugins/core-agents/hooks/ado-session-sync.sh) | `core-agents` | On `agentStop` runs `hooks/ado-session-sync.sh` (timeout 20s). | — |
+| [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | `core-agents` | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | `core-agents` | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/detect-tools.sh`](plugins/core-skills/hooks/detect-tools.sh) | `core-skills` | On `sessionStart` runs `hooks/detect-tools.sh` (timeout 15s). | — |
 | [`sessionStart: hooks/lint-memory-advisory.sh`](plugins/core-skills/hooks/lint-memory-advisory.sh) | `core-skills` | On `sessionStart` runs `hooks/lint-memory-advisory.sh` (timeout 15s). | — |

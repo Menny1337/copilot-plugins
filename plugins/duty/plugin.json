@@ -1,5 +1,5 @@
 {
   "name": "duty",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Role-based operational workflows: on-call incident logging/querying and structured engineering interview preparation, execution, and debriefing."
 }
