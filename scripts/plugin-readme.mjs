@@ -232,10 +232,10 @@ function renderBlock(p) {
     '',
     '```bash',
     'copilot plugin marketplace add Menny1337/copilot-plugins',
-    `copilot plugin install ${p.name}@copilot-plugins`,
+    `copilot plugin install ${p.name}@menny1337-plugins`,
     '```',
     '',
-    `Update later with \`copilot plugin update ${p.name}@copilot-plugins\` (or \`plugins-update\` to refresh everything). ` +
+    `Update later with \`copilot plugin update ${p.name}@menny1337-plugins\` (or \`plugins-update\` to refresh everything). ` +
       'See the [repository README](../../README.md) for per-session Agency profiles, aliases, and global-install options.',
     '',
     BLOCK_END,

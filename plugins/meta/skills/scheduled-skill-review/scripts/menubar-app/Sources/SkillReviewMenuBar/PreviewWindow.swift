@@ -32,7 +32,7 @@ enum PreviewWindow {
             firstRunLookbackDays: 7,
             maxFirstRunSessions: 200,
             repoDir: "/Users/you/Repos/copilot-plugins",
-            marketplaceName: "copilot-plugins",
+            marketplaceName: "menny1337-plugins",
             ghAccount: "the user"
         )
         let root = ConfigWindow(model: ConfigModel(snapshot: config), autoLoad: false)

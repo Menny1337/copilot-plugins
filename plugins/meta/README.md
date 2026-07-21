@@ -42,9 +42,9 @@ Add the marketplace once, then install this plugin:
 
 ```bash
 copilot plugin marketplace add Menny1337/copilot-plugins
-copilot plugin install meta@copilot-plugins
+copilot plugin install meta@menny1337-plugins
 ```
 
-Update later with `copilot plugin update meta@copilot-plugins` (or `plugins-update` to refresh everything). See the [repository README](../../README.md) for per-session Agency profiles, aliases, and global-install options.
+Update later with `copilot plugin update meta@menny1337-plugins` (or `plugins-update` to refresh everything). See the [repository README](../../README.md) for per-session Agency profiles, aliases, and global-install options.
 
 <!-- mnm:plugin-readme:end -->
