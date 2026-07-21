@@ -2,7 +2,7 @@
   "name": "menny1337-plugins",
   "metadata": {
     "description": "Public Copilot CLI plugin marketplace: reusable agents and skills organized by domain (core, meta, presentation, docs, ui, duty).",
-    "version": "2.2.6"
+    "version": "2.2.7"
   },
   "owner": {
     "name": "Menny1337",
