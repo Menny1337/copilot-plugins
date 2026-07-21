@@ -3,7 +3,7 @@
 All notable changes to the `core-skills` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - 2026-06-10
+## [2.0.4] - 2026-07-21
 
 _Initial public release._
 

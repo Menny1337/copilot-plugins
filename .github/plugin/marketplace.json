@@ -1,8 +1,8 @@
 {
   "name": "copilot-plugins",
   "metadata": {
-    "description": "Public Copilot CLI plugin marketplace: curated, reusable agents and skills organized by domain (core, meta, docs, ui).",
-    "version": "1.0.0"
+    "description": "Public Copilot CLI plugin marketplace: reusable agents and skills organized by domain (core, meta, presentation, docs, ui, duty).",
+    "version": "2.2.2"
   },
   "owner": {
     "name": "Menny1337",
@@ -12,7 +12,7 @@
     {
       "name": "core-skills",
       "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
-      "version": "1.0.0",
+      "version": "2.0.4",
       "source": "./plugins/core-skills",
       "author": {
         "name": "Menny1337",
@@ -42,8 +42,8 @@
     },
     {
       "name": "core-agents",
-      "description": "Research agent that creates citation-driven academic papers, comprehensive reports, and evidence-based analyses, and answers follow-up questions about completed research.",
-      "version": "1.0.0",
+      "description": "Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).",
+      "version": "2.1.2",
       "source": "./plugins/core-agents",
       "author": {
         "name": "Menny1337",
@@ -54,17 +54,22 @@
       "license": "MIT",
       "category": "core",
       "keywords": [
+        "assistant",
+        "notes",
+        "tasks",
+        "reminders",
         "research",
-        "citations",
-        "report",
-        "analysis",
-        "literature-review"
+        "azure",
+        "devops",
+        "teams",
+        "messaging",
+        "m365"
       ]
     },
     {
       "name": "meta",
-      "description": "Meta-tooling for designing and auditing Copilot agents and skills: agent-architect agent + agent-crafting, skill-crafting, agent-skill-audit, and hooks-crafting skills.",
-      "version": "1.0.0",
+      "description": "Meta-tooling for creating, auditing, packaging, scheduling, and continuously improving Copilot agents, skills, hooks, plugins, and workflows.",
+      "version": "1.9.0",
       "source": "./plugins/meta",
       "author": {
         "name": "Menny1337",
@@ -79,14 +84,38 @@
         "agent-authoring",
         "skill-authoring",
         "hooks",
+        "plugins",
         "audit",
-        "architect"
+        "architect",
+        "scheduling"
+      ]
+    },
+    {
+      "name": "presentation",
+      "description": "Presentation-designer agent and supporting skills for PPTX and HTML decks, structured presentation workflows, critique, and image generation.",
+      "version": "2.0.1",
+      "source": "./plugins/presentation",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/presentation",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "creative",
+      "keywords": [
+        "pptx",
+        "presentation",
+        "slides",
+        "powerpoint",
+        "reveal.js",
+        "image-generation"
       ]
     },
     {
       "name": "docs",
       "description": "Product/work-item planning skills (no agents): write-prd, prd-to-work-items.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "source": "./plugins/docs",
       "author": {
         "name": "Menny1337",
@@ -107,7 +136,7 @@
     {
       "name": "ui",
       "description": "UI design agents (ui-designer, ui-critic) and supporting skills (ui-generation, ui-critique, ui-design-system) for production-quality React/TypeScript/Tailwind UI.",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "source": "./plugins/ui",
       "author": {
         "name": "Menny1337",
@@ -124,6 +153,29 @@
         "design-system",
         "accessibility",
         "web"
+      ]
+    },
+    {
+      "name": "duty",
+      "description": "Role-based operational workflows: on-call incident logging/querying and structured engineering interview preparation, execution, and debriefing.",
+      "version": "1.1.0",
+      "source": "./plugins/duty",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/duty",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "oncall",
+        "incident",
+        "shift",
+        "handoff",
+        "interview",
+        "hiring",
+        "scorecard"
       ]
     }
   ]

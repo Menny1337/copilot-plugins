@@ -1,6 +1,6 @@
 ---
 name: agent-skill-audit
-description: "Audit, refine, and evolve Copilot agents, skills, and hooks in any repository. Use when reviewing agent/skill/hook quality, fixing frontmatter or hooks.json errors, detecting duplication, scoring quality, or proposing system improvements."
+description: "Audits and improves Copilot agents, skills, and hooks. Use for inventory, frontmatter validation, routing or overlap issues, quality scoring, separation-of-concerns, security reviews, and system evolution."
 user-invocable: false
 ---
 
@@ -20,30 +20,34 @@ A structured procedure for auditing, refining, and evolving custom Copilot agent
 
 - You're doing application work (code, tests, config) — use domain agents instead
 - You're only reading agents/skills for context — no audit needed
-- The repository has no `.github/agents/` or `.github/skills/` directories
+- The requested scope has no repository, plugin, organization, or user-level agent/skill/hook definitions
 
 ## Audit Procedure
 
 ### Step 1: Discovery & Inventory
 
-Locate all agent and skill files:
+Confirm the requested scope first. Do not expand a plugin-only review into unrelated user-level
+content. Then locate definitions at every level that is in scope:
 
 ```bash
-# Find all agent files (repo-level)
-find .github/agents -name '*.agent.md' 2>/dev/null | sort
+# Find repository and plugin agents
+find .github plugins -type f -path '*/agents/*.agent.md' 2>/dev/null | sort
 
-# Find all skill files (repo-level)
-find .github/skills -name 'SKILL.md' 2>/dev/null | sort
+# Find repository and plugin skills
+find .github plugins -type f -path '*/skills/*/SKILL.md' 2>/dev/null | sort
 
 # Find all hook config files (repo, user, and plugin level)
 find .github/hooks -name '*.json' 2>/dev/null | sort
 find ~/.copilot/hooks -name '*.json' 2>/dev/null | sort
 find plugins -path '*/hooks/hooks.json' 2>/dev/null | sort
 
-# Check for user-level agents/skills
+# Check user-level agents/skills only when included in scope
 find ~/.copilot/agents -name '*.agent.md' 2>/dev/null | sort
 find ~/.copilot/skills -name 'SKILL.md' 2>/dev/null | sort
 ```
+
+Run the repository's existing validator before manual scoring. A deterministic failure is a
+verified defect; do not downgrade it to a subjective recommendation.
 
 Build a summary table:
 
@@ -64,8 +68,8 @@ For every agent and skill file, verify frontmatter syntax and content:
 - [ ] Has opening and closing `---` markers
 - [ ] `description` is present (required) — single-line, quoted string
 - [ ] `name` is present (recommended) — matches filename minus `.agent.md`
-- [ ] `description` is 10–1024 characters
-- [ ] No unsupported attributes (only: `name`, `description`, `tools`, `mcp-servers`, `disable-model-invocation`)
+- [ ] `description` is non-empty and within any target-host limit
+- [ ] No unsupported attributes (documented set: `name`, `description`, `tools`, `model`, `target`, `disable-model-invocation`, `user-invocable`, `mcp-servers`, `metadata`). Flag retired `infer` (→ `disable-model-invocation` + `user-invocable`); `argument-hint`/`handoffs` are VS Code-only and ignored elsewhere.
 - [ ] No multi-line `description` using `>` or `|` folded scalars
 - [ ] `tools` (if present) uses valid aliases: `read`, `edit`, `search`, `execute`, `agent`, `web`, `todo`, or `["*"]`
 
@@ -73,8 +77,11 @@ For every agent and skill file, verify frontmatter syntax and content:
 
 - [ ] Has opening and closing `---` markers
 - [ ] `name` is present — matches the folder name
-- [ ] `description` is present — single-line, quoted, 10–1024 characters
-- [ ] No unsupported attributes
+- [ ] `description` is present — single-line, quoted, 1–1024 characters
+- [ ] Standard optional fields have the right shape (`compatibility` scalar ≤500 chars,
+      `allowed-tools` space-separated scalar, `metadata` map only where the host/repo supports it)
+- [ ] Host-specific fields are supported by the intended runtime
+- [ ] Repository-specific frontmatter restrictions also pass (for example, scalar-only parsers)
 
 > **Tip:** If a frontmatter validator is available, run it first. The standalone [`agent-skill-eval`](https://github.com/Menny1337/agent-skill-eval) tool exposes one as `skill-eval-validate` (also accepts an explicit `.md` path) and operates on any skills directory via the `AGENT_SKILL_EVAL_COPILOT_DIR` env var. Otherwise, validate manually using the checklists above.
 
@@ -93,10 +100,16 @@ For every agent file, verify structural quality:
 
 - [ ] **Persona statement** — Markdown body opens with a clear identity ("You are...")
 - [ ] **Skill references** — Lists skills it depends on with brief descriptions
-- [ ] **Scope boundaries** — Has DO / DO NOT sections defining what the agent can touch
+- [ ] **Scope boundaries** — Defines normal, approval-required, and forbidden actions
+- [ ] **Approval boundaries** — Write-capable or risky agents distinguish normal actions,
+      actions requiring approval, and forbidden actions
 - [ ] **No procedure duplication** — No workflow steps, checklists, or commands that belong in a skill
-- [ ] **No code blocks** — Agents define WHO, not HOW — commands and examples belong in skills
+- [ ] **Examples are justified** — Concise role-specific commands or output examples are fine
+      when no companion skill owns them; reusable procedures are not
 - [ ] **Focused responsibility** — Agent has one clear domain, not multiple unrelated concerns
+- [ ] **Security and trust** — Tool access is least-privilege where reliable; broader access is
+      justified and compensated by explicit boundaries
+- [ ] **Behavioral evidence** — Representative tasks test routing, tool choice, and boundary compliance
 - [ ] **Memory guidance** (optional but recommended) — Describes what patterns to store for future sessions
 - [ ] **Documentation listed** — Agent appears in project documentation tables (if applicable)
 
@@ -106,11 +119,19 @@ For every skill file, verify structural quality:
 
 - [ ] **"When to Use" section** — Explains trigger conditions clearly
 - [ ] **"When to Skip" section** — Explains when NOT to use, with redirects to correct skill
-- [ ] **Self-contained procedure** — Works independently of any specific agent
+- [ ] **Self-contained procedure** — Works from declared inputs/dependencies without requiring
+      an agent body to supply missing steps
 - [ ] **Actionable steps** — Has numbered or ordered procedure, not just prose
 - [ ] **References valid** — All file paths, commands, and patterns still exist
-- [ ] **No agent dependency** — Skill does not reference a specific agent by name
+- [ ] **Context efficiency** — Body is under 500 lines; heavy or conditional detail uses
+      shallow references and deterministic work uses scripts
+- [ ] **Dependency clarity** — Portable by default; unavoidable host/plugin/agent coupling is
+      declared through compatibility and isolated
 - [ ] **No persona content** — Skill defines HOW, not WHO — no identity statements
+- [ ] **Security and trust** — Bundled scripts, dependencies, assets, external URLs, and input
+      handling are unsurprising and least-privilege
+- [ ] **Behavioral evidence** — Trigger, near-miss, outcome, baseline, and held-out tests are
+      proportionate to the change risk
 - [ ] **Documentation listed** — Skill appears in project documentation tables (if applicable)
 
 ### Step 4b: Audit Each Hook
@@ -127,6 +148,8 @@ authoring detail, defer to the `hooks-crafting` skill.
 - [ ] **Reasonable `timeoutSec`** (default 30); referenced scripts exist, are executable, and have a shebang
 - [ ] **Decision-returning hooks** emit single-line JSON and exit `0` (see `hooks-crafting` reference)
 - [ ] **No secrets** echoed to stdout/stderr; not relied on as a hard security gate (failures are fail-open)
+- [ ] **Untrusted payloads handled safely** — Parse JSON, quote values, avoid `eval` or dynamic
+      shell construction, and allowlist privileged actions
 - [ ] **Plugin consistency** — a plugin declaring `"hooks"` in `plugin.json` points it at the hooks JSON **file** (e.g. `"hooks/hooks.json"`, not the bare dir — a directory throws `EISDIR` at load time); hook indexed in the catalog (if applicable)
 
 ### Step 5: Check Separation of Concerns
@@ -134,16 +157,17 @@ authoring detail, defer to the `hooks-crafting` skill.
 | | Agent | Skill |
 |---|---|---|
 | **Defines** | WHO — persona, role, pipeline position | HOW — procedure, steps, checklists |
-| **Contains** | Name, description, skill refs, scope boundaries | Steps, commands, examples, when-to-use/skip |
-| **References** | Points to skills for procedure | Does NOT depend on any agent |
+| **Contains** | Name, description, skill refs, scope and approval boundaries | Steps, commands, examples, when-to-use/skip |
+| **References** | Points to skills for reusable procedure | Portable by default; declares unavoidable integration dependencies |
 
 **Red flags:**
 
 - Agent body has numbered workflow steps → extract to a skill
-- Agent body has bash commands or code blocks → extract to a skill
-- Skill references a specific agent by name → make it agent-independent
+- Agent body duplicates reusable commands or workflows → extract them to a skill
+- Skill hides a host/plugin/agent dependency → remove it or declare compatibility explicitly
 - Same checklist appears in both agent and skill → deduplicate into the skill
-- Agent has more than 5 skills listed → consider splitting the agent or ranking skills by priority
+- An agent lists many skills with ambiguous routing → group/rank them or split responsibilities;
+  count alone is not a defect
 
 ### Step 6: Quality Scoring
 
@@ -156,18 +180,21 @@ Rate each agent and skill on a 0–5 scale across these dimensions:
 | **Clarity** | No persona, vague purpose | Basic identity, some ambiguity | Crystal-clear role and domain |
 | **Focus** | Multiple unrelated responsibilities | Mostly focused, minor scope creep | Single clear responsibility |
 | **Separation** | Procedures embedded in body | Some duplication with skills | Clean delegation to skills |
-| **Boundaries** | No scope definition | Partial DO/DON'T lists | Precise, testable boundaries |
+| **Boundaries** | No scope definition | Partial or binary scope rules | Precise, testable approval tiers |
 | **Frontmatter** | Missing or invalid | Valid but minimal | Complete with correct syntax |
+| **Verification** | No behavioral checks | Ad hoc examples | Representative routing/trajectory tests across intended models |
 
 **Skill quality dimensions:**
 
 | Dimension | 0 (Poor) | 3 (Adequate) | 5 (Excellent) |
 |-----------|----------|--------------|----------------|
 | **Completeness** | Missing required sections | Has basics, gaps in procedure | All sections, thorough procedure |
-| **Independence** | Depends on specific agent | Mostly standalone | Fully self-contained and reusable |
+| **Portability** | Hidden dependencies | Mostly standalone or partly declared | Reusable, or explicit and justified compatibility |
 | **Actionability** | Vague prose | Some concrete steps | Clear numbered procedure with examples |
 | **Accuracy** | Outdated/wrong references | Mostly current | All references verified and current |
 | **Boundaries** | No when-to-use/skip | Basic triggers listed | Clear triggers with redirects |
+| **Context Efficiency** | Bloated / deep refs | Acceptable but noisy | Lean body, shallow refs, scripts for deterministic work |
+| **Security & Evaluation** | Unsafe or untested | Partial safeguards/tests | Least privilege plus baseline, near-miss, held-out checks |
 
 ### Step 7: Refine
 
@@ -180,6 +207,15 @@ Fix issues found in steps 2–6:
 5. Split agents with too many responsibilities
 6. Merge overlapping skills with similar procedures
 7. Update documentation tables to match current inventory
+
+Before applying:
+
+1. Label each finding as **verified defect**, **evidence-backed risk**, or **recommendation**.
+2. Use independent fresh-context review for schema, routing, security, or system-wide changes.
+   For multi-model review, assign non-overlapping lenses and reconcile disagreements explicitly.
+3. Run a different-model critique for every changed skill description.
+4. Preserve human approval for deletions, splits/merges, commits, releases, and other
+   irreversible actions unless the user explicitly authorized them.
 
 ### Step 8: Evolve (Recommendations)
 
@@ -226,12 +262,23 @@ After auditing, propose improvements:
 - ⚠️ Violations: [description]
 
 ### Quality Scores
-| Name | Type | Clarity | Focus | Separation | Boundaries | Frontmatter | Avg |
-|------|------|---------|-------|------------|------------|-------------|-----|
+
+| Agent | Clarity | Focus | Separation | Boundaries | Frontmatter | Verification | Avg |
+|-------|---------|-------|------------|------------|-------------|--------------|-----|
+
+| Skill | Completeness | Portability | Actionability | Accuracy | Boundaries | Context | Security/Evals | Avg |
+|-------|--------------|-------------|---------------|----------|------------|---------|----------------|-----|
+
+### Evidence
+- Verified defects: [validator failures, broken references, schema mismatches]
+- Evidence-backed risks: [session or evaluation evidence, with coverage/confidence]
+- Recommendations: [reasoned improvements not yet evidenced as failures]
 
 ### Recommendations
 - 💡 [suggestion with rationale]
 
 ### Actions Taken
 - 🔧 [what was fixed in this audit]
+- 🧪 [validation and representative behavioral evaluations run]
+- 👤 [changes intentionally left uncommitted or awaiting approval]
 ```

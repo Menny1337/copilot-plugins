@@ -1,5 +1,6 @@
 {
   "name": "core-agents",
-  "version": "1.0.0",
-  "description": "Research agent that creates citation-driven academic papers, comprehensive reports, and evidence-based analyses, and answers follow-up questions about completed research."
+  "version": "2.1.2",
+  "description": "Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).",
+  "hooks": "hooks/hooks.json"
 }

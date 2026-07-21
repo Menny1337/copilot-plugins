@@ -3,7 +3,7 @@
 All notable changes to the `docs` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - 2026-06-10
+## [1.0.1] - 2026-06-04
 
 _Initial public release._
 

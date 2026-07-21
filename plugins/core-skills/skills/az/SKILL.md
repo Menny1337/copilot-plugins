@@ -137,7 +137,17 @@ az login --use-device-code
 
 # Azure DevOps (separate from az login)
 export AZURE_DEVOPS_EXT_PAT=<your-pat>
-az devops configure --defaults organization=https://dev.azure.com/<org> project=<project>
+ADO_ORG="https://dev.azure.com/<org>"
+ADO_PROJECT="<project>"
+
+# Scope commands explicitly in shared or multi-project environments.
+# Check `az <group> <command> --help` before adding --project: some commands,
+# including `az boards work-item show` and `update`, accept --org but not --project.
+az boards work-item show --id <work-item-id> --org "$ADO_ORG"
+az boards query --wiql "<WIQL>" --org "$ADO_ORG" --project "$ADO_PROJECT"
+
+# Persistent defaults are suitable only for a dedicated single-org/project shell:
+# az devops configure --defaults organization="$ADO_ORG" project="$ADO_PROJECT"
 
 # Get access token (control plane / ARM)
 az account get-access-token --resource https://management.azure.com

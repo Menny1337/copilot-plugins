@@ -20,22 +20,28 @@
 
 ## 3. Prerequisites
 
-Ensure the `azure-devops` extension is installed and defaults are configured. See the **Foundations (in az skill)** for full auth setup.
+Ensure the `azure-devops` extension is installed and identify the target organization and
+project. See the **Foundations (in az skill)** for full auth setup.
 
 ```bash
 # Install the extension (idempotent)
 az extension add --name azure-devops
 
-# Set org and project defaults (avoids --org/--project on every command)
-az devops configure --defaults \
-  organization=https://dev.azure.com/<org> \
-  project=<project>
+# Keep scope explicit in shared or multi-project environments
+ADO_ORG="https://dev.azure.com/<org>"
+ADO_PROJECT="<project>"
 
-# Verify defaults
-az devops configure --list
+# Direct-ID work-item commands accept --org but not --project
+az boards work-item show --id <work-item-id> --org "$ADO_ORG"
+
+# Project-scoped commands accept both
+az boards query --wiql "<WIQL>" --org "$ADO_ORG" --project "$ADO_PROJECT"
 ```
 
-> **Tip:** If you work across multiple orgs/projects, pass `--org` and `--project` explicitly per command instead of relying on defaults.
+> **Scope flags are command-specific.** Check `az <group> <command> --help` before adding
+> `--project`. For example, work-item `show`, `update`, and `delete` reject `--project`,
+> while `create` and `query` accept it. Persistent `az devops configure --defaults` values
+> are appropriate only in a dedicated single-org/project shell.
 
 ## 4. Work Item CRUD
 
@@ -46,7 +52,7 @@ az devops configure --list
 az boards work-item create \
   --type "Bug" \
   --title "Login page throws 500 on expired token" \
-  --assigned-to "user@microsoft.com" \
+  --assigned-to "user@contoso.com" \
   --area "MyProject\\TeamA\\Frontend" \
   --iteration "MyProject\\Sprint 42" \
   --discussion "Repro: navigate to /login with an expired cookie"
@@ -93,7 +99,7 @@ az boards work-item update --id 12345 \
 
 # Reassign and reprioritize
 az boards work-item update --id 12345 \
-  --assigned-to "other@microsoft.com" \
+  --assigned-to "other@contoso.com" \
   --fields "Microsoft.VSTS.Common.Priority=1"
 
 # Move to a different iteration (sprint)
@@ -390,11 +396,17 @@ az boards work-item update --id 12345 \
    --fields "Microsoft.VSTS.Common.Priority=1" "System.Tags=p0;hotfix"
    ```
 
-6. **Always set org/project defaults** to avoid repeating `--org` and `--project` on every command. Or export them:
+6. **Scope commands without assuming every command accepts `--project`.** Prefer shell
+   variables plus supported flags in shared or multi-project environments:
    ```bash
-   export AZURE_DEVOPS_EXT_ORGANIZATION=https://dev.azure.com/myorg
-   export AZURE_DEVOPS_EXT_PROJECT=MyProject
+   ADO_ORG="https://dev.azure.com/<org>"
+   ADO_PROJECT="MyProject"
+   az boards work-item show --id 12345 --org "$ADO_ORG"
+   az boards query --wiql "SELECT [System.Id] FROM WorkItems" \
+     --org "$ADO_ORG" --project "$ADO_PROJECT"
    ```
+   Use `az devops configure --defaults` only when persistent process-wide scope cannot
+   affect another task.
 
 7. **State transitions have rules.** You can't jump from "New" to "Closed" on some work item types. Check allowed transitions: update to intermediate states if needed (New → Active → Resolved → Closed).
 
@@ -410,11 +422,11 @@ az boards work-item update --id 12345 \
 
 10. **HTML fields** (`Description`, `AcceptanceCriteria`, `ReproSteps`) expect HTML content, not plain text. Wrap in `<p>` tags for proper rendering in the web portal.
 
-11. **Large projects time out on broad queries.** On massive projects like Microsoft's `OS` project, `CONTAINS` searches scoped only to iteration consistently time out. Always scope by area path (see §10 for the full fallback strategy).
+11. **Large projects time out on broad queries.** On massive projects (those with thousands of teams and a deep area-path tree), `CONTAINS` searches scoped only to iteration consistently time out. Always scope by area path (see §10 for the full fallback strategy).
 
 ## 10. Large-Project Query Strategy
 
-> **When querying very large ADO projects (e.g., Microsoft's `OS` project), standard WIQL patterns can time out.** Use this ordered fallback strategy:
+> **When querying very large ADO projects (those with thousands of teams and a deep area-path tree), standard WIQL patterns can time out.** Use this ordered fallback strategy:
 
 ### 10.1 Preferred: Direct ID Lookup
 
@@ -446,20 +458,20 @@ If `@Me` doesn't find the item (e.g., assigned to a teammate), scope by **team a
 az boards query --wiql "
   SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo]
   FROM WorkItems
-  WHERE [System.AreaPath] UNDER 'OS\\WDATP\\Windows Cyber Defense\\Front End Infra'
+  WHERE [System.AreaPath] UNDER 'MyProject\\TeamA\\Frontend'
     AND [System.State] NOT IN ('Closed', 'Resolved', 'Removed', 'Done')
   ORDER BY [System.ChangedDate] DESC
 " -o table
 ```
 
-> **Why area path?** On massive projects, the area path tree is much narrower than iteration-scoped queries. The `OS` project has thousands of teams — iteration-scoped `CONTAINS` searches scan too many items and consistently time out.
+> **Why area path?** On massive projects, the area path tree is much narrower than iteration-scoped queries. Such projects can have thousands of teams — iteration-scoped `CONTAINS` searches scan too many items and consistently time out.
 
 ### 10.4 Never: Broad CONTAINS on Iteration-Only Scope
 
 **Do NOT** run broad text searches (`CONTAINS`) scoped only to iteration on large projects. These time out consistently:
 
 ```sql
--- ❌ WILL TIME OUT on large projects like OS
+-- ❌ WILL TIME OUT on large projects
 WHERE [System.IterationPath] = @CurrentIteration
   AND [System.Title] CONTAINS 'search term'
 ```
@@ -468,7 +480,7 @@ Instead, combine `CONTAINS` with an area path constraint:
 
 ```sql
 -- ✅ Narrowed by area path — fast enough
-WHERE [System.AreaPath] UNDER 'OS\\WDATP\\Windows Cyber Defense\\Front End Infra'
+WHERE [System.AreaPath] UNDER 'MyProject\\TeamA\\Frontend'
   AND [System.Title] CONTAINS 'search term'
 ```
 

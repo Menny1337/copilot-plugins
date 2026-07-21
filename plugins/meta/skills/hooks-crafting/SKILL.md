@@ -1,7 +1,8 @@
 ---
 name: hooks-crafting
-description: "Guide for authoring, configuring, and debugging GitHub Copilot hooks (the hooks.json system). Use when asked to create, add, edit, or troubleshoot a hook, run a command at sessionStart/sessionEnd, block or modify a tool call, inject context, send notifications, or wire automation into the agent lifecycle. Covers hook locations, the command/http/prompt hook types, all lifecycle events, decision control, matchers, exit codes, and security. Keywords: hooks, hooks.json, sessionStart, preToolUse, postToolUse, permissionRequest, agentStop, lifecycle automation."
+description: "Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications, matchers, and security."
 user-invocable: false
+compatibility: "GitHub Copilot CLI or Copilot cloud agent; lifecycle events and payloads vary by host."
 ---
 
 # How to Create and Configure Hooks
@@ -21,6 +22,7 @@ key points in the agent lifecycle (`hooks.json`).
 
 - Creating or modifying skills — use `skill-crafting`
 - Creating or modifying agents — use `agent-crafting`
+- Packaging hooks into a plugin or marketplace — use `plugin-crafting`
 - Auditing an existing agent/skill/hook system for quality — use `agent-skill-audit`
 - The `hooks` *frontmatter field* on a Claude Code skill — that is a different, host-specific
   feature and is **not** the same as the `hooks.json` system described here
@@ -33,19 +35,25 @@ that Copilot runs when a lifecycle **event** fires. Hooks are declared in JSON f
 
 ### Locations and load order
 
-Hooks are loaded from these sources and **combined** (when the same event appears in
-multiple sources, all entries run):
+Hooks are loaded from these sources and **combined** in this order — **policy → user →
+project → plugins** (when the same event appears in multiple sources, all entries run):
 
 <!-- validate:allow-user-paths -->
 
 | Source | Path | Scope |
 |--------|------|-------|
-| Repository hook files | `.github/hooks/*.json` | Committed, repo-wide |
+| **Policy hooks** (CLI only) | `/etc/github-copilot/policy.d/*.json` (Linux/macOS), `C:\ProgramData\GitHub\Copilot\policy.d\*.json` or `HKLM\Software\Policies\GitHub\Copilot` (Windows) | Machine-wide, admin-installed |
 | User hook files | `~/.copilot/hooks/*.json` (or `$COPILOT_HOME/hooks/`) | Personal, all repos |
-| Repo settings inline | `hooks` field in `.github/copilot/settings.json` / `settings.local.json` | Committed / local |
+| Repository hook files | `.github/hooks/*.json` | Committed, repo-wide |
 | User settings inline | `hooks` field in `~/.copilot/settings.json` | Personal |
+| Repo settings inline | `hooks` field in `.github/copilot/settings.json` / `settings.local.json` | Committed / local |
 | Cross-tool settings | `.claude/settings.json` / `.claude/settings.local.json` | Compatibility |
 | Plugin hooks | `<plugin-dir>/hooks/hooks.json` (or a `hooks.json` referenced from `plugin.json`) | Loaded when the plugin is installed |
+
+> **Policy hooks** are loaded by administrators before all other hooks, **cannot** be
+> disabled by `disableAllHooks`, and run regardless of folder-trust state. On POSIX they
+> must be owned by root and not group/world-writable. Treat them as out of scope for normal
+> plugin/repo authoring — they exist so enterprise IT can enforce machine-wide gates.
 
 > **In this marketplace:** plugins ship hooks at `plugins/<plugin>/hooks/hooks.json` and
 > declare `"hooks": "hooks/hooks.json"` (the **file path**, not the bare `hooks` dir) in
@@ -56,19 +64,22 @@ multiple sources, all entries run):
 > **Precedence caveat:** sources are combined rather than strictly overriding each other, and
 > exact merge ordering can be subtle. Don't rely on one source silently overriding another —
 > verify against runtime behavior before depending on ordering. To disable a file's hooks
-> without deleting it, set `"disableAllHooks": true` at the top level of that file.
+> without deleting it, set `"disableAllHooks": true` at the top level of that file — note this
+> does **not** affect policy hooks, which always load.
 
 ### The three hook types
 
 | Type | What it does | Key fields | Allowed on |
 |------|--------------|------------|-----------|
-| `command` (default) | Runs a shell script/command | `bash`, `powershell`, `command`, `cwd`, `env`, `timeoutSec` | All events |
-| `http` | POSTs the event payload as JSON to a URL | `url`, `headers`, `allowedEnvVars`, `timeoutSec` | All events |
+| `command` (default) | Runs a shell script/command | `bash`, `powershell`, `command`, `cwd`, `env`, `timeoutSec` (`timeout` alias) | All events |
+| `http` | POSTs the event payload as JSON to a URL | `url`, `headers`, `allowedEnvVars`, `timeoutSec` (`timeout` alias) | All events |
 | `prompt` | Auto-submits text/slash-command as if typed | `prompt` | `sessionStart` only (new interactive sessions) |
 
 **Command hooks** must set at least one of `bash`, `powershell`, or `command`. Provide both
 `bash` (macOS/Linux) and `powershell` (Windows) for cross-platform parity, or use `command`
-as a cross-platform fallback. Default `timeoutSec` is `30`.
+as a cross-platform fallback — `command` is copied into both `bash` and `powershell` when
+those are absent, and an explicit `bash`/`powershell` wins on its own platform. Default
+`timeoutSec` is `30` (`timeout` is accepted as an alias; `timeoutSec` wins if both are set).
 
 **HTTP hooks** must set `url`. Only `https://` is allowed, except `http://localhost`/`127.*`/
 `[::1]` when `COPILOT_HOOK_ALLOW_LOCALHOST=1`. For `preToolUse` and `permissionRequest` the
@@ -117,6 +128,12 @@ hook that returns JSON to control behavior.
 | `preCompact` | Before context compaction | No |
 | `notification` | CLI emits a system notification (CLI only) | Inject `additionalContext` |
 
+> **Two surfaces.** These events are the full **Copilot CLI** set. Hooks also run in the
+> **Copilot cloud agent** sandbox, where a subset fires (no `notification`; `preCompact` only
+> with `trigger: "auto"`; `preToolUse` `"ask"` is treated as `"deny"`), only `.github/hooks/*.json`
+> is read, and only `bash`/`command` entries are honored (no `powershell`, no user/plugin hooks).
+> Keep cloud-agent hooks self-contained and send output over `http` since the sandbox is ephemeral.
+
 > Event names may be written in **camelCase** (e.g. `sessionStart`) or **PascalCase** (e.g.
 > `SessionStart`, `PreToolUse`, `Stop`). PascalCase selects the VS Code-compatible payload
 > with `snake_case` fields. Pick one convention per hook and match the payload format you parse.
@@ -125,8 +142,14 @@ hook that returns JSON to control behavior.
 
 `notification`, `permissionRequest`, `preCompact`, `preToolUse`, and `subagentStart` accept an
 optional `matcher` regex (anchored as `^(?:pattern)$`) that filters which invocations fire the
-hook — matched against `notification_type`, `toolName`, `trigger`, `toolName`, and `agentName`
-respectively. Invalid regexes cause the entry to be skipped.
+hook — matched against `notification_type`; `toolName` for `permissionRequest`; `trigger`;
+`toolName` for `preToolUse`; and `agentName`, respectively. Invalid regexes cause the entry
+to be skipped.
+
+> **Claude-format `preToolUse` matchers differ.** A hook configured with the **PascalCase**
+> event name `PreToolUse` (Claude Code / Open Plugins format) uses Claude matcher semantics
+> (`*`/`**`/empty → every tool; literal or `|`-alternation; else anchored regex) against the
+> **Claude tool name** (e.g. `Bash`, not `bash`). See the reference for the full mapping.
 
 ## Decision Control (hooks that change behavior)
 
@@ -138,6 +161,27 @@ Command hooks emit a decision by writing a single-line JSON object to **stdout**
 - **`postToolUse`** → `{ "modifiedResult": {...}, "additionalContext": "..." }`. Return `{}` to keep the original result.
 - **`agentStop` / `subagentStop`** → `{ "decision": "block"|"allow", "reason": "<prompt for next turn>" }`.
 - **`sessionStart` / `subagentStart` / `notification`** → `{ "additionalContext": "..." }`.
+
+> **Emit exactly one final decision object.** The CLI strips recognized progress lines (below)
+> from stdout, then concatenates and `JSON.parse`s everything that remains as a single object.
+> Two separate JSON objects on stdout concatenate into invalid JSON and are ignored — so the
+> hook silently falls through to default behavior.
+
+### Progress messages (command hooks)
+
+A command hook can stream status lines to the CLI timeline while it runs by writing a
+single-line JSON object **before** its final decision output:
+
+```bash
+echo '{"type": "progress", "message": "Checking policy...", "temporary": true}'
+# ... do work ...
+echo '{"permissionDecision": "allow"}'
+```
+
+Each progress object must be valid JSON on its own line. Add `"temporary": true` for a
+transient line that's replaced by the next one and cleared when the assistant responds.
+Progress messages are display-only — they're removed from the output stream and never reach
+the decision parser.
 
 ### Exit codes (command hooks)
 
@@ -172,6 +216,11 @@ Command hooks emit a decision by writing a single-line JSON object to **stdout**
 - **HTTPS is required** for `http` hooks (and mandatory for `preToolUse`/`permissionRequest`).
   Only expose env vars to headers via `allowedEnvVars`.
 - **Never leak secrets** to stdout/stderr or to logs a hook writes; stdout is parsed/echoed.
+- **Treat every payload as untrusted.** Parse stdin as JSON, validate expected fields, quote
+  paths and arguments, avoid `eval` or dynamic shell construction, and allowlist privileged
+  actions instead of interpolating tool names or user content into commands.
+- **Minimize exposed authority.** Keep `allowedEnvVars`, filesystem access, and network
+  destinations as narrow as possible; never pass an entire environment through for convenience.
 - **Be idempotent and quiet on success**, especially for `sessionStart` install/setup hooks —
   they run every session. Exit `0` even on best-effort failure so you don't block startup.
 - **Keep timeouts short** and avoid network calls on `sessionStart` unless necessary.
@@ -200,6 +249,7 @@ Debug a script by reading stdin, echoing it to stderr, and tracing with `set -x`
 - [ ] Decision-returning hooks emit single-line JSON and exit `0`
 - [ ] `timeoutSec` is reasonable; scripts are executable with a shebang
 - [ ] No secrets in stdout/stderr; fail-open behavior is acceptable for the use case
+- [ ] Malformed or adversarial payloads fail safely without command injection or privilege expansion
 - [ ] Catalog regenerated (marketplace plugins) and `validate.mjs` passes
 
 ## References

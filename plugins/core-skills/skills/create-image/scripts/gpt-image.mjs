@@ -2,6 +2,8 @@
 // gpt-image — zero-dependency wrapper around the Azure AI Foundry (Azure OpenAI)
 // v1 images API for the gpt-image-2 deployment. Generates images from text and,
 // with -r references, edits existing images. Writes decoded files to disk.
+// gpt-image-2 is raster-only: references must be PNG/JPG/WebP. Render any SVG to
+// PNG first (e.g. rsvg-convert) and verify the text before passing the PNG.
 //
 // Credentials (key) lookup order:
 //   1. $AZURE_OPENAI_IMAGE_KEY
@@ -108,6 +110,7 @@ Options:
   -c <0-100>       JPEG compression level (only with -f jpeg).
   -n <count>       Number of images to generate, 1-10 (default: 1).
   -r <path>        Reference image to edit (repeatable; routes to images/edits).
+                   PNG/JPG/WebP only. Render SVG to PNG first (e.g. rsvg-convert).
   --moderation <v> Moderation level: auto|low (default: model default).
   --endpoint <url> Override endpoint (default: $${ENDPOINT_ENV} or built-in).
   --deployment <n> Override deployment/model name (default: ${DEFAULT_DEPLOYMENT}).
@@ -546,6 +549,20 @@ async function main() {
     opts.keyMethod === "auto" ? (bg.isExtreme ? "floodfill" : "global") : opts.keyMethod;
   const fuzz = opts.fuzz || (keyMethod === "floodfill" ? "22%" : "16%");
   const despill = opts.despill ?? (keyMethod === "floodfill" ? 0 : 1);
+
+  const svgRef = opts.refs.find((r) => path.extname(r).toLowerCase() === ".svg");
+  if (svgRef) {
+    const pngName = `${path.basename(svgRef, path.extname(svgRef))}.png`;
+    fail(
+      `reference ${svgRef} is an SVG, but gpt-image-2 only accepts raster images.\n` +
+        `Render it to PNG first, verify the text rendered correctly, then pass the PNG:\n` +
+        `  rsvg-convert -w 1920 -b white ${svgRef} -o ${pngName}\n` +
+        `  open ${pngName}   # confirm every label and value is legible\n` +
+        `  (fallbacks: inkscape / resvg / a headless Chromium screenshot; ` +
+        `ImageMagick alone is unreliable for SVG text)\n` +
+        `Then re-run with: -r ${pngName}`
+    );
+  }
 
   let magick;
   if (opts.transparent || opts.resize) {

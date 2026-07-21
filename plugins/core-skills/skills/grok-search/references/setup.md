@@ -47,15 +47,18 @@ In the bridge Chrome, sign in to:
 - **x.com** — required for `--surface=x` (the X Premium login).
 - **grok.com** — required for `--surface=grok.com`.
 
-## 6. (Optional) Headless mode
+## 6. Headless (default) auth seeding
 
-To run windowless later, seed a dedicated session once while the real Chrome is open
-and signed in:
+Headless is the **default** run mode. Export login state explicitly before the first
+query, or later when the windowless session gets logged out:
 
 ```bash
 node scripts/ask-grok-x.mjs --setup-auth
 ```
 
-This exports login state to `~/grok-x-tool/.auth.json` (chmod 600, never committed)
-and loads it into the windowless `grokhl` session. Re-run it whenever the headless
-session gets logged out.
+This exports login state to `~/grok-x-tool/.auth.json` (chmod 600, never committed) and
+loads it into the windowless `grokhl` session. The script never exports cookies or
+switches to the visible browser automatically.
+
+If headless is persistently logged out or bot-flagged, fall back to driving the visible
+Chrome with `--attached`.

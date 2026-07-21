@@ -26,13 +26,14 @@ decoded image files to disk. Prefer running the wrapper over hand-rolling
 - User wants transparent-background assets: logos, mascots, icons, stickers, app tiles
 - User wants UI/app mockups or promo images
 - User wants to edit or restyle an existing image using one or more reference images
+- User wants to turn a chart or diagram SVG into a polished infographic or slide (see `references/recipes.md` recipe 9)
 - User wants repeatable command-line image generation that can be scripted later
 
 ## When to skip
 
 - User explicitly wants **Nano Banana / Gemini** generation — use the `nano-banana-cli` skill instead
 - User only wants prompt-writing advice and no generated file — give prompt help directly
-- User wants video, vector/SVG output, or real-time/streaming image APIs
+- User wants video, vector/SVG **output**, or real-time/streaming image APIs (an SVG works as an *input* reference once rendered to PNG)
 - User wants a fully local model with no Azure dependency
 
 ---
@@ -78,6 +79,7 @@ Copy these patterns and substitute the prompt, flags, and paths:
 | Mobile / portrait visual | `gpt-image "<prompt>" -a 9:16 -o promo` |
 | Multiple variations | `gpt-image "<prompt>" -n 3 -o variation -d ./artifacts` |
 | Edit one reference image | `gpt-image "<edit prompt>" -r ./input/source.png -o edited` |
+| Restyle from an SVG (render first) | `rsvg-convert -w 1920 -b white logo.svg -o logo.png` then `gpt-image "<edit prompt>" -r ./logo.png -o edited` |
 | Multi-reference edit / merge | `gpt-image "<merge prompt>" -r ./a.png -r ./b.png -o merged` |
 | JPEG/WebP output | `gpt-image "<prompt>" -f jpeg -o photo` |
 | Preview the request only | `gpt-image "<prompt>" -a 16:9 -t --dry-run` |
@@ -176,7 +178,7 @@ Flags:
 | Output format | `-f png\|jpeg` (WebP is unsupported on Azure) |
 | JPEG compression | `-c <0-100>` (only with `-f jpeg`) |
 | Image count | `-n <count>` |
-| Reference image (edit) | `-r <path>` (repeatable) |
+| Reference image (edit) | `-r <path>` (repeatable; PNG/JPG/WebP only — render any SVG to PNG first) |
 | Endpoint / deployment override | `--endpoint <url>` / `--deployment <name>` |
 | Preview without calling API | `--dry-run` |
 
@@ -296,6 +298,9 @@ See `references/recipes.md` for ready-to-run command templates and prompt profil
 - **Wrong composition** — revise the prompt first before changing size or quality.
 - **Reference not found** — verify each `-r` path exists; the wrapper checks and
   errors out before calling the API.
+- **SVG reference rejected** — `-r` is raster-only, so the wrapper stops on a
+  `.svg` path. Render it to PNG first (`rsvg-convert -w 1920 -b white in.svg -o
+  in.png`), check the labels, then pass the PNG. See recipe 9 for renderer options.
 
 ---
 

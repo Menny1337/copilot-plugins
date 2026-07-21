@@ -1,6 +1,6 @@
 ---
 name: skill-crafting
-description: "Guide for discovering existing Copilot Agent Skills and creating new ones. Use when asked to find, browse, or recommend skills, or when asked to create or scaffold a new skill. Covers skill file structure, frontmatter, description engineering, quality evaluation, context budget, and agent-vs-skill separation of concerns."
+description: "Finds, evaluates, creates, and refines Copilot Agent Skills. Use for skill discovery or installation, SKILL.md and frontmatter design, trigger descriptions, progressive disclosure, security review, and behavioral evaluation."
 user-invocable: false
 ---
 
@@ -19,6 +19,7 @@ A practical workflow for locating existing Agent Skills and creating new ones.
 
 - Creating or modifying agents — use `agent-crafting` instead
 - Auditing existing skills for quality — use `agent-skill-audit` instead
+- Packaging skills into a plugin or marketplace — use `plugin-crafting` instead
 - Application code changes — use domain-specific skills or agents
 
 ## Skill File Basics
@@ -65,29 +66,37 @@ Skills load in three levels — design with this in mind:
 
 ### Frontmatter Reference
 
+The portable Agent Skills standard requires `name` and `description`. Add optional fields
+only when they communicate a real dependency or governance requirement:
+
 ```yaml
 ---
 name: <skill-name>
 description: '<What it does>. Use when <triggers and keywords users might say>.'
-allowed-tools: [Read, Grep]   # Optional
-user-invocable: false
-disable-model-invocation: false
+license: MIT
+compatibility: Requires git and network access
+allowed-tools: Read Grep
 ---
 ```
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | **Yes** | Kebab-case (lowercase, hyphens, digits). Must match folder name. Max 64 chars. |
-| `description` | string | **Yes** | 10–1024 characters. No angle brackets (`<>`). Describes purpose and trigger conditions. |
-| `allowed-tools` | string[] | No | Restricts which tools may be used when the skill is active where supported. |
-| `user-invocable` | boolean | No | Set `false` for skills only invoked by agents (not directly by users) |
-| `disable-model-invocation` | boolean | No | Set `true` for manual-only workflows that should not auto-trigger. |
+| `description` | string | **Yes** | 1–1024 characters. No angle brackets (`<>`). Describes purpose and trigger conditions. |
+| `license` | string | No | SPDX identifier or reference to a bundled license file. |
+| `compatibility` | string | No | Host, package, operating-system, or network requirements. Max 500 characters. |
+| `metadata` | map | No | String key/value metadata for supporting clients; **unsupported in this scalar-only marketplace** until its parser accepts nested maps. |
+| `allowed-tools` | space-separated string | No | Experimental pre-approval hint; support varies by host. It is not a YAML array. |
 
-> **Portability note:** Claude Code exposes additional skill-frontmatter fields such as
-> `argument-hint`, `context`, `agent`, `hooks`, and `model`. Copilot CLI currently uses a
-> narrower subset. Prefer the core fields above unless you are targeting one host explicitly.
-> Note that the Claude Code `hooks` *frontmatter field* is unrelated to Copilot's `hooks.json`
-> lifecycle hook system — for that, see the `hooks-crafting` skill.
+> **Host extensions:** Copilot/Claude surfaces may additionally support fields such as
+> `user-invocable` and `disable-model-invocation`; Claude Code also exposes
+> `argument-hint`, `context`, `agent`, `hooks`, and `model`. Verify the target host before
+> using them. The Claude Code `hooks` frontmatter field is unrelated to Copilot's
+> `hooks.json` lifecycle system.
+>
+> **This marketplace is scalar-only:** its generators accept only single-line top-level
+> scalar values. Do not add nested `metadata` maps or YAML arrays here until the repository
+> parser explicitly supports them.
 
 **Writing Effective Descriptions:**
 
@@ -117,6 +126,20 @@ description: "Creates data dashboards and visualizations. Use when the user ment
 - Implementation-focused: "Uses React and D3" (describe the *problem*, not the *solution*)
 - Too narrow: only triggers on exact phrasing
 - Missing domain synonyms: users say "graph" not just "chart"
+- Redundant: the description is *always* in context, so every word costs budget on every turn — cut anything that doesn't improve triggering or comprehension
+
+**Critique the description before saving — required on every create OR change.**
+
+The description is the only always-loaded text, so redundancy costs budget every turn. Run the critique on a *different* model family than the author (authors rarely catch their own redundancy): use the `task` tool with a `model` override set to the newest cross-family model — Claude author → GPT or Gemini; GPT → Claude or Gemini; Gemini → Claude or GPT. Give that sub-agent the draft `description`, the skill's purpose, and the four cut-tests below, and have it return a tightened description plus what it cut and why. If no cross-model sub-agent is available, self-review instead and note that it was not independent.
+
+Four cut-tests (the reviewer applies them too):
+
+1. **Strip implementation detail** — drop internal mechanics that don't aid discovery (subprocess/threading models, framework names, file/script paths, UI labels, data-file names); they belong in the body, not the always-loaded description.
+2. **De-duplicate lead vs. triggers** — cut any `Triggers:`/`Keywords:` entry that just restates the lead; keep only terms adding a *distinct* search word (synonym, alternate phrasing, tool/domain noun).
+3. **De-duplicate within triggers** — collapse near-synonyms (e.g. "review skills that were used" vs "which skills were used") to one.
+4. **Make every remaining word earn its place** — if removing a phrase doesn't reduce trigger coverage or comprehension, remove it; prefer the shortest description that still triggers.
+
+Then re-check it still triggers: the lead must convey *what it does* and the keywords must cover the distinct ways users ask. You own the final wording — accept the reviewer's cuts only where none lose a real trigger.
 
 ## Skill Categories
 
@@ -180,6 +203,7 @@ Quick quality checklist before installing or using a skill:
 - [ ] Self-contained — works without depending on a specific agent
 - [ ] References are current — file paths, commands, and URLs still valid
 - [ ] Recent activity — repo shows signs of maintenance
+- [ ] Security reviewed — bundled scripts, dependencies, assets, and external URLs match the stated purpose
 
 **Avoid skills with:**
 - Empty or placeholder body content
@@ -187,17 +211,20 @@ Quick quality checklist before installing or using a skill:
 - Hardcoded secrets, tokens, or credentials
 - Dependencies on specific agents (breaks reusability)
 - Outdated API references or deprecated patterns
+- Unexpected network calls, broad file access, dynamic shell construction, or opaque binaries
 
 ## Step 4: Install a Skill
 
-1. Copy the skill folder into the target location:
+1. Treat the skill like software: inspect every bundled file, script, dependency, and external
+   URL. Prefer trusted, versioned sources; do not install it if behavior exceeds the stated purpose.
+2. Copy the skill folder into the target location:
    - Repo-level: `.github/skills/<skill-name>/`
    - User-level: `~/.copilot/skills/<skill-name>/`
    - Plugin: add a directory under your plugin's `skills/<skill-name>/` and list the plugin in `marketplace.json`
-2. Ensure `SKILL.md` frontmatter `name` matches the folder name
-3. Verify `description` is 10–1024 characters
-4. Validate frontmatter (use repo validator if available)
-5. Update documentation tables if the project tracks skills
+3. Ensure `SKILL.md` frontmatter `name` matches the folder name.
+4. Verify `description` is non-empty and at most 1024 characters.
+5. Validate frontmatter (use the repository validator if available).
+6. Update documentation tables if the project tracks skills.
 
 ## Step 5: Create a New Skill
 
@@ -207,7 +234,7 @@ Use this decision matrix:
 
 | Question | Yes → Skill | No → Something Else |
 |----------|-------------|---------------------|
-| Is it a reusable procedure? | ✅ Skill | Agent body or documentation |
+| Is it a reusable capability or focused workflow? | ✅ Skill | Agent body or documentation |
 | Can multiple agents use it? | ✅ Skill | Agent-specific section |
 | Is it step-by-step and actionable? | ✅ Skill | Reference doc or README |
 | Does it define HOW, not WHO? | ✅ Skill | Agent (defines WHO) |
@@ -223,6 +250,15 @@ Before writing a single line, answer these four questions:
 | **When should it trigger (and NOT trigger)?** | The `description` frontmatter and "When to Use/Skip" sections |
 | **What is the expected output or behavior?** | Procedure steps, success criteria, examples |
 | **What edge cases and dependencies exist?** | Error handling, tool requirements, environment assumptions |
+
+Define a small eval set **before drafting instructions**:
+
+- 2 prompts that should trigger the skill
+- 2 semantically close near-misses that should not trigger it
+- 2 representative outcome tasks with explicit success criteria
+
+For a substantive revision, preserve the old version as the baseline and keep at least one
+held-out case that did not shape the edit.
 
 **If the user already demonstrated the workflow** (e.g., "turn what I just did into a skill"), extract:
 - The steps they performed, in order
@@ -289,6 +325,10 @@ Every skill MUST have:
 | **When to Skip** | Anti-triggers — when should an agent NOT use this skill? Include redirects. |
 | **Procedure** | Step-by-step instructions — the core value of the skill |
 
+The frontmatter description is the authoritative routing surface. Keep body-level
+"When to Use" and "When to Skip" sections concise: clarify boundaries and redirects rather
+than repeating the full metadata keyword list.
+
 Optional but recommended:
 
 | Section | Purpose |
@@ -301,26 +341,37 @@ Optional but recommended:
 
 - **Actionable** — Every step should be something the agent can execute, not just advice
 - **Self-contained** — Skill works without reading any agent file
-- **Focused** — One skill = one procedure. If it does two unrelated things, split it.
+- **Focused** — One skill should have one clear purpose or outcome. Split unrelated domains.
 - **Accurate** — All file paths, commands, URLs, and API references are current
 - **Redirecting** — "When to Skip" always tells the user what to do instead
-- **Agent-independent** — Never reference a specific agent by name in the procedure
+- **Portable by default** — Avoid agent-specific coupling. If an integrated workflow
+  necessarily depends on a named host, plugin, or agent, declare the compatibility and keep
+  the coupling explicit and isolated.
+- **Secure and unsurprising** — Treat inputs and external content as untrusted; quote shell
+  values, avoid dynamic command construction, minimize permissions, and keep behavior within
+  the description's stated purpose.
+- **Appropriate freedom** — Use flexible guidance where several approaches are safe, and
+  deterministic scripts or exact commands where mistakes are costly.
 
 ## Step 6: Verify
 
 **Frontmatter validation:**
 - [ ] `name` is kebab-case (lowercase letters, hyphens, digits only), max 64 characters
 - [ ] `name` matches the folder name exactly
-- [ ] `description` is 10–1024 characters, no angle brackets (`<>`)
-- [ ] `description` uses imperative phrasing and includes trigger keywords
+- [ ] `description` is 1–1024 characters, no angle brackets (`<>`)
+- [ ] `description` is third-person, states what and when, and includes distinct trigger keywords
+- [ ] `allowed-tools`, if present, is a space-separated scalar rather than a YAML array
+- [ ] Host-specific fields are supported by the intended runtime
+- [ ] `description` critiqued for redundancy by a different-model sub-agent (no implementation detail, no triggers that merely restate the lead or each other) — see "Critique the description before saving"
 - [ ] YAML parses cleanly (quote strings, check for special characters)
 
 **Structure validation:**
 - [ ] Has "When to Use" section with specific trigger conditions
 - [ ] Has "When to Skip" section with redirects to correct alternatives
 - [ ] Procedure is step-by-step and actionable (not just advice)
-- [ ] No references to specific agents by name (agent-independent)
+- [ ] Dependencies are absent or explicitly declared and justified
 - [ ] All file paths, commands, and URLs are valid and current
+- [ ] Bundled scripts, dependencies, assets, and external content pass a security/trust review
 
 **Context budget validation:**
 - [ ] SKILL.md body is under 500 lines (move heavy content to `references/`)
@@ -330,28 +381,31 @@ Optional but recommended:
 **Integration validation:**
 - [ ] Frontmatter validation passes (if validator script available)
 - [ ] Documented in project tables (if the project tracks skills)
-- [ ] Test the trigger — verify the skill activates on expected prompts and does NOT activate on unrelated prompts
+- [ ] Run the predeclared trigger, near-miss, and outcome tests
+- [ ] For substantive revisions, compare against the previous version on the same cases and reserve held-out cases to detect overfitting
+- [ ] Test critical workflows on every intended model family or tier
 
 ### 6b: Run a Lightweight Skill Quality Scorecard
 
-Before calling a new skill done, score it on five dimensions using a simple 0–2 scale:
+Before calling a new skill done, score it on six dimensions using a simple 0–2 scale:
 
 | Dimension | 0 | 1 | 2 |
 |-----------|---|---|---|
 | **Trigger Precision** | Fires vaguely or unpredictably | Mostly right, some ambiguity | Clear should-trigger and should-not-trigger behavior |
-| **Scope Tightness** | Multiple unrelated jobs | Mostly focused | One crisp reusable procedure |
+| **Scope Tightness** | Multiple unrelated jobs | Mostly focused | One clear reusable purpose |
 | **Outcome Verifiability** | Success is subjective or unstated | Partial checks exist | Clear success checks or validation loop |
 | **Context Efficiency** | Bloated body / deep references | Acceptable but noisy | Lean body, shallow references, heavy content offloaded |
 | **Reusability** | Agent- or repo-specific by accident | Some reusable parts | Self-contained and portable across agents |
+| **Security & Trust** | Surprising or unsafe behavior | Risks noted but incomplete | Least privilege, trusted dependencies, safe input handling |
 
 Interpretation:
-- **9–10** — Ready to ship
-- **7–8** — Good, but tighten the weak spots
-- **0–6** — Rework before adding more content
+- **11–12** — Ready to ship
+- **9–10** — Good, but tighten the weak spots
+- **0–8** — Rework before adding more content
 
 Minimum test set:
 - **2 should-trigger prompts**
-- **2 should-not-trigger prompts**
+- **2 semantically close near-misses that should not trigger**
 - **2 representative outcome tasks** with explicit success checks
 
 ## Step 7: Iterate and Improve
@@ -359,7 +413,9 @@ Minimum test set:
 Skills are not write-once artifacts. When improving a skill based on observed behavior:
 
 **Generalize, don't overfit**
-Edits must improve behavior across many prompts, not just the one that revealed the problem. Ask: "Will this change help for inputs I haven't seen yet?"
+Edits must improve behavior across many prompts, not just the one that revealed the problem.
+Compare against the prior version and reserve held-out cases. Ask: "Will this change help for
+inputs I haven't seen yet?"
 
 **Keep it lean**
 Remove instructions that produce unproductive behavior. Check agent transcripts, not just outputs — if an instruction causes the agent to waste tokens on unnecessary work, cut it.
@@ -377,47 +433,21 @@ If agents using the skill independently perform the same setup step (creating a 
 **Strengthen the description**
 If the skill undertriggers (doesn't activate when it should), add domain synonyms and broaden trigger keywords. If it overtriggers (activates incorrectly), sharpen the scope language and add "not for X" qualifiers.
 
-## Agent vs Skill — Separation of Concerns
+## Agent vs Skill Boundary
 
-| | Agent (`.agent.md`) | Skill (`SKILL.md`) |
-|---|---|---|
-| **Defines** | WHO — persona, role, pipeline position | HOW — self-contained procedure and knowledge |
-| **Contains** | Name, description, skill references, scope boundaries | Steps, commands, checklists, when-to-use/skip, examples |
-| **References** | Points to skills for procedure | Does NOT reference or depend on any agent |
-| **Tone** | Identity and personality | Neutral and procedural |
-| **Reusability** | Tied to a specific role | Reusable by any agent or human |
+Agents define WHO: role, identity, orchestration, and approval boundaries. Skills define HOW:
+procedures, commands, examples, and reusable knowledge. Use the Step 5a matrix when the
+boundary is ambiguous.
 
-**Rules:**
-- Never duplicate workflow steps or checklists in both agent and skill
-- The skill is the single source of truth for procedure — the agent says "follow skill X"
-- Skills must be self-contained and reusable (another agent or a human could use it)
-- Agents define identity and orchestration (when they run, what they can/can't touch)
-
-**Example — Good:**
-```markdown
-# Agent file
-## Skills
-- **code-review** — follow the full procedure defined in this skill
-## Scope Boundaries
-- DO: Review code for quality issues
-- DO NOT: Modify application code
-```
-
-**Example — Bad (duplicated logic):**
-```markdown
-# Agent file
-## Workflow              ← duplicates skill!
-1. Check for DRY violations
-2. Review naming conventions
-3. Score complexity
-## Checklist             ← duplicates skill!
-- [ ] All functions under 50 lines
-```
+- Keep the skill as the single source of truth for reusable procedure.
+- Do not duplicate workflows or checklists across an agent and a skill.
+- Keep skills portable by default; declare unavoidable integration dependencies.
+- Keep agents focused on identity, routing, ownership, and limits.
 
 ## Tips
 
 - **Search by problem, not solution** — "improve test coverage" not "jest skill"
-- **Prefer focused skills** — one skill per procedure, not mega-skills
+- **Prefer focused skills** — one clear purpose or outcome, not a grab bag
 - **Update don't duplicate** — merge overlapping skills instead of creating similar ones
 - **Description is discovery** — write descriptions with the keywords users would search for; be assertive to combat undertriggering
 - **Test the trigger** — after creating a skill, verify it activates on expected prompts *and* stays silent on unrelated ones
@@ -425,3 +455,9 @@ If the skill undertriggers (doesn't activate when it should), add domain synonym
 - **Know your type** — capability skills may become obsolete as models improve; workflow skills need process fidelity
 - **Respect the context budget** — a 500-line skill body + loaded references is more effective than a 1000-line monolith
 - **Extract from history** — if a user already demonstrated a workflow, mine it for steps, corrections, and patterns before writing
+
+## References
+
+- [Agent Skills specification](https://agentskills.io/specification)
+- [Anthropic: Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
+- [OpenAI: Evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)

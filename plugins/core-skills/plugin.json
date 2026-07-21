@@ -1,6 +1,6 @@
 {
   "name": "core-skills",
-  "version": "1.0.0",
+  "version": "2.0.4",
   "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
   "hooks": "hooks/hooks.json"
 }

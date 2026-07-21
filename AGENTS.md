@@ -1,7 +1,7 @@
 # AGENTS.md — working on this repo
 
 This is a **generated**, public Copilot CLI / Agency plugin marketplace. It contains content
-plus three zero-dependency Node scripts; there is no build or runtime app.
+plus four zero-dependency Node scripts; there is no build or runtime app.
 
 ## CI-enforced rules
 
@@ -22,4 +22,5 @@ node scripts/catalog.mjs
 node scripts/plugin-readme.mjs
 node scripts/catalog.mjs --check
 node scripts/plugin-readme.mjs --check
+node scripts/version.mjs plan
 ```

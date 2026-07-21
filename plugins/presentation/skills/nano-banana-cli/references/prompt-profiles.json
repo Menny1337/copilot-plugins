@@ -1,0 +1,110 @@
+{
+  "presentation-hero": {
+    "task": "presentation_hero",
+    "goal": "Create a full-bleed hero visual for an executive incident review deck.",
+    "subject": {
+      "primary": "modern enterprise control room",
+      "details": "credible operational environment, not sci-fi, premium but realistic"
+    },
+    "scene": {
+      "environment": "security operations center with layered displays and subtle architectural depth",
+      "lighting": "cinematic but believable practical lighting",
+      "time_or_mood": "calm, high-stakes, executive-ready"
+    },
+    "composition": {
+      "framing": "wide hero composition",
+      "camera": "slightly elevated wide-angle shot",
+      "safe_zones": "clean negative space on the left for title and subtitle"
+    },
+    "style": {
+      "visual_language": "editorial enterprise illustration",
+      "color_direction": "deep neutrals with restrained blue highlights"
+    },
+    "constraints": [
+      "avoid cheesy sci-fi hologram tropes",
+      "keep the image presentation-friendly and text-overlay safe"
+    ]
+  },
+  "section-divider": {
+    "task": "presentation_divider",
+    "goal": "Generate section divider art for a security operations presentation.",
+    "subject": {
+      "primary": "abstract systems topology",
+      "details": "layered network geometry and infrastructure motifs"
+    },
+    "composition": {
+      "framing": "wide and low-clutter",
+      "safe_zones": "empty space near the top for a large section headline"
+    },
+    "style": {
+      "visual_language": "premium editorial abstraction",
+      "color_direction": "restrained palette with disciplined contrast"
+    },
+    "constraints": [
+      "no tiny illegible details",
+      "avoid visual noise behind potential headline text"
+    ]
+  },
+  "ui-mockup": {
+    "task": "ui_mockup",
+    "goal": "Create a landing-page hero mockup for an enterprise SaaS product.",
+    "subject": {
+      "primary": "enterprise analytics dashboard",
+      "details": "believable information architecture and product-grade polish"
+    },
+    "composition": {
+      "framing": "website hero composition",
+      "safe_zones": "support adjacent marketing copy if cropped"
+    },
+    "style": {
+      "visual_language": "premium product render",
+      "color_direction": "dark-on-light contrast with restrained accent colors"
+    },
+    "constraints": [
+      "avoid generic AI slop dashboards",
+      "keep charts and layout coherent at first glance"
+    ]
+  },
+  "transparent-logo": {
+    "task": "transparent_asset",
+    "goal": "Generate a transparent logo concept for enterprise AI branding.",
+    "subject": {
+      "primary": "minimal geometric logo mark",
+      "details": "strong silhouette, no text"
+    },
+    "style": {
+      "visual_language": "clean enterprise branding asset"
+    },
+    "constraints": [
+      "transparent-ready silhouette",
+      "no background elements",
+      "avoid overly ornamental detail"
+    ]
+  },
+  "image-polish": {
+    "task": "image_edit",
+    "goal": "Refine a rough concept image into production-ready visual art.",
+    "references": [
+      {
+        "path": "./input/concept.png",
+        "role": "source_image",
+        "preserve": "composition and core identity"
+      }
+    ],
+    "edit": {
+      "change": [
+        "improve lighting",
+        "sharpen material detail",
+        "increase polish for production use"
+      ],
+      "preserve": [
+        "original composition",
+        "core visual identity"
+      ]
+    },
+    "constraints": [
+      "do not invent a different concept",
+      "keep the result believable as a refined version of the original"
+    ]
+  }
+}

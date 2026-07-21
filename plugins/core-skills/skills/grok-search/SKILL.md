@@ -6,10 +6,15 @@ user-invocable: true
 
 # Grok Search (X + Web)
 
-Drives **Grok** through the user's own logged-in browser via `playwright-cli` and
+Drives **Grok** through the user's own logged-in session via `playwright-cli` and
 returns the answer plus any cited X post links — **no API key, no per-token cost**.
 Because it reuses the real login, it gives the same real-time X search Grok offers
 in the app (latest tweets, live sentiment, breaking news with sources).
+
+By default it runs **headless (windowless)** after an explicit one-time
+`--setup-auth` export. Later runs work in a dedicated background session **without
+opening or touching your visible browser**. Use `--attached` only when you explicitly
+want to drive the visible Chrome.
 
 The tool is bundled in this skill at **`scripts/ask-grok-x.mjs`** (Node 18+, single
 file, no deps beyond `playwright-cli`).
@@ -35,14 +40,17 @@ file, no deps beyond `playwright-cli`).
 
 ## Invocation
 
-> **Confirm the user is OK with driving their browser before the first run** — it
-> reuses their real login. (Skip asking if they explicitly requested Grok/X.)
+> The default headless path runs **windowless and never touches the visible browser**,
+> but it requires explicit one-time consent via `--setup-auth`, which exports live
+> session cookies. `--attached` drives the visible Chrome and must also be chosen
+> explicitly.
 
-Just run the bundled script from the skill directory — no setup step needed in the
-common case (it's almost always already configured):
+Before the first headless query, export auth explicitly with the logged-in Chrome open:
 
 ```bash
-# Default surface is X (uses the X Premium login)
+node scripts/ask-grok-x.mjs --setup-auth
+
+# Default: headless (windowless), surface X (uses the X Premium login)
 node scripts/ask-grok-x.mjs "What was the most recent thing @Polymarket posted on X?"
 
 # Pick a surface and response mode
@@ -50,6 +58,9 @@ node scripts/ask-grok-x.mjs --surface=grok.com --mode=fast "Latest AI news with 
 
 # Print ONLY the answer (good for piping/parsing)
 node scripts/ask-grok-x.mjs --quiet "Sentiment on X about the Fed decision today?"
+
+# Drive the VISIBLE Chrome instead of headless (fallback if headless is logged out)
+node scripts/ask-grok-x.mjs --attached --surface=grok.com "Latest AI news with sources"
 ```
 
 It prints the answer plus any cited `/status/` links, and always appends a history
@@ -62,8 +73,9 @@ log (see [Output & history](#output--history)).
 | `--surface=x` \| `grok.com` | Which Grok to drive. Default `x` (X Premium login). `grok` / `grokcom` alias to `grok.com`. |
 | `--mode=auto` \| `fast` \| `expert` | Grok response mode. `auto` lets Grok choose, `fast` is quick, `expert` thinks longer. Default: leave the UI as-is. (`heavy` needs a paid SuperGrok tier and is intentionally unavailable.) |
 | `--quiet`, `-q` | Print only the answer text (no preamble/citations). Still writes the log. |
-| `--headless` | Run windowless via the dedicated `grokhl` session. Requires a prior `--setup-auth`. |
-| `--setup-auth` | Export logged-in state from the bridge Chrome and seed the headless session, then exit. Re-run if headless gets logged out. |
+| `--attached` | Drive your **visible** Chrome via the bridge instead of the default windowless session. Use if headless is logged out or bot-flagged. (`--headed` / `--no-headless` are aliases.) |
+| `--headless` | Explicit windowless session via the dedicated `grokhl` session — this is the **default**, so the flag is optional (kept for back-compat). |
+| `--setup-auth` | Explicitly export logged-in state from the bridge Chrome and seed the headless session, then exit. Run once before the first headless query and again only to refresh a logged-out session. |
 
 ## Choosing surface & mode
 
@@ -80,6 +92,9 @@ available"* / *"Something went wrong… privacy related extensions"*). The scrip
 detects it and **bails fast (~2s)** instead of hanging — you'll see
 `served a bot-detection/error page (no composer)`.
 
+- On **headless** (the default), a bot-detection page exits with guidance. The script
+  never switches to the visible Chrome automatically; rerun with `--attached` only if
+  you explicitly accept visible-browser automation.
 - It is **not** a timed account ban; it's session/fingerprint-based and usually
   clears in a few minutes to ~30 min.
 - **Retrying in a tight loop prolongs it.** Wait, then try a single query — or
@@ -87,21 +102,33 @@ detects it and **bails fast (~2s)** instead of hanging — you'll see
 - Grok itself also has a transient per-conversation throttle (*"unable to reply /
   open a new conversation"*) — just retry once or switch surface.
 
-## Headless (windowless) mode
+## Headless (windowless) mode — the default
 
-`--headless` runs without a visible browser via a dedicated `grokhl` session, seeded
-once from the user's real login:
+Headless is the **primary way this skill runs**: a dedicated windowless `grokhl` session
+that never opens or steals focus from the user's visible browser. Seed it explicitly
+once from the signed-in Chrome via the bridge:
 
 ```bash
-# 1. With the real Chrome open and signed in to X / grok.com:
 node scripts/ask-grok-x.mjs --setup-auth
-
-# 2. Then run windowless any time:
-node scripts/ask-grok-x.mjs --headless --surface=x --mode=fast "What's the latest from @NASA?"
+node scripts/ask-grok-x.mjs --surface=x --mode=fast "What's the latest from @NASA?"
 ```
 
-Headless is ~tied on speed (~17s) but **less resilient to throttling** and gets
-bot-flagged faster than attached. If headless gets logged out, re-run `--setup-auth`.
+If cookies later expire, the script reports the login wall without reading from the
+visible browser. Refresh explicitly with `--setup-auth` and your logged-in Chrome open:
+
+```bash
+node scripts/ask-grok-x.mjs --setup-auth
+```
+
+**When to use `--attached`** (driving the visible Chrome): choose it explicitly if
+headless is persistently blocked or you prefer the live bridge session:
+
+```bash
+node scripts/ask-grok-x.mjs --attached --surface=grok.com --mode=fast "Latest AI news"
+```
+
+Headless and attached are ~tied on speed (~17s for `fast`). Headless keeps the user's
+browser untouched; attached is the more throttle-resilient fallback.
 
 ## Output & history
 
@@ -121,13 +148,14 @@ short marker; raw capture capped at 4000 chars).
 ## Security
 
 - `--setup-auth` writes **live session cookies** to `~/grok-x-tool/.auth.json`
-  (`chmod 600`). This file and the `history/` logs live **outside this repository**
-  and **must never be committed**. Do not copy them into the skill directory.
+  (`chmod 600`). Runtime directories are forced to `0700`, and history files to
+  `0600`. These files live **outside this repository** and **must never be
+  committed**. Do not copy them into the skill directory.
 - The bridge token at `~/.config/playwright-bridge/chrome.token` is a credential —
   never embed it in skill files or output.
 
 ## If a run fails
 
-Only if invocation errors with a **missing tool**, **missing/invalid token**, or
-**not-attached / not-logged-in** message is there setup to do — the one-time steps
-live in [`references/setup.md`](references/setup.md). Don't run setup pre-emptively.
+Run the one-time auth export before the first headless query. Other setup is needed
+only for a **missing tool**, **missing/invalid token**, or **not-attached /
+not-logged-in** error; see [`references/setup.md`](references/setup.md).
