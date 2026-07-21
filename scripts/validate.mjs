@@ -7,7 +7,9 @@
  *   2. Every plugin entry's `source` directory exists
  *   3. Every plugin has a plugin.json with name + version + description
  *   4. marketplace entry version matches the plugin's plugin.json version
- *   5. Every skills/<name>/ has SKILL.md with valid YAML-style frontmatter
+ *   5. Every skills/<name>/ has SKILL.md with valid YAML-style frontmatter,
+ *      a description within Copilot CLI's 1024-char limit, and a name matching
+ *      the CLI's allowed pattern / 64-char cap (otherwise the skill fails to load)
  *   6. Every agents/*.agent.md has valid YAML-style frontmatter
  *   7. No remaining `~/.copilot/skills/` references inside SKILL.md / .agent.md
  *      (allowlist: documentation-only files explicitly tagged with HTML comment
@@ -20,16 +22,29 @@
  *      names, valid hook types, required fields per type, https for
  *      permission-granting events)
  *
- * Usage: node scripts/validate.mjs
+ * Usage:
+ *   node scripts/validate.mjs                  # full marketplace validation (CI)
+ *   node scripts/validate.mjs --check-cli-schema [--bundle <index.js>]
+ *                                              # compare SKILL_LIMITS against the
+ *                                              # installed @github/copilot bundle
+ *                                              # (local drift check; fails closed)
  * Exits 0 on success, 1 on any failure.
  */
 
 import { readFileSync, statSync, readdirSync, lstatSync } from 'node:fs';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
+import { execSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
+
+const argv = process.argv.slice(2);
+function flagValue(name) {
+  const i = argv.indexOf(name);
+  return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null;
+}
 
 const errors = [];
 const warnings = [];
@@ -66,7 +81,148 @@ function readFrontmatter(path) {
   if (!/\n?[a-zA-Z_][\w-]*\s*:/.test(body)) {
     return { ok: false, reason: 'frontmatter has no key:value lines' };
   }
-  return { ok: true, body };
+  // Parse top-level single-line scalars (key→value, outer quotes stripped) so
+  // callers can enforce the Copilot CLI's frontmatter constraints. Indented and
+  // blank lines are ignored — block scalars are caught by catalog.mjs.
+  const fields = {};
+  for (const line of body.split(/\r?\n/)) {
+    if (!line || /^\s/.test(line)) continue;
+    const m = line.match(/^([a-zA-Z_][\w-]*)\s*:\s*(.*)$/);
+    if (!m) continue;
+    let val = m[2].trim();
+    if ((val.startsWith('"') && val.endsWith('"') && val.length >= 2) ||
+        (val.startsWith("'") && val.endsWith("'") && val.length >= 2)) {
+      val = val.slice(1, -1);
+    }
+    fields[m[1]] = val;
+  }
+  return { ok: true, body, fields };
+}
+
+// ── Copilot CLI skill frontmatter limits ─────────────────────────────────────
+// These mirror the zod schema baked into the @github/copilot CLI bundle. A skill
+// that violates them fails to load at runtime ("Failed to load N skill"), even
+// when the file is otherwise well-formed — so we enforce them here to catch the
+// problem in CI before the CLI does.
+//
+// SOURCE OF TRUTH: @github/copilot/index.js. These constants are maintained by
+// hand on purpose (they change rarely), but you do NOT have to discover drift by
+// hand: run `node scripts/validate.mjs --check-cli-schema` to compare them
+// against the locally-installed CLI bundle (it fails loudly on any mismatch).
+// To verify manually, grep the bundle for these stable anchor strings:
+//   "Skill description must be at most 1024 characters"      -> descriptionMax
+//   "Skill name must be at most 64 characters"               -> nameMax
+//   /^[a-zA-Z0-9][a-zA-Z0-9._\- ]*$/  (the skill-name regex)  -> namePattern
+//
+// Agents are intentionally NOT capped here: the CLI schema defines no agent
+// description/name limit, so inventing one would reject valid agents.
+const SKILL_LIMITS = {
+  descriptionMax: 1024,
+  nameMax: 64,
+  namePattern: /^[a-zA-Z0-9][a-zA-Z0-9._\- ]*$/,
+};
+
+function checkSkillFrontmatter(fields, label) {
+  const desc = fields.description;
+  if (typeof desc === 'string' && desc.length > SKILL_LIMITS.descriptionMax) {
+    err(`${label}: description is ${desc.length} chars — Copilot CLI rejects skills whose description exceeds ${SKILL_LIMITS.descriptionMax} characters (the skill fails to load).`);
+  }
+  const name = fields.name;
+  if (typeof name === 'string' && name.length > 0) {
+    if (name.length > SKILL_LIMITS.nameMax) {
+      err(`${label}: name is ${name.length} chars — Copilot CLI caps skill names at ${SKILL_LIMITS.nameMax} characters.`);
+    }
+    if (!SKILL_LIMITS.namePattern.test(name)) {
+      err(`${label}: name "${name}" must contain only letters, numbers, hyphens, underscores, dots, and spaces, and start with a letter or number.`);
+    }
+  }
+}
+
+// ── --check-cli-schema: drift detector ───────────────────────────────────────
+// Optional, local-only check: when an installed @github/copilot bundle is
+// available, confirm SKILL_LIMITS above still matches the CLI's real zod schema.
+// It NEVER rewrites anything — it only reports drift, and it FAILS CLOSED:
+//   • bundle present + values differ        → exit 1 (update SKILL_LIMITS)
+//   • bundle present + an anchor won't match → exit 1 (the CLI changed its
+//                                              wording/format; update the anchors)
+//   • no bundle found                        → exit 0 (nothing to check; this is
+//                                              expected in CI, which has no CLI)
+// Pick the active bundle with `--bundle <path>`; otherwise it scans the bun
+// cache and the npm global root and uses the highest version it finds.
+
+/** Locate an installed @github/copilot CLI bundle (index.js). Returns {file, version} or null. */
+function locateCopilotBundle(override) {
+  if (override) {
+    if (!exists(override)) {
+      console.error(`✗ --bundle path not found: ${override}`);
+      process.exit(1);
+    }
+    return { file: override, version: 'override' };
+  }
+  const found = [];
+  // bun cache: ~/.bun/install/cache/@github/copilot@<ver>[@@@n]/index.js
+  const bunDir = join(homedir(), '.bun/install/cache/@github');
+  if (isDir(bunDir)) {
+    for (const d of readdirSync(bunDir)) {
+      if (!d.startsWith('copilot@')) continue;
+      const file = join(bunDir, d, 'index.js');
+      if (exists(file)) found.push({ file, version: d.slice('copilot@'.length) });
+    }
+  }
+  // npm global: <npm root -g>/@github/copilot/index.js
+  try {
+    const ngr = execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const file = join(ngr, '@github/copilot/index.js');
+    if (exists(file)) {
+      let version = 'npm-global';
+      try { version = JSON.parse(readFileSync(join(ngr, '@github/copilot/package.json'), 'utf8')).version || version; } catch { /* ignore */ }
+      found.push({ file, version });
+    }
+  } catch { /* npm not available */ }
+  if (!found.length) return null;
+  // highest version string wins (best-effort; the chosen version is always printed)
+  found.sort((a, b) => (a.version < b.version ? 1 : -1));
+  return found[0];
+}
+
+/** Require exactly one capture of `re` in `src`; fail closed otherwise. */
+function extractOne(src, re, what) {
+  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+  const hits = [];
+  let m;
+  while ((m = g.exec(src)) !== null) hits.push(m[1]);
+  if (hits.length !== 1) {
+    console.error(`✗ --check-cli-schema: expected exactly 1 match for ${what} in the CLI bundle, found ${hits.length}.`);
+    console.error(`  The CLI's frontmatter schema format changed — update the anchors and SKILL_LIMITS in scripts/validate.mjs.`);
+    process.exit(1);
+  }
+  return hits[0];
+}
+
+function checkCliSchemaDrift() {
+  const bundle = locateCopilotBundle(flagValue('--bundle'));
+  if (!bundle) {
+    console.log('ℹ --check-cli-schema: no installed @github/copilot bundle found — nothing to compare (expected in CI). Pass --bundle <path> to force.');
+    process.exit(0);
+  }
+  const src = readFileSync(bundle.file, 'utf8');
+  const descMax = Number(extractOne(src, /max\((\d+),"Skill description must be at most \d+ characters"\)/, 'description max'));
+  const nameMax = Number(extractOne(src, /max\((\d+),"Skill name must be at most \d+ characters"\)/, 'name max'));
+  const namePattern = extractOne(src, /(\/\^\[a-zA-Z0-9\]\[a-zA-Z0-9[^/]*\$\/)/, 'name regex').slice(1, -1);
+
+  const diffs = [];
+  if (descMax !== SKILL_LIMITS.descriptionMax) diffs.push(`descriptionMax: ours=${SKILL_LIMITS.descriptionMax} CLI=${descMax}`);
+  if (nameMax !== SKILL_LIMITS.nameMax) diffs.push(`nameMax: ours=${SKILL_LIMITS.nameMax} CLI=${nameMax}`);
+  if (namePattern !== SKILL_LIMITS.namePattern.source) diffs.push(`namePattern: ours=${SKILL_LIMITS.namePattern.source} CLI=${namePattern}`);
+
+  console.log(`ℹ --check-cli-schema: compared against @github/copilot@${bundle.version}`);
+  if (diffs.length) {
+    console.error(`✗ --check-cli-schema: SKILL_LIMITS is stale — update scripts/validate.mjs:`);
+    for (const d of diffs) console.error(`    • ${d}`);
+    process.exit(1);
+  }
+  console.log('✅ --check-cli-schema: SKILL_LIMITS matches the installed CLI schema (descriptionMax, nameMax, namePattern).');
+  process.exit(0);
 }
 
 // ── Hook schema validation ───────────────────────────────────────────────────
@@ -131,8 +287,16 @@ function validateHooks(hooksJsonPath, pluginName) {
       if (h.timeoutSec != null && typeof h.timeoutSec !== 'number') {
         err(`${pluginName}: ${rel} ${eventName}: "timeoutSec" must be a number`);
       }
+      if (h.timeout != null && typeof h.timeout !== 'number') {
+        err(`${pluginName}: ${rel} ${eventName}: "timeout" (alias for "timeoutSec") must be a number`);
+      }
     }
   }
+}
+
+// ── Dispatch: optional CLI-schema drift check (exits) ────────────────────────
+if (argv.includes('--check-cli-schema')) {
+  checkCliSchemaDrift(); // exits
 }
 
 // ── 1. Read marketplace.json ─────────────────────────────────────────────────
@@ -209,6 +373,7 @@ for (const entry of marketplace.plugins ?? []) {
       }
       const fm = readFrontmatter(skillMd);
       if (!fm.ok) err(`${entry.name}/skills/${skillName}/SKILL.md: ${fm.reason}`);
+      else checkSkillFrontmatter(fm.fields, `${entry.name}/skills/${skillName}/SKILL.md`);
     }
   }
 

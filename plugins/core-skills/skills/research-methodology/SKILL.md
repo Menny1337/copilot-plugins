@@ -1,6 +1,6 @@
 ---
 name: research-methodology
-description: "Structured 8-step research methodology for conducting rigorous, cited, evidence-based research. Use this skill for any research task, literature review, technology comparison, or investigation requiring web search, source evaluation, citation verification, scope limiting, and adversarial review. Invoke for research papers, reports, deep-dives, and analyses."
+description: "Structured methodology for externally sourced, cited research: web search, source verification, synthesis, and adversarial review. Use for literature reviews, technology comparisons, market or industry reports, and multi-source investigations needing citations. Do not invoke for codebase-only analysis, project status, log or build diagnosis, or quick factual lookups."
 ---
 
 # Research Methodology

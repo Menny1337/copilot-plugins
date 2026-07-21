@@ -9,13 +9,21 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: '20'
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
       - name: Validate marketplace structure
         run: node scripts/validate.mjs
       - name: Verify CATALOG.md is up to date
         run: node scripts/catalog.mjs --check
       - name: Verify plugin READMEs are up to date
         run: node scripts/plugin-readme.mjs --check
+      - name: Verify version bumps (PRs only)
+        if: github.event_name == 'pull_request'
+        run: |
+          node scripts/version.mjs check \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"

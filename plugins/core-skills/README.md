@@ -36,7 +36,7 @@ This is a broad bundle; each skill carries its own requirements, and skills you 
 | [`memory`](skills/memory/SKILL.md) 📜 🔒 | Read, write, and search persistent cross-session memory for Copilot agents. Use when retrieving context, recording facts or preferences, or recalling project knowledge from `~/.copilot/memory/`. | — |
 | [`narrate`](skills/narrate/SKILL.md) 📜 📚 | Turn documents or text into spoken-audio (MP3) via a two-phase workflow: first rewrite the source as a TTS-friendly narration script (.md), then synthesize audio with Azure OpenAI tts-hd (default… | narrate, narration, audio version, listen to this, read out loud, audio summary, audio brief, voiceover, podcast, tts, text-to-speech, mp3 from doc |
 | [`prompt-builder`](skills/prompt-builder/SKILL.md) 📚 | Turns a plain-language situation and goal into a well-engineered prompt for an AI agent. Use when the user wants help writing, drafting, improving, or structuring a prompt, says I want the agent to… | prompt, prompt engineering, write a prompt, craft a prompt, meta-prompt. Not for creating or modifying Copilot skill or agent definition files (use skill-crafting or agent-crafting) |
-| [`research-methodology`](skills/research-methodology/SKILL.md) | Structured 8-step research methodology for conducting rigorous, cited, evidence-based research. Use this skill for any research task, literature review, technology comparison, or investigation… | — |
+| [`research-methodology`](skills/research-methodology/SKILL.md) | Structured methodology for externally sourced, cited research: web search, source verification, synthesis, and adversarial review. | — |
 
 ### Hooks
 

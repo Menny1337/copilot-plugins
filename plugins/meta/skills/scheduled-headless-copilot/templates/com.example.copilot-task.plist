@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.example.copilot-task.plist — macOS LaunchAgent template for a scheduled headless
+  Copilot task. launchd runs the runner via /bin/bash, so the script needs no execute bit.
+
+  Save (renamed to your label) at:
+      ~/Library/LaunchAgents/com.example.copilot-task.plist
+  Replace every /Users/USERNAME/... path — launchd does NOT expand ~ or $HOME, so paths must
+  be absolute — and the Label, create the log dir, then load it:
+      mkdir -p /Users/USERNAME/.copilot/scheduled-tasks/copilot-task
+      launchctl load   ~/Library/LaunchAgents/com.example.copilot-task.plist
+      launchctl list | grep com.example.copilot-task
+  Edit cadence in StartCalendarInterval (see references/schedulers.md for Weekday arrays).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.copilot-task</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/USERNAME/.copilot/scheduled-tasks/copilot-task/runner.sh</string>
+  </array>
+
+  <!-- When to fire. Single dict = one wall-clock time; use an <array> of dicts with a
+       <key>Weekday</key> to thin a daily cadence (launchd has no "every N days"). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <!-- Authoritative PATH for the job (launchd's default PATH is minimal). Must include the
+       dirs holding copilot, node, git, gh. The runner also self-heals defensively. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- launchd captures the runner's stdout/stderr here. Absolute paths only; create the dir
+       first. Keep them in the same per-task state dir the runner uses. -->
+  <key>StandardOutPath</key>
+  <string>/Users/USERNAME/.copilot/scheduled-tasks/copilot-task/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/USERNAME/.copilot/scheduled-tasks/copilot-task/launchd.err.log</string>
+
+  <!-- false: only fire on schedule. Set true temporarily to smoke-test on `load`, then revert. -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

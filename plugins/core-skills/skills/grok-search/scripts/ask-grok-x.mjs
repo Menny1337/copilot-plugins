@@ -15,21 +15,25 @@
 //   --mode=auto|fast|expert  Grok response mode (both surfaces): Auto picks Fast/Expert,
 //                            Fast = quick, Expert = thinks hard. Default: leave UI as-is.
 //   --quiet, -q              Print ONLY the answer text (no preamble/citations). Still logs.
-//   --headless               Drive a dedicated windowless session (no visible browser) seeded
-//                            from exported auth. Requires a prior `--setup-auth` run.
-//   --setup-auth             Export your logged-in state from the bridge Chrome into
+//   --attached               Drive your VISIBLE Chrome via the bridge instead of the default
+//                            windowless session (use if headless is logged out/bot-flagged).
+//   --headless               Explicit windowless session — this is the DEFAULT, so the flag
+//                            is optional and kept only for back-compat.
+//   --setup-auth             Explicitly export your logged-in state from the bridge Chrome into
 //                            ~/grok-x-tool/.auth.json and seed the headless session, then exit.
-//                            Re-run this if the headless session gets logged out.
 //
 // Requires: playwright-cli on PATH, the Playwright Bridge extension installed in Chrome,
 // the bridge token at ~/.config/playwright-bridge/chrome.token, and you signed in to the
 // chosen surface (x.com for --surface=x, grok.com for --surface=grok.com).
-// For --headless: run `--setup-auth` once (with Chrome open & logged in) to seed the session.
+// Headless is the default after an explicit --setup-auth export. Use --attached only when
+// you explicitly want to drive visible Chrome.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, appendFileSync, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
+process.umask(0o077);
 
 // Runtime data (login cookies + history) lives OUTSIDE the skill repo so secrets and
 // logs are never committed. Created on demand so a fresh machine doesn't ENOENT.
@@ -63,11 +67,12 @@ const SURFACES = {
 const DEFAULT_Q = "What was the most recent thing @Polymarket posted on X?";
 
 // ---- arg parsing -----------------------------------------------------------
-let surface = "x", quiet = false, mode = "", headless = false, setupAuth = false;
+let surface = "x", quiet = false, mode = "", headless = true, setupAuth = false;
 const words = [];
 for (const a of process.argv.slice(2)) {
   if (a === "--quiet" || a === "-q") quiet = true;
-  else if (a === "--headless") headless = true;
+  else if (a === "--headless") headless = true;                                  // explicit (also the default)
+  else if (a === "--attached" || a === "--headed" || a === "--no-headless") headless = false; // drive the visible Chrome
   else if (a === "--setup-auth") setupAuth = true;
   else if (a.startsWith("--surface=")) surface = a.slice("--surface=".length);
   else if (a.startsWith("--mode=")) mode = a.slice("--mode=".length);
@@ -77,7 +82,9 @@ surface = surface.toLowerCase();
 surface = (surface === "grok" || surface === "grok.com" || surface === "grokcom") ? "grok.com" : "x";
 const SURF = SURFACES[surface];
 // Drive either the user's real Chrome (bridge attach) or a dedicated windowless session.
-const SESSION = (headless || setupAuth) ? HEADLESS_SESSION : "chrome";
+// `let` (not const): a headless run that hits X's bot-detection page falls back to the
+// attached "chrome" session once, reassigning this so the pw() helper targets it.
+let SESSION = (headless || setupAuth) ? HEADLESS_SESSION : "chrome";
 // Grok response mode: Auto/Fast/Expert (works on both X and grok.com).
 // "" = leave whatever's selected (don't touch the UI). Availability is per-surface (see SURFACES).
 // (grok.com's "Heavy" tier is intentionally excluded — it needs a paid SuperGrok subscription.)
@@ -129,35 +136,51 @@ function ensureAttached() {
   });
 }
 
-// Bring up the dedicated windowless session, seeding it from exported auth on first launch.
+// Bring up the dedicated windowless session using auth the user exported explicitly.
 function ensureHeadless() {
   const alive = sessionAlive(HEADLESS_SESSION);
   if (!alive) {
     // Fresh persistent session (headless is playwright-cli's default — no --headed).
     pwOn(HEADLESS_SESSION, ["open", "about:blank", "--persistent"]);
-    if (existsSync(AUTH_FILE)) {
-      pwOn(HEADLESS_SESSION, ["state-load", AUTH_FILE]);
-    } else {
-      throw new Error(`No saved auth at ${AUTH_FILE}. Run once with your logged-in Chrome open:\n` +
-        `  node scripts/ask-grok-x.mjs --setup-auth`);
+    if (!existsSync(AUTH_FILE)) {
+      throw new Error(`Headless needs an explicit one-time login export at ${AUTH_FILE}.\n` +
+        `With Chrome logged in to your Grok surface, run:  node scripts/ask-grok-x.mjs --setup-auth\n` +
+        `Or explicitly drive your visible Chrome:  node scripts/ask-grok-x.mjs --attached ...`);
     }
+    pwOn(HEADLESS_SESSION, ["state-load", AUTH_FILE]);
   }
-  // If we were logged out (cookies expired), the page will still render the login wall;
-  // the caller's done-detection will time out and the user can re-run --setup-auth.
+  // If we were logged out (cookies expired), the page renders the surface's login wall;
+  // the main flow detects the missing composer and re-seeds auth from the bridge once.
+}
+
+// Export login state from the user's real Chrome into AUTH_FILE (chmod 600).
+// Invoked only by explicit --setup-auth. Needs the bridge Chrome logged in.
+function exportAuthFromBridge() {
+  ensureAttached(); // needs the real Chrome running & logged into X / grok.com
+  ensurePrivateDir(DATA_DIR);
+  pwOn("chrome", ["state-save", AUTH_FILE]);
+  try { chmodSync(AUTH_FILE, 0o600); } catch {}
+}
+
+function ensurePrivateDir(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try { chmodSync(dir, 0o700); } catch {}
+}
+
+function appendPrivateFile(file, content) {
+  appendFileSync(file, content, { encoding: "utf8", mode: 0o600 });
+  try { chmodSync(file, 0o600); } catch {}
 }
 
 // Export login state from the user's real Chrome into AUTH_FILE and seed the headless session.
 function setupAuthFlow() {
-  ensureAttached(); // needs the real Chrome running & logged into X / grok.com
-  mkdirSync(DATA_DIR, { recursive: true });
-  pwOn("chrome", ["state-save", AUTH_FILE]);
-  try { chmodSync(AUTH_FILE, 0o600); } catch {}
+  exportAuthFromBridge();
   if (!sessionAlive(HEADLESS_SESSION)) {
     pwOn(HEADLESS_SESSION, ["open", "about:blank", "--persistent"]);
   }
   pwOn(HEADLESS_SESSION, ["state-load", AUTH_FILE]);
   console.log(`✅ Auth exported to ${AUTH_FILE} and loaded into headless session "${HEADLESS_SESSION}".`);
-  console.log(`   You can now run headless, e.g.:\n   node scripts/ask-grok-x.mjs --headless --surface=x --mode=fast "What's the latest from @NASA?"`);
+  console.log(`   Headless is the default, so you can now just run:\n   node scripts/ask-grok-x.mjs --surface=x --mode=fast "What's the latest from @NASA?"`);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -209,18 +232,36 @@ async function setMode(label) {
   return readMode();
 }
 
-// Read the current Grok conversation: clean answer text (UI buttons/chips stripped,
-// @handle mentions padded so they don't glue to following words), cited /status/ links,
-// a "busy" flag from live progress captions, and a "done" flag — the answer toolbar
-// (Regenerate / Copy text / Like / Dislike) only renders once generation has finished,
-// which is the fastest reliable completion signal.
+// Read the current Grok conversation and return:
+//  - raw:    clean answer text (UI buttons/chips stripped, @handle mentions padded)
+//  - len:    length of the answer text with the leading "Thought for Ns" caption removed,
+//            so the poll can tell a real answer from an empty/"still thinking" turn
+//  - busy:   a "still working" flag from live progress captions
+//  - done:   the answer toolbar (Regenerate / Copy text / Like / Dislike) — renders only
+//            once generation has finished, so it's the authoritative completion signal
+//  - started: Grok has begun responding (an assistant bubble exists, or it's busy) — used
+//            to suppress the re-submit guard so a slow reasoning phase isn't mistaken for a
+//            dropped submit (which would fire a duplicate query into the same conversation)
+//  - citations: cited /status/ links
+//
+// grok.com renders each turn as [data-testid="user-message"] / "assistant-message" bubbles.
+// We scope extraction to the LAST assistant bubble so the echoed prompt (and any earlier
+// turn) never leaks into the answer. Surfaces without that testid (X) fall back to the
+// whole <main>, where cleanAnswer() still strips the echoed prompt as before.
 const EXTRACT_FN = `() => {
   const main = document.querySelector("main") || document.body;
   const live = main.innerText || "";
-  const busy = /Thinking|Searching|Reading|Browsing|Analyzing|Looking through|Generating|Working on|Reasoning|Streaming/i.test(live);
+  // "still working" heuristic. Includes grok.com's PAST-tense action-trace rows
+  // ("Searched web", "Browsed", "Analyzed", "10 results") and the reasoning caption,
+  // not just present-participle spinners — otherwise the gap between the collapsed
+  // action trace and the streamed answer reads as idle and trips early completion.
+  const busy = /Thinking|Searching|Reading|Browsing|Analyzing|Looking through|Generating|Working on|Reasoning|Streaming|Searched|Browsed|Analyzed|Reading through|Thought for|\bRead \d|\d+ results/i.test(live);
+  const asstNodes = [...main.querySelectorAll('[data-testid="assistant-message"]')];
+  const started = asstNodes.length > 0 || busy;
+  const scope = asstNodes.length ? asstNodes[asstNodes.length - 1] : main;
   const labels = [...main.querySelectorAll("button")].map((b) => (b.getAttribute("aria-label") || b.getAttribute("data-testid") || b.title || "").trim());
   const done = labels.filter((x) => /^(Regenerate|Copy text|Like|Dislike)$/i.test(x)).length >= 2;
-  const clone = main.cloneNode(true);
+  const clone = scope.cloneNode(true);
   // pad inline @handle mentions so innerText doesn't fuse them to neighbouring text
   clone.querySelectorAll("a,span").forEach((el) => {
     const t = (el.textContent || "").trim();
@@ -235,8 +276,11 @@ const EXTRACT_FN = `() => {
     if (CHIPS.some((c) => c.toLowerCase() === t.toLowerCase())) el.remove();
   });
   const raw = (clone.innerText || "").trim();
-  const citations = [...new Set([...main.querySelectorAll('a[href*="/status/"]')].map((a) => a.href))];
-  return { raw, citations, busy, done, len: raw.length };
+  // answer length excluding the reasoning caption, so a bubble showing only "Thought for 8s"
+  // (Grok mid-reasoning, no answer yet) doesn't read as a finished answer.
+  const answerLen = raw.replace(/^\\s*Thought for [^\\n]*/i, "").trim().length;
+  const citations = [...new Set([...scope.querySelectorAll('a[href*="/status/"]')].map((a) => a.href))];
+  return { raw, citations, busy, done, started, len: answerLen };
 }`;
 
 // URL-safe whitespace cleanup: fixes run-on joins (sentence/colon/comma/paren glue)
@@ -294,31 +338,60 @@ function cleanAnswer(raw, q) {
 }
 
 // ---- main ------------------------------------------------------------------
-(async () => {
-  if (setupAuth) { setupAuthFlow(); return; }
-  if (!quiet) console.log(`\n❓ Question: ${question}\n🌐 Surface: ${SURF.label}${headless ? " (headless)" : ""}\n⏳ Asking Grok...`);
-  if (headless) ensureHeadless();
-  else ensureAttached();
 
-  // fresh conversation
+// Load a fresh conversation on the current surface (goto + hydrate wait + overlay clear).
+async function loadSurface() {
   pw(["goto", SURF.url]);
   // X is a heavy SPA — give React time to hydrate the composer before submitting,
   // otherwise the Enter submit silently no-ops and no question is ever asked.
   await sleep(2000);
   if (surface === "grok.com") removeOverlays(); // clear the consent overlay so clicks land
+}
+// True if the surface served a bot-detection / error interstitial (no composer).
+function isBlocked() {
+  try {
+    return evalJS(`() => {
+      const txt = (document.body && document.body.innerText || "").slice(0, 1000)
+        + " " + (document.body && document.body.innerHTML || "").slice(0, 2000);
+      return ${ERROR_PAGE_RE.toString()}.test(txt);
+    }`);
+  } catch { return false; }
+}
+// True if the composer input is present (i.e. we're logged in and the UI is ready).
+function hasComposer() {
+  try { return evalJS(`() => !!document.querySelector(${JSON.stringify(SURF.input)})`); } catch { return false; }
+}
 
-  // X intermittently serves a bot-detection "JavaScript is not available" error page
-  // (more likely in headless contexts). It has no composer, so detect it and bail fast
-  // instead of stacking ~5 minutes of auto-wait timeouts on the missing UI.
-  const blocked = evalJS(`() => {
-    const txt = (document.body && document.body.innerText || "").slice(0, 1000)
-      + " " + (document.body && document.body.innerHTML || "").slice(0, 2000);
-    return ${ERROR_PAGE_RE.toString()}.test(txt);
-  }`);
-  if (blocked) {
-    throw new Error(`${surface} served a bot-detection/error page (no composer). ` +
-      "Do NOT retry in a loop — that prolongs it. Wait a few minutes and try a single query, " +
-      "or switch to --surface=grok.com.");
+(async () => {
+  if (setupAuth) { setupAuthFlow(); return; }
+  if (!quiet) console.log(`\n❓ Question: ${question}\n🌐 Surface: ${SURF.label}${headless ? " (headless)" : " (attached)"}\n⏳ Asking Grok...`);
+  if (headless) ensureHeadless();
+  else ensureAttached();
+  await loadSurface();
+
+  // 1) Bot-detection interstitial (X's "JavaScript is not available" / privacy-extension
+  //    page). Never switch to the user's visible Chrome without an explicit --attached run.
+  if (isBlocked()) {
+    if (headless) {
+      throw new Error(`Headless ${surface} served a bot-detection/error page. ` +
+        `Wait a few minutes, switch to --surface=grok.com, or explicitly rerun with --attached.`);
+    }
+    if (isBlocked()) {
+      throw new Error(`${surface} served a bot-detection/error page (no composer). ` +
+        "Do NOT retry in a loop — that prolongs it. Wait a few minutes and try a single query, " +
+        "or switch to --surface=grok.com.");
+    }
+  }
+
+  // 2) Genuine logout in headless (login wall, composer absent but no bot-error signature).
+  //    Require explicit consent before exporting fresh browser auth.
+  if (headless && !hasComposer()) {
+    await sleep(1500);
+    if (!hasComposer()) {
+      throw new Error(`Headless ${surface} looks logged out (no composer).\n` +
+        `Open Chrome logged in to ${surface}, then explicitly run:  node scripts/ask-grok-x.mjs --setup-auth\n` +
+        `Or explicitly drive your visible Chrome:  node scripts/ask-grok-x.mjs --attached ...`);
+    }
   }
 
   // select response mode if requested (availability is per-surface)
@@ -335,35 +408,45 @@ function cleanAnswer(raw, q) {
   // type + submit
   pw(["fill", SURF.input, question, "--submit"]);
 
-  // Poll fast. Primary signal: the answer toolbar (Regenerate/Copy text/Like/Dislike)
-  // appears only when generation has finished. Fallback (e.g. surfaces without that
-  // toolbar): progress captions gone AND text length settled across two reads.
+  // Poll fast. The ONLY reliable completion signal is the answer toolbar (Regenerate /
+  // Copy text / Like / Dislike), which renders exclusively once generation has finished.
+  // We must NOT complete on a text-length plateau alone: in Expert mode Grok collapses its
+  // live search into a static "Searched web… / Browsed… / 10 results" action trace and then
+  // pauses to reason (often 40s+) before the answer streams — a plateau there would capture
+  // the trace instead of the answer. So the toolbar gates completion; the plateau path is a
+  // guarded last-resort for a surface that somehow never renders that toolbar.
   // Each eval already costs ~1s (playwright-cli latency), so keep the explicit sleep short.
-  const baseline = question.length;
+  // snap.len is the scoped answer length (reasoning caption excluded), so any positive
+  // content means a real answer has begun; completion is still gated on the toolbar.
   let last = -1, stable = 0, resubmitted = false;
-  let snap = { raw: "", citations: [], busy: true, done: false, len: 0 };
+  let snap = { raw: "", citations: [], busy: true, done: false, started: false, len: 0 };
   const start = Date.now();
-  const deadline = start + 150_000;
+  const deadline = start + 180_000;
   while (Date.now() < deadline) {
     await sleep(500);
     try { snap = evalJS(EXTRACT_FN); } catch { continue; }
-    const hasAnswer = snap.len > baseline + 40;
-    if (hasAnswer && snap.done) break;                       // fast path — answer finished
-    if (hasAnswer && !snap.busy && snap.len === last) {       // fallback stability path
-      if (++stable >= 3) break;
+    const hasAnswer = snap.len > 2;
+    if (hasAnswer && snap.done) break;                       // primary — answer toolbar present
+    // Last-resort plateau path: only after 90s (well past any reasoning gap) AND with no
+    // "still working" signal AND a long byte-identical window, so it can never fire while
+    // Grok is mid-run. Guards a hypothetical surface that never shows the answer toolbar.
+    if (hasAnswer && !snap.busy && snap.len === last && Date.now() - start > 90_000) {
+      if (++stable >= 10) break;
     } else {
       stable = 0;
     }
     last = snap.len;
-    // Guard: if ~7s in nothing is generating (no busy caption, no growth), the submit
-    // didn't register (SPA hadn't hydrated) — re-submit once.
-    if (!resubmitted && !snap.busy && !hasAnswer && Date.now() - start > 7000) {
+    // Guard: if ~7s in and Grok hasn't even started responding (no assistant bubble, no
+    // busy caption), the submit didn't register (SPA hadn't hydrated) — re-submit once.
+    // Gate on `started`, NOT `busy`: a pure "Thought for Ns" reasoning phase shows no
+    // busy keyword, and re-submitting then would fire a duplicate turn into the chat.
+    if (!resubmitted && !snap.started && !hasAnswer && Date.now() - start > 7000) {
       resubmitted = true;
       try { pw(["fill", SURF.input, question, "--submit"]); } catch {}
     }
-    // Stall guard: if after a re-submit there's still no answer and nothing generating
-    // (e.g. a paywall/upsell modal swallowed the prompt), bail in ~25s instead of 150s.
-    if (resubmitted && !snap.busy && !hasAnswer && Date.now() - start > 25000) break;
+    // Stall guard: if after a re-submit Grok still hasn't started and produced no answer
+    // (e.g. a paywall/upsell modal swallowed the prompt), bail in ~25s instead of 180s.
+    if (resubmitted && !snap.started && !hasAnswer && Date.now() - start > 25000) break;
   }
 
   // If the captured content is an X/Grok error page (can appear mid-generation), don't
@@ -394,7 +477,8 @@ function cleanAnswer(raw, q) {
   // ---- dated history (always) ----
   const now = new Date();
   const day = now.toISOString().slice(0, 10);            // YYYY-MM-DD
-  mkdirSync(HISTORY_DIR, { recursive: true });           // create on demand (fresh machine)
+  ensurePrivateDir(DATA_DIR);
+  ensurePrivateDir(HISTORY_DIR);
   const file = join(HISTORY_DIR, `grok-${day}.log`);
   const entry =
     `\n========== ${now.toISOString()} ==========\n` +
@@ -404,12 +488,11 @@ function cleanAnswer(raw, q) {
     `A: ${answer || "(no answer captured)"}\n\n` +
     `Citations:\n${citations.length ? citations.map((c) => "  - " + c).join("\n") : "  (none)"}\n` +
     `\n--- raw ---\n${rawForLog}\n`;
-  appendFileSync(file, entry, "utf8");
+  appendPrivateFile(file, entry);
   // also keep a machine-readable JSONL master log
-  appendFileSync(
+  appendPrivateFile(
     join(HISTORY_DIR, "history.jsonl"),
-    JSON.stringify({ ts: now.toISOString(), surface, mode: selectedMode || null, question, answer, citations }) + "\n",
-    "utf8"
+    JSON.stringify({ ts: now.toISOString(), surface, mode: selectedMode || null, question, answer, citations }) + "\n"
   );
   if (!quiet) console.log(`\n📝 Saved to ${file}`);
 })().catch((e) => {

@@ -18,7 +18,7 @@ The deployment is rate limited to ~4 requests/minute — space out batches.
 | Transparency (`-t`) | **No native alpha** — generate on a flat key color, remove it. Pick `--bg` absent from the subject. |
 | `output_format` (`-f`) | `png` (default, required for alpha) · `jpeg` (faster, `-c` compression). **No WebP on Azure.** |
 | `n` | 1–10 variants in one call — gentler on the rate limit than many calls. |
-| Edits (`-r`) | gpt-image-2 always processes references at high fidelity (no `input_fidelity` knob). |
+| Edits (`-r`) | gpt-image-2 always processes references at high fidelity (no `input_fidelity` knob). Accepts PNG/JPG/WebP only; render any SVG to PNG first (see recipe 9). |
 | Latency | Complex/high-quality prompts up to ~2 min; base64 only (no URL); 429 under load → wrapper retries. |
 
 **In-image text:** use `-q high`, put literal text in quotes/ALL CAPS, and spell
@@ -128,6 +128,15 @@ keep the subject and its colors unchanged" \
 Reference paths route the request to the `images/edits` endpoint. Describe the
 transformation, not what the reference already shows.
 
+**Vector source?** Render the SVG to PNG before you pass it. `-r` takes raster
+only. `rsvg-convert` keeps text crisp; ImageMagick alone drops fonts on SVG text.
+
+```bash
+rsvg-convert -w 1920 -b white ./input/logo.svg -o ./input/logo.png
+gpt-image "turn this flat logo into a glossy 3D enamel pin on a neutral backdrop" \
+  -r ./input/logo.png -o logo-pin -d ./artifacts
+```
+
 ---
 
 ## 8. Multi-reference merge / style transfer
@@ -140,7 +149,52 @@ of the second image, preserve the character's outfit and proportions" \
 
 ---
 
-## 9. JPEG output
+## 9. SVG scaffold → polished infographic / chart / slide
+
+Draw the chart or diagram as an SVG with exact bars, labels, and positions. Render
+it to PNG, confirm every label, then pass the PNG as the structural reference. The
+scaffold fixes the layout. gpt-image-2 adds polish and depth.
+
+**Prepare the SVG.** Render it to a flat PNG and open the result. Read every label
+and value before you send it.
+
+```bash
+rsvg-convert -w 1920 -b white ./input/chart.svg -o ./input/chart.png
+open ./input/chart.png   # confirm axes, labels, and values are legible
+```
+
+- Resolution: `-w 1920` suits a normal slide. Use `2560` for dense charts with small type.
+- Background: `-b white` for charts. Drop it for logos that need transparency.
+- ImageMagick alone is unreliable for SVG text. Without an rsvg/cairo delegate it substitutes fonts or fails with `unable to read font`. Install librsvg (`brew install librsvg`) for `rsvg-convert`. Other renderers that work: inkscape, resvg, cairosvg, or a headless Chromium screenshot.
+
+**Beautify the PNG.**
+
+```bash
+gpt-image "Use the attached reference as the exact structural base. Keep every \
+number, axis label, and legend entry in place. Restyle only: modern flat \
+infographic, clean sans-serif type, professional palette, high contrast. 16:9 \
+slide with a title band on top." \
+  -r ./input/chart.png -a 16:9 -q high -n 3 -o infographic -d ./artifacts
+```
+
+Match the model to how exact your data must be:
+
+| Data must be | Do this |
+|---|---|
+| Exact (finance, science, reporting) | Ship the rendered PNG. Skip the model, or restyle then check every label. |
+| Polished, approximate is fine | Run the recipe above. Keep the best of `-n 3`. |
+| Exact and polished | Generate the styled version, then rebuild the labels in vector tooling. |
+
+> **Check the numbers before you ship.** gpt-image-2 holds reference structure
+> and text at high fidelity, yet it stays generative: it can shift a value or
+> garble a small label. Dense charts and outputs above ~2K raise the risk.
+
+Split "keep" from "restyle" in the prompt, raise `-q high`, and request `-n 3` to
+choose from.
+
+---
+
+## 10. JPEG output
 
 ```bash
 gpt-image "wide landscape photo of mountains at dawn, photographic, natural light" \
@@ -152,7 +206,7 @@ needed. **WebP is not supported on Azure OpenAI** — only `png` and `jpeg`.
 
 ---
 
-## 10. Preview the request without spending a call
+## 11. Preview the request without spending a call
 
 ```bash
 gpt-image "any prompt" -a 16:9 -t --dry-run

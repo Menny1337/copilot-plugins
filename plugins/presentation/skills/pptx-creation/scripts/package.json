@@ -1,0 +1,12 @@
+{
+  "name": "pptx-creation-scripts",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "1.61.1",
+    "pptxgenjs": "4.0.1"
+  }
+}

@@ -60,10 +60,13 @@ the right place — pick the tier first, then the file:
 
 ## Procedure
 
-> **Memory operations are tool-based, not shell-based.** Read with `view`, search with
-> the `grep` tool, and write with `edit`/`create` — not `cat`/`head`/`tail`/`ls` or a blind
-> `cat >> file <<EOF` append. Shell file I/O bypasses section targeting, prior inspection,
-> and the `Last Updated` discipline below. Fall back to shell only when no file tool fits.
+> **Memory operations use semantic file tools, not shell shortcuts.** Tool names vary by
+> host: read with `view`/`read`, search with `rg`/`grep`/`glob`, and write with
+> `apply_patch`/`edit`/`create`. Do not substitute `cat`, `head`, `tail`, `sed`, shell
+> `grep`/`find`/`ls`, or heredoc appends when a semantic file tool can perform the operation.
+> Shell is appropriate only for unsupported filesystem operations such as creating a parent
+> directory. This preserves section targeting, prior inspection, and the `Last Updated`
+> discipline below.
 
 ### 1. READ — Load Memory at Session Start
 
@@ -92,7 +95,7 @@ When you learn something worth remembering across sessions, decide the scope and
 | What you learned | Where to write | Example |
 |------------------|----------------|---------|
 | User preference or convention | `MEMORY.md` → Learned Patterns or Conventions | "the user prefers Geist font over Inter" |
-| Project-specific fact | `projects/{repo}.md` | "CaseManagement uses React Query for state" |
+| Project-specific fact | `projects/{repo}.md` | "SampleProject uses React Query for state" |
 | Cross-project domain knowledge | `topics/{topic}.md` | "React error boundaries belong at route level" |
 | Standing rule / "always do X" (procedural) | `conventions/{rule}.md` | "ADO work-item comments must be HTML, not Markdown" |
 | Key architectural decision | `MEMORY.md` → Key Decisions | "Chose hybrid MD+SQLite for memory" |
@@ -263,7 +266,7 @@ addition to the shared tree.
 
 | Type | When to Store | Example |
 |------|---------------|---------|
-| `fact` | Confirmed, durable knowledge | "CaseManagement uses React 19" |
+| `fact` | Confirmed, durable knowledge | "SampleProject uses React 19" |
 | `preference` | User or project convention | "Prefer arrow functions over function declarations" |
 | `decision` | Choice made with rationale | "Chose JWT over session auth because..." |
 | `pattern` | Recurring approach that works | "Error boundaries at route level, not component level" |

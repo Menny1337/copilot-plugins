@@ -1093,7 +1093,7 @@ def cmd_dry_run(args: argparse.Namespace, settings: Settings) -> int:
         print(f"  chunk {i}: {len(c):,} chars")
     print(f"[dry-run] estimated duration: ~{estimate_minutes(text):.1f} min")
     print("[dry-run] resolved config:")
-    print(f"  endpoint    : {settings.endpoint or '(unset)'}  [{settings.source('endpoint')}]")
+    print(f"  endpoint    : {settings.endpoint or 'MISSING'}  [{settings.source('endpoint')}]")
     print(f"  deployment  : {settings.deployment}  [{settings.source('deployment')}]")
     print(f"  api_version : {settings.api_version}  [{settings.source('api_version')}]")
     print(f"  auth_mode   : {settings.auth_mode}  [{settings.source('auth_mode')}]")
@@ -1102,6 +1102,18 @@ def cmd_dry_run(args: argparse.Namespace, settings: Settings) -> int:
         print(f"  api_key     : {'present' if key_src != 'missing' else 'MISSING'}  [{key_src}]")
     print(f"  az          : {'found' if shutil.which('az') else 'MISSING'}")
     print(f"  ffmpeg      : {'found' if shutil.which('ffmpeg') else 'MISSING'}")
+    if not settings.endpoint:
+        sys.stdout.flush()
+        sys.stderr.write(
+            "[dry-run] ERROR: Azure OpenAI endpoint is not configured (MISSING "
+            "above) — the most common synth blocker.\n"
+            "          Resolve it before synthesizing: run "
+            "`synthesize_tts.py setup`, or set "
+            "AZURE_OPENAI_ENDPOINT=https://<resource>.cognitiveservices.azure.com\n"
+            "          (an Azure AI Foundry "
+            "https://<resource>.services.ai.azure.com endpoint also works).\n"
+        )
+        return 1
     over = [i for i, c in enumerate(chunks, 1) if len(c) > args.max_chars]
     if over:
         sys.stderr.write(

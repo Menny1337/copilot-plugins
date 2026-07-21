@@ -33,6 +33,7 @@ camelCase shapes shown; PascalCase equivalents use snake_case keys plus `hook_ev
 | `sessionEnd` | `reason: "complete"\|"error"\|"abort"\|"timeout"\|"user_exit"` |
 | `userPromptSubmitted` | `prompt` |
 | `preToolUse` | `toolName`, `toolArgs` |
+| `permissionRequest` | `toolName`, `toolArgs` (CLI only; fires before the permission service) |
 | `postToolUse` | `toolName`, `toolArgs`, `toolResult: { resultType: "success", textResultForLlm }` |
 | `postToolUseFailure` | `toolName`, `toolArgs`, `error` |
 | `agentStop` | `transcriptPath`, `stopReason: "end_turn"` (PascalCase event name is `Stop`) |
@@ -53,6 +54,12 @@ camelCase shapes shown; PascalCase equivalents use snake_case keys plus `hook_ev
 
 Write a single-line JSON object to stdout (command) or the response body (http), exit `0`.
 Return `{}` or empty to take the default action.
+
+> **Exactly one final object.** stdout is scanned line-by-line: any single-line
+> `{"type":"progress","message":"...","temporary"?:true}` object is consumed as a display-only
+> progress event and stripped. Everything else is concatenated and parsed with one `JSON.parse`,
+> so emit only **one** final decision object — two concatenate into invalid JSON and are ignored.
+> `timeout` is accepted as an alias for `timeoutSec` on `command` and `http` entries.
 
 ### `preToolUse`
 
@@ -96,11 +103,36 @@ to the subagent's prompt; cannot block creation).
 
 ## Tool names for matchers
 
-Match `preToolUse` / `permissionRequest` against these `toolName` values:
+Match `preToolUse` / `permissionRequest` against these native `toolName` values:
 
-`ask_user`, `bash`, `create`, `edit`, `glob`, `grep`, `powershell`, `task`, `view`, `web_fetch`.
+`ask_user`, `bash`, `create`, `edit`, `glob`, `grep`, `powershell`, `task`, `update_todo`,
+`view`, `web_fetch`, `web_search`.
 
-(Matchers are anchored `^(?:pattern)$` and must match the full tool name.)
+Native matchers are anchored `^(?:pattern)$` and must match the full tool name.
+
+### Claude-format matchers (PascalCase `PreToolUse`)
+
+Hooks configured with the **PascalCase** event name `PreToolUse` (as used by Claude Code
+plugins and the Open Plugins format) use Claude matcher semantics instead, and the payload
+reports `tool_name` as the **Claude tool name** (e.g. `Bash`, not `bash`):
+
+- `*`, `**`, or empty `matcher` → fires for every tool.
+- A literal name or `|`-alternation (e.g. `Bash` or `Edit|Write`) → fires when a token equals
+  the runtime tool name or its Claude name below.
+- Anything else → case-sensitive regex anchored `^(?:PATTERN)$` against the Claude name.
+
+| Runtime tool | Claude tool name |
+|--------------|------------------|
+| `bash`, `powershell` | `Bash` |
+| `view` | `Read` |
+| `create` | `Write` |
+| `edit`, `str_replace_editor`, `apply_patch` | `Edit` |
+| `grep`, `rg` | `Grep` |
+| `glob` | `Glob` |
+| `web_fetch` | `WebFetch` |
+| `web_search` | `WebSearch` |
+| `ask_user` | `AskUserQuestion` |
+| `update_todo` | `TodoWrite` |
 
 ## Exit codes
 

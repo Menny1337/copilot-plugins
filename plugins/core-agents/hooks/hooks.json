@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "./hooks/link-commands.sh",
+        "powershell": ". ./hooks/link-commands.ps1",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
