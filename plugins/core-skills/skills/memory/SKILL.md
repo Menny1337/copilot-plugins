@@ -68,23 +68,34 @@ the right place — pick the tier first, then the file:
 > directory. This preserves section targeting, prior inspection, and the `Last Updated`
 > discipline below.
 
-### 1. READ — Load Memory at Session Start
+### 1. READ — Load Relevant Memory at Session Start
 
-**Always do this first.** Read the shared memory file:
+Establish memory context once per agent context. Read the shared memory index first if it
+is not already present in the current context:
 
 ```
 view ~/.copilot/memory/MEMORY.md
 ```
 
-If working in a specific project, also read the project memory:
+Then search by the task's project, topic, people, or decision terms and read only the
+matching files or sections. If working in a specific project, check its project memory:
 
 ```
 view ~/.copilot/memory/projects/{repo-name}.md
 ```
 
-If working on a specific topic and a topic file already exists, read it. Topic memory is optional and created on demand.
+If working on a specific topic and a topic file already exists, read it. Topic memory is
+optional and created on demand.
 
-**Quick-load pattern:** For agents that also have their own workspace memory (agent-architect, oncall), read BOTH the shared memory and the agent-specific memory. Shared memory provides cross-agent context; agent memory provides operational specifics.
+Do not re-read a full memory file that is already in the current context. For follow-up
+lookups, use `rg`/`grep` and targeted `view` ranges. A delegated agent has its own context,
+but should still prefer task-scoped search over loading broad profile or workspace memory
+that the delegated task does not need.
+
+**Quick-load pattern:** For agents that also have their own workspace memory
+(agent-architect, oncall), use the shared index for cross-agent context, then search the
+agent-specific memory for operational details relevant to the task. Read that workspace's
+full `MEMORY.md` only when the task needs broad operational context.
 
 ### 2. WRITE — Store New Knowledge
 

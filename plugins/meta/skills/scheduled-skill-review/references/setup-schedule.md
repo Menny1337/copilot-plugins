@@ -165,9 +165,11 @@ Each per-unit review is a headless subprocess resolved through Agency:
 
 ```sh
 agency copilot \
-  --plugin "local:$SKILL/../.." \
+  --no-config-plugins \
+  --plugin "local:$PLUGIN_DIR" \
   --agent meta:agent-architect \
   -p "run skill-improvement-loop on <unit> … (COPILOT_PLUGIN_SCHEDULED_REVIEW)" \
+  --disable-mcp-server computer-use \
   --allow-all-tools
 ```
 
@@ -177,6 +179,20 @@ from `config.pluginDir` (defaulting to the plugin containing these scripts);
 `--agent meta:agent-architect` selects the agent
 (plugin:agent syntax); `-p` passes the prompt; `--allow-all-tools` is forwarded to
 the underlying Copilot CLI for non-interactive execution.
+
+`--no-config-plugins` isolates the review from plugins discovered through ambient
+Agency configuration. User-level Copilot settings are separate, so
+`--disable-mcp-server computer-use` also excludes a globally enabled desktop
+automation server. Scheduled reviews do not control local applications and should
+not require macOS Accessibility or Screen Recording permission. Without this
+exclusion, loading `computer-use` can request Accessibility again after an Agency
+update because `~/.config/agency/CurrentVersion` resolves to a new versioned
+executable path that macOS treats as a distinct permission subject.
+
+After applying this fix, remove obsolete `agency` rows once from System Settings →
+Privacy & Security → Accessibility. Remove them manually rather than running a
+broad `tccutil reset Accessibility`, which would also revoke unrelated
+applications.
 
 The `COPILOT_PLUGIN_SCHEDULED_REVIEW` marker (configurable as `selfMarker`) is embedded so
 `scan-usage.mjs` excludes the daemon's own sessions on the next run.

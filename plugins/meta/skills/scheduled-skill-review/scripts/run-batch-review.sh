@@ -257,11 +257,17 @@ review_unit() {
     # treats two local sources sharing a plugin folder name (e.g. core-skills)
     # as a fatal conflict and aborts before the agent loads, so every review then
     # fails with "subprocess produced no result JSON".
+    #
+    # User settings are a separate source: a globally enabled computer-use MCP is
+    # still loaded despite --no-config-plugins. Reviews never automate the desktop,
+    # so exclude it to avoid unnecessary macOS Accessibility prompts whenever
+    # Agency's CurrentVersion symlink advances to a new versioned executable path.
     ( cd "$wt" && agency copilot \
         --no-config-plugins \
         --plugin "local:$PLUGIN_DIR" \
         --agent meta:agent-architect \
         -p "$prompt" \
+        --disable-mcp-server computer-use \
         --allow-all-tools ) >>"$LOGDIR/review-$safe-$RUN_ID.log" 2>&1 || true
     # Resolve the result handoff (priority: direct canonical write, then the
     # worktree-internal file, then a run-local diagnostic fallback). The orchestrator is
