@@ -28,8 +28,16 @@ This is what lets the script attach to your real, already-logged-in Chrome.
 ## 4. Capture the bridge token (once)
 
 The first attach opens a consent dialog in the browser showing a line
-`PLAYWRIGHT_MCP_EXTENSION_TOKEN=<token>`. Save that token where the script looks for
-it:
+`PLAYWRIGHT_MCP_EXTENSION_TOKEN=<token>`. Pass that token directly when exporting auth:
+
+```bash
+PLAYWRIGHT_MCP_EXTENSION_TOKEN='<token-from-dialog>' \
+  node scripts/ask-grok-x.mjs --setup-auth
+```
+
+The environment variable takes precedence over a saved token, so use it to replace an
+invalid or stale file value. To avoid passing it on each attached run, save it where the
+script looks for it:
 
 ```bash
 mkdir -p ~/.config/playwright-bridge && chmod 700 ~/.config/playwright-bridge
@@ -37,8 +45,9 @@ printf '%s\n' '<token-from-dialog>' > ~/.config/playwright-bridge/chrome.token
 chmod 600 ~/.config/playwright-bridge/chrome.token
 ```
 
-On later runs the script reads this token automatically. If it's absent, the script
-errors with the exact `playwright-cli attach --extension=chrome` command to run.
+On later runs the script reads this token automatically. If the environment variable and
+token file are both missing or empty, it fails before invoking `playwright-cli` and says
+how to provide the token.
 
 ## 5. Sign in to the surface you'll use
 
@@ -53,7 +62,8 @@ Headless is the **default** run mode. Export login state explicitly before the f
 query, or later when the windowless session gets logged out:
 
 ```bash
-node scripts/ask-grok-x.mjs --setup-auth
+PLAYWRIGHT_MCP_EXTENSION_TOKEN='<token-from-dialog>' \
+  node scripts/ask-grok-x.mjs --setup-auth
 ```
 
 This exports login state to `~/grok-x-tool/.auth.json` (chmod 600, never committed) and

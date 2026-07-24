@@ -23,8 +23,9 @@
 //                            ~/grok-x-tool/.auth.json and seed the headless session, then exit.
 //
 // Requires: playwright-cli on PATH, the Playwright Bridge extension installed in Chrome,
-// the bridge token at ~/.config/playwright-bridge/chrome.token, and you signed in to the
-// chosen surface (x.com for --surface=x, grok.com for --surface=grok.com).
+// the bridge token in PLAYWRIGHT_MCP_EXTENSION_TOKEN (or at
+// ~/.config/playwright-bridge/chrome.token), and you signed in to the chosen surface
+// (x.com for --surface=x, grok.com for --surface=grok.com).
 // Headless is the default after an explicit --setup-auth export. Use --attached only when
 // you explicitly want to drive visible Chrome.
 
@@ -39,6 +40,7 @@ process.umask(0o077);
 // logs are never committed. Created on demand so a fresh machine doesn't ENOENT.
 const DATA_DIR = join(homedir(), "grok-x-tool");
 const HISTORY_DIR = join(DATA_DIR, "history");
+const TOKEN_ENV = "PLAYWRIGHT_MCP_EXTENSION_TOKEN";
 const TOKEN_FILE = join(homedir(), ".config", "playwright-bridge", "chrome.token");
 const AUTH_FILE = join(DATA_DIR, ".auth.json"); // exported login state for headless
 const HEADLESS_SESSION = "grokhl"; // dedicated persistent, windowless playwright session
@@ -122,16 +124,27 @@ function sessionAlive(session) {
 }
 
 // Attach to the user's already-running Chrome via the Playwright Bridge extension.
-function ensureAttached() {
-  if (sessionAlive("chrome")) return; // already attached
-  if (!existsSync(TOKEN_FILE)) {
-    throw new Error(`Not attached and no bridge token at ${TOKEN_FILE}. ` +
-      `Run: PLAYWRIGHT_MCP_EXTENSION_TOKEN=$(cat ${TOKEN_FILE}) playwright-cli attach --extension=chrome`);
+function bridgeToken() {
+  const envToken = process.env[TOKEN_ENV]?.trim();
+  if (envToken) return envToken;
+
+  if (existsSync(TOKEN_FILE)) {
+    const fileToken = readFileSync(TOKEN_FILE, "utf8").trim();
+    if (fileToken) return fileToken;
   }
-  const token = readFileSync(TOKEN_FILE, "utf8").trim();
+
+  throw new Error(
+    `Missing Playwright Bridge token. Set ${TOKEN_ENV} or save it to ${TOKEN_FILE}.\n` +
+    `Example: ${TOKEN_ENV}='<token>' node scripts/ask-grok-x.mjs --setup-auth`
+  );
+}
+
+function ensureAttached() {
+  const token = bridgeToken();
+  if (sessionAlive("chrome")) return; // already attached
   execFileSync("playwright-cli", ["attach", "--extension=chrome"], {
     encoding: "utf8",
-    env: { ...process.env, PLAYWRIGHT_MCP_EXTENSION_TOKEN: token },
+    env: { ...process.env, [TOKEN_ENV]: token },
     stdio: ["ignore", "pipe", "pipe"],
   });
 }

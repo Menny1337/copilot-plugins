@@ -48,7 +48,7 @@ file, no deps beyond `playwright-cli`).
 Before the first headless query, export auth explicitly with the logged-in Chrome open:
 
 ```bash
-node scripts/ask-grok-x.mjs --setup-auth
+PLAYWRIGHT_MCP_EXTENSION_TOKEN='<token>' node scripts/ask-grok-x.mjs --setup-auth
 
 # Default: headless (windowless), surface X (uses the X Premium login)
 node scripts/ask-grok-x.mjs "What was the most recent thing @Polymarket posted on X?"
@@ -76,6 +76,11 @@ log (see [Output & history](#output--history)).
 | `--attached` | Drive your **visible** Chrome via the bridge instead of the default windowless session. Use if headless is logged out or bot-flagged. (`--headed` / `--no-headless` are aliases.) |
 | `--headless` | Explicit windowless session via the dedicated `grokhl` session — this is the **default**, so the flag is optional (kept for back-compat). |
 | `--setup-auth` | Explicitly export logged-in state from the bridge Chrome and seed the headless session, then exit. Run once before the first headless query and again only to refresh a logged-out session. |
+
+`--setup-auth` and attached runs require a Playwright Bridge token. Pass it in
+`PLAYWRIGHT_MCP_EXTENSION_TOKEN`; the saved
+`~/.config/playwright-bridge/chrome.token` file remains a fallback. The script fails
+immediately with setup instructions if neither source contains a token.
 
 ## Choosing surface & mode
 
@@ -109,7 +114,7 @@ that never opens or steals focus from the user's visible browser. Seed it explic
 once from the signed-in Chrome via the bridge:
 
 ```bash
-node scripts/ask-grok-x.mjs --setup-auth
+PLAYWRIGHT_MCP_EXTENSION_TOKEN='<token>' node scripts/ask-grok-x.mjs --setup-auth
 node scripts/ask-grok-x.mjs --surface=x --mode=fast "What's the latest from @NASA?"
 ```
 
@@ -117,7 +122,7 @@ If cookies later expire, the script reports the login wall without reading from 
 visible browser. Refresh explicitly with `--setup-auth` and your logged-in Chrome open:
 
 ```bash
-node scripts/ask-grok-x.mjs --setup-auth
+PLAYWRIGHT_MCP_EXTENSION_TOKEN='<token>' node scripts/ask-grok-x.mjs --setup-auth
 ```
 
 **When to use `--attached`** (driving the visible Chrome): choose it explicitly if
@@ -151,8 +156,9 @@ short marker; raw capture capped at 4000 chars).
   (`chmod 600`). Runtime directories are forced to `0700`, and history files to
   `0600`. These files live **outside this repository** and **must never be
   committed**. Do not copy them into the skill directory.
-- The bridge token at `~/.config/playwright-bridge/chrome.token` is a credential —
-  never embed it in skill files or output.
+- The bridge token in `PLAYWRIGHT_MCP_EXTENSION_TOKEN` or
+  `~/.config/playwright-bridge/chrome.token` is a credential — never embed it in skill
+  files or output.
 
 ## If a run fails
 
