@@ -133,7 +133,7 @@ fi
 
 RUN_ID="$(date -u +%Y%m%d-%H%M%S)"
 RUN_DIR="$WS/runs/$RUN_ID"
-mkdir -p "$RUN_DIR/results" "$RUN_DIR/wt"
+mkdir -p "$RUN_DIR/results" "$RUN_DIR/wt" "$RUN_DIR/external"
 log "run $RUN_ID started (dry-run=$DRY_RUN only='${ONLY}')"
 
 # 1. Scan usage (read-only).
@@ -203,6 +203,118 @@ else
   log "WARNING: agency CLI not found on PATH or under ~/.config/agency — reviews will run as no-op stubs"
 fi
 
+review_external_unit() {
+  local mode="$1" unit="$2" type="$3" cycleId="$4" skillPath="$5"
+  local safe="$6" result="$7"
+  local cid stage manifest stagedSkill backup localResult applyOut applyErr action
+  stage="$RUN_DIR/external/$safe"
+  manifest="$RUN_DIR/external/$safe.stage.json"
+  stagedSkill="$stage/SKILL.md"
+  backup="$RUN_DIR/external/$safe.original-SKILL.md"
+  localResult="$stage/.review-result.json"
+  applyErr="$RUN_DIR/results/$safe.apply.err"
+
+  if [ -n "$cycleId" ]; then cid="$cycleId";
+  else cid="$(node "$DIR/lifecycle.mjs" open --unit "$unit" --type "$type" --mode "$mode" --run "$RUN_ID" --source external --source-path "$skillPath")"; fi
+
+  if [ ! -f "$skillPath" ] || [ "$(basename "$skillPath")" != "SKILL.md" ]; then
+    printf '%s\n' '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"skill","source":"external","action":"failed","notes":"configured external SKILL.md is missing"}' > "$result"
+    node "$DIR/lifecycle.mjs" ingest-result "$cid" "$result" >/dev/null 2>&1 || true
+    node "$DIR/lifecycle.mjs" set "$cid" status=failed >/dev/null 2>&1 || true
+    return
+  fi
+
+  if ! node "$DIR/external-skill-stage.mjs" stage \
+      --source "$skillPath" --destination "$stage" --manifest "$manifest" \
+      >"$RUN_DIR/external/$safe.stage-output.json" 2>"$RUN_DIR/external/$safe.stage.err"; then
+    printf '%s\n' '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"skill","source":"external","action":"failed","notes":"could not stage external skill safely"}' > "$result"
+    node "$DIR/lifecycle.mjs" ingest-result "$cid" "$result" >/dev/null 2>&1 || true
+    node "$DIR/lifecycle.mjs" set "$cid" status=failed >/dev/null 2>&1 || true
+    return
+  fi
+  cp "$skillPath" "$backup"
+  node "$DIR/lifecycle.mjs" set "$cid" backupPath="$backup" >/dev/null 2>&1 || true
+
+  if [ "$have_agency" = "0" ]; then
+    log "review $unit: external stub (agency unavailable)"
+    printf '%s\n' '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"skill","source":"external","action":"no-change","rootCauseLayer":"none","evidenceGrade":"weak-inferred","sessionsConsidered":0,"changeSummary":null,"verdict":null,"notes":"stub: agency unavailable"}' > "$result"
+  else
+    local prompt="[$SELF_MARKER run=$RUN_ID] You are running the skill-improvement-loop on the external skill \"$unit\". Mode: $mode. The user explicitly authorized an in-place change without marketplace git governance. Work ONLY in this staged skill directory: $stage. It intentionally contains only the selected SKILL.md so unrelated neighboring files and the source path are never exposed to this subprocess. The orchestrator applies a validated SKILL.md afterward. Modify ONLY '$stagedSkill'. Do not create, edit, rename, or delete any other file. Do not run marketplace versioning, catalog generation, git commit, push, PR, or deployment steps. Use evidence from past sessions, make at most ONE focused change, and validate the resulting SKILL.md frontmatter and instructions. Then write your JSON result atomically to '$localResult' using '$localResult.tmp'. JSON keys: schema='skill-review-result/1', unit, unitType='skill', action(patched|no-change|re-review|revert|failed), rootCauseLayer, evidenceGrade, sessionsConsidered, changeSummary, diffStat, verdict, notes (all redacted, no secrets)."
+    ( cd "$stage" && agency copilot \
+        --no-config-plugins \
+        --plugin "local:$PLUGIN_DIR" \
+        --agent meta:agent-architect \
+        -p "$prompt" \
+        --disable-mcp-server computer-use \
+        --allow-all-tools ) >>"$LOGDIR/review-$safe-$RUN_ID.log" 2>&1 || true
+    if [ -f "$localResult" ]; then
+      cp "$localResult" "$result"
+    else
+      printf '%s\n' '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"skill","source":"external","action":"failed","notes":"external review produced no result JSON"}' > "$result"
+    fi
+  fi
+
+  # Canonicalize identity before deciding whether a staged edit is eligible to
+  # touch the original file.
+  RES="$result" UNIT="$unit" node --input-type=module -e "
+    import { readFileSync, writeFileSync } from 'node:fs';
+    const ok=['patched','no-change','re-review','revert','failed'];
+    let r; try{r=JSON.parse(readFileSync(process.env.RES,'utf8'))}catch{r=null}
+    if(!r||typeof r!=='object') r={action:'failed',notes:'unparseable external result JSON'};
+    const action=ok.includes(r.action)?r.action:'failed';
+    writeFileSync(process.env.RES, JSON.stringify({...r,schema:'skill-review-result/1',unit:process.env.UNIT,unitType:'skill',source:'external',action}));
+  " 2>/dev/null || true
+  action="$(RES="$result" node --input-type=module -e "import{readFileSync}from'node:fs';let r={};try{r=JSON.parse(readFileSync(process.env.RES,'utf8'))}catch{};process.stdout.write(r.action||'failed')")"
+
+  if { [ "$action" = "patched" ] || [ "$action" = "revert" ]; } && [ "$AUTO_DEPLOY" != "false" ]; then
+    if applyOut="$(node "$DIR/external-skill-stage.mjs" apply \
+        --staged-skill "$stagedSkill" --source "$skillPath" --manifest "$manifest" \
+        2>"$applyErr")"; then
+      APPLY_OUT="$applyOut" RES="$result" node --input-type=module -e "
+        import { readFileSync, writeFileSync } from 'node:fs';
+        const applied=JSON.parse(process.env.APPLY_OUT);
+        const r=JSON.parse(readFileSync(process.env.RES,'utf8'));
+        if(!applied.changed) {
+          r.action='no-change';
+          r.notes=((r.notes||'')+' Staged SKILL.md was unchanged.').trim();
+        } else {
+          r.appliedInPlace=true;
+        }
+        writeFileSync(process.env.RES,JSON.stringify(r));
+      "
+      action="$(RES="$result" node --input-type=module -e "import{readFileSync}from'node:fs';process.stdout.write(JSON.parse(readFileSync(process.env.RES,'utf8')).action)")"
+    else
+      local applyMessage
+      applyMessage="$(head -c 1000 "$applyErr" 2>/dev/null || echo 'in-place apply failed')"
+      APPLY_MESSAGE="$applyMessage" RES="$result" node --input-type=module -e "
+        import { readFileSync, writeFileSync } from 'node:fs';
+        const r=JSON.parse(readFileSync(process.env.RES,'utf8'));
+        r.action='failed';
+        r.notes=((r.notes||'')+' In-place apply failed: '+process.env.APPLY_MESSAGE).trim();
+        writeFileSync(process.env.RES,JSON.stringify(r));
+      "
+      action="failed"
+    fi
+  elif [ "$action" = "patched" ] || [ "$action" = "revert" ]; then
+    RES="$result" node --input-type=module -e "
+      import { readFileSync, writeFileSync } from 'node:fs';
+      const r=JSON.parse(readFileSync(process.env.RES,'utf8'));
+      r.action='no-change';
+      r.notes=((r.notes||'')+' In-place apply skipped because autoDeploy is disabled; staged output remains in the run directory.').trim();
+      writeFileSync(process.env.RES,JSON.stringify(r));
+    "
+    action="no-change"
+  fi
+
+  node "$DIR/lifecycle.mjs" ingest-result "$cid" "$result" >/dev/null 2>&1 || true
+  case "$action" in
+    patched|revert) node "$DIR/lifecycle.mjs" set "$cid" status=deployed >/dev/null ;;
+    failed) node "$DIR/lifecycle.mjs" set "$cid" status=failed >/dev/null ;;
+    *) node "$DIR/lifecycle.mjs" set "$cid" status=closed >/dev/null ;;
+  esac
+  rm -f "$localResult" "$localResult.tmp" 2>/dev/null || true
+}
+
 review_unit() {
   local mode="$1" unit="$2" type="$3" cycleId="$4"
   local safe; safe="$(echo "$unit" | sed 's/[^A-Za-z0-9._-]/-/g')"
@@ -216,6 +328,25 @@ review_unit() {
   local rbase=".review-result.json"
   local wt_result="$wt/$rbase"
   local tmp_result="$RUN_DIR/results/$safe.diagnostic.json"
+  local unitMeta unitSource unitPath
+  unitMeta="$(UNIT="$unit" TYPE="$type" MANIFEST="$MANIFEST" node --input-type=module -e "
+    import { readFileSync } from 'node:fs';
+    const m=JSON.parse(readFileSync(process.env.MANIFEST,'utf8'));
+    const matches=(m.unitEntries||[]).filter(x =>
+      x.name===process.env.UNIT && x.type===process.env.TYPE &&
+      x.exists && !x.conflict
+    );
+    const e=matches.length===1?matches[0]:null;
+    process.stdout.write(e ? e.source+'\\t'+e.path : 'unresolved\\t');
+  ")"
+  unitSource="${unitMeta%%$'\t'*}"
+  unitPath="${unitMeta#*$'\t'}"
+
+  if [ "$unitSource" = "unresolved" ]; then
+    log "review $unit: source is missing or ambiguous"
+    echo '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"'"$type"'","action":"failed","notes":"review source is missing or ambiguous"}' > "$result"
+    return
+  fi
 
   # Dry-run is a selection PREVIEW: it must not mutate durable state (no lifecycle
   # cycle, no git worktree/branch, no lifecycle set/ingest). Emit only a run-local
@@ -224,14 +355,19 @@ review_unit() {
   # accounting via the stub path below so its cycle trail is preserved.)
   if [ "$DRY_RUN" = "1" ]; then
     log "review $unit: dry-run preview (lifecycle not opened)"
-    echo '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"'"$type"'","action":"no-change","rootCauseLayer":"none","evidenceGrade":"weak-inferred","sessionsConsidered":0,"changeSummary":null,"verdict":null,"notes":"dry-run preview; lifecycle not opened"}' > "$result"
+    echo '{"schema":"skill-review-result/1","unit":"'"$unit"'","unitType":"'"$type"'","source":"'"$unitSource"'","action":"no-change","rootCauseLayer":"none","evidenceGrade":"weak-inferred","sessionsConsidered":0,"changeSummary":null,"verdict":null,"notes":"dry-run preview; lifecycle not opened"}' > "$result"
+    return
+  fi
+
+  if [ "$unitSource" = "external" ]; then
+    review_external_unit "$mode" "$unit" "$type" "$cycleId" "$unitPath" "$safe" "$result"
     return
   fi
 
   # Open (or reuse) a lifecycle cycle.
   local cid
   if [ -n "$cycleId" ]; then cid="$cycleId";
-  else cid="$(node "$DIR/lifecycle.mjs" open --unit "$unit" --type "$type" --mode "$mode" --run "$RUN_ID" --branch "$branch")"; fi
+  else cid="$(node "$DIR/lifecycle.mjs" open --unit "$unit" --type "$type" --mode "$mode" --run "$RUN_ID" --branch "$branch" --source "$unitSource" --source-path "$unitPath")"; fi
 
   # Create a clean worktree off the default branch.
   ( cd "$REPO_DIR" && git worktree add -B "$branch" "$wt" "$DEFAULT_BRANCH" ) >>"$LOGDIR/daemon.log" 2>&1 \
@@ -557,6 +693,28 @@ if [ "$DRY_RUN" = "0" ] && [ "$AUTO_DEPLOY" != "false" ]; then
 $PROPOSED
 EOF2
 fi
+
+# External skills bypass the marketplace integration loop and are applied
+# directly after safe staging. Fold those successful in-place edits into the run
+# counters so status, digest summaries, and notifications remain truthful.
+EXTERNAL_COUNTS="$(RESDIR="$RUN_DIR/results" node --input-type=module -e '
+  import { readdirSync, readFileSync } from "node:fs";
+  import { join } from "node:path";
+  let applied=0,reverted=0;
+  for(const file of readdirSync(process.env.RESDIR)){
+    if(!file.endsWith(".json")) continue;
+    let r;try{r=JSON.parse(readFileSync(join(process.env.RESDIR,file),"utf8"))}catch{continue}
+    if(r.source!=="external"||r.appliedInPlace!==true) continue;
+    if(r.action==="revert") reverted++; else if(r.action==="patched") applied++;
+  }
+  process.stdout.write(applied+" "+reverted);
+' 2>/dev/null || echo '0 0')"
+external_applied="${EXTERNAL_COUNTS%% *}"
+external_reverted="${EXTERNAL_COUNTS#* }"
+case "$external_applied" in ''|*[!0-9]*) external_applied=0 ;; esac
+case "$external_reverted" in ''|*[!0-9]*) external_reverted=0 ;; esac
+applied=$(( applied + external_applied ))
+reverted=$(( reverted + external_reverted ))
 
 # Tally review-level failures authoritatively from the canonical result JSONs — the
 # SAME source make-digest.mjs reads (every selected unit always has one; see the

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Native settings window for the daemon config. A presentation layer over
 /// `daemon-ctl.sh config-get`/`config-set` (via `ConfigModel`); it never writes
@@ -9,6 +10,13 @@ struct ConfigWindow: View {
 
     @ObservedObject var model: ConfigModel
     var autoLoad = true
+    @State private var searchText = ""
+    @State private var editingUnit: ReviewUnit?
+    @State private var typeFilter = UnitTypeFilter.all
+    @State private var sourceFilter = UnitSourceFilter.all
+    @State private var policyFilter = UnitPolicyFilter.all
+    @State private var availabilityFilter = UnitAvailabilityFilter.all
+    @State private var showingSources = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,9 +26,23 @@ struct ConfigWindow: View {
             Divider()
             footer
         }
-        .frame(minWidth: 520, idealWidth: 540, minHeight: 560, idealHeight: 780)
+        .frame(minWidth: 760, idealWidth: 820, minHeight: 620, idealHeight: 820)
         .task { if autoLoad { await model.load() } }
         .onDisappear { NSApp.setActivationPolicy(.accessory) }
+        .sheet(item: $editingUnit) { unit in
+            UnitSettingsSheet(unit: unit, model: model)
+        }
+        .sheet(isPresented: $showingSources) {
+            SkillSourcesSheet(model: model)
+        }
+        .alert("Skill action failed", isPresented: Binding(
+            get: { model.unitActionError != nil },
+            set: { if !$0 { model.unitActionError = nil } }
+        )) {
+            Button("OK") { model.unitActionError = nil }
+        } message: {
+            Text(model.unitActionError ?? "Unknown error")
+        }
     }
 
     // MARK: Header
@@ -123,24 +145,7 @@ struct ConfigWindow: View {
                 NumberRow(icon: "person.2", title: "Max first-run sessions", value: $model.config.maxFirstRunSessions, range: 1...100_000)
             }
 
-            Section {
-                UnitScopeRow(title: "Include", items: $model.config.include)
-                UnitScopeRow(title: "Exclude", items: $model.config.exclude)
-                UnitScopeRow(title: "Auto-merge", items: Binding(
-                    get: { model.config.autoMergeUnits },
-                    set: { model.setAutoMergeUnits($0) }
-                ))
-                UnitScopeRow(title: "Review via PR", items: Binding(
-                    get: { model.config.prUnits },
-                    set: { model.setPRUnits($0) }
-                ))
-            } header: {
-                Text("Unit scope")
-            } footer: {
-                Text("Include limits eligibility to listed units; Exclude always skips. A unit in Review via PR opens a PR instead of auto-merging.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            reviewedUnitsSection
 
             Section("Paths & identity") {
                 TextRow(icon: "folder", title: "Repo directory", text: $model.config.repoDir, placeholder: "/path/to/git/worktree")
@@ -149,6 +154,405 @@ struct ConfigWindow: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var reviewedUnitsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    TextField("", text: $searchText, prompt: Text("Search skills and agents"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 280)
+                    Text(visibleUnitCountText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 12)
+                    filterMenu
+                    if !model.config.skillPaths.isEmpty || !model.config.skillFolders.isEmpty {
+                        Button("Sources…") { showingSources = true }
+                    }
+                    Button("Refresh") {
+                        Task { await model.reloadUnits() }
+                    }
+                    Menu("Add") {
+                        Button("SKILL.md…", action: chooseSkill)
+                        Button("Skills folder…", action: chooseSkillsFolder)
+                    }
+                }
+
+                catalogContent
+            }
+            .padding(.vertical, 2)
+        } header: {
+            Text("Skills & agents under review")
+        } footer: {
+            Text("Add individual SKILL.md files or folders from anywhere on this Mac. Folder sources include the selected folder and its immediate child skill folders, and update automatically when skills are added.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Picker("Type", selection: $typeFilter) {
+                ForEach(UnitTypeFilter.allCases) { filter in
+                    Text(filter.label).tag(filter)
+                }
+            }
+            Picker("Source", selection: $sourceFilter) {
+                ForEach(UnitSourceFilter.allCases) { filter in
+                    Text(filter.label).tag(filter)
+                }
+            }
+            Picker("Policy", selection: $policyFilter) {
+                ForEach(UnitPolicyFilter.allCases) { filter in
+                    Text(filter.label).tag(filter)
+                }
+            }
+            Picker("Availability", selection: $availabilityFilter) {
+                ForEach(UnitAvailabilityFilter.allCases) { filter in
+                    Text(filter.label).tag(filter)
+                }
+            }
+            if hasActiveFilters {
+                Divider()
+                Button("Clear filters", action: clearFilters)
+            }
+        } label: {
+            Text(activeFilterCount == 0 ? "Filters" : "Filters (\(activeFilterCount))")
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var catalogContent: some View {
+        switch model.catalogState {
+        case .idle, .loading:
+            ProgressView("Loading reviewed units…")
+                .frame(maxWidth: .infinity, minHeight: 120)
+        case .failed(let message):
+            VStack(spacing: 8) {
+                Text("Couldn't load reviewed units")
+                    .font(.headline)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Retry") { Task { await model.reloadUnits() } }
+            }
+            .frame(maxWidth: .infinity, minHeight: 120)
+        case .loaded:
+            if filteredUnits.isEmpty {
+                VStack(spacing: 8) {
+                    Text(model.units.isEmpty ? "No reviewed units" : "No matching units")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    if hasActiveFilters {
+                        Button("Clear filters", action: clearFilters)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 150)
+            } else {
+                unitsList
+            }
+        }
+    }
+
+    private var unitsList: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("Unit")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Policy")
+                    .frame(width: 165, alignment: .leading)
+                Text("Actions")
+                    .frame(width: 230, alignment: .leading)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            ForEach(Array(filteredUnits.enumerated()), id: \.element.id) { index, unit in
+                HStack(spacing: 12) {
+                    unitIdentity(unit)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    policyPicker(for: unit)
+                        .frame(width: 165, alignment: .leading)
+                    unitActions(unit)
+                        .frame(width: 230, alignment: .leading)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(minHeight: 47)
+                .background(rowBackground(at: index))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    private func unitIdentity(_ unit: ReviewUnit) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(unit.name)
+                    .font(.body.weight(.medium))
+                if !unit.isSkill {
+                    Text(unit.typeLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(unit.displayPath)
+                .font(.caption)
+                .foregroundColor(unit.exists ? .secondary : .orange)
+                .lineLimit(1)
+                .help(unit.path)
+            if unit.conflict {
+                Text("Duplicate unit name — remove one source before running")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func unitActions(_ unit: ReviewUnit) -> some View {
+        HStack(spacing: 8) {
+            Button("Edit") { editingUnit = unit }
+                .buttonStyle(.bordered)
+            runControl(for: unit)
+            Menu {
+                Button("Open \(unit.typeLabel) file") {
+                    model.openUnitFile(unit)
+                }
+                .disabled(!unit.exists)
+                if unit.isExternal {
+                    Divider()
+                    if unit.isFolderSource {
+                        Button("Exclude from review loop") {
+                            model.setEligibility(.excluded, for: unit)
+                        }
+                    } else {
+                        Button("Remove from review loop", role: .destructive) {
+                            model.removeExternalSkill(unit)
+                        }
+                    }
+                }
+            } label: {
+                Text("More")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .controlSize(.small)
+    }
+
+    private func rowBackground(at index: Int) -> Color {
+        let colors = NSColor.alternatingContentBackgroundColors
+        guard !colors.isEmpty else { return Color(nsColor: .textBackgroundColor) }
+        return Color(nsColor: colors[index % colors.count])
+    }
+
+    @ViewBuilder
+    private func policyPicker(for unit: ReviewUnit) -> some View {
+        if unit.isExternal {
+            Text("Edit in place")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        } else {
+            Picker("", selection: Binding(
+                get: { model.policy(for: unit) },
+                set: { model.setPolicy($0, for: unit) }
+            )) {
+                Text(defaultPolicyLabel).tag(UnitPolicy.defaultPolicy)
+                Text("Auto-merge").tag(UnitPolicy.autoMerge)
+                Text("Review via PR").tag(UnitPolicy.reviewPR)
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+        }
+    }
+
+    @ViewBuilder
+    private func runControl(for unit: ReviewUnit) -> some View {
+        switch model.runState(for: unit) {
+        case .running:
+            HStack(spacing: 5) {
+                ProgressView().controlSize(.small)
+                Text("Running…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 82)
+        case .completed:
+            Text("Completed")
+                .font(.caption)
+                .foregroundStyle(.green)
+                .frame(minWidth: 82)
+        case .failed(let message):
+            Button("Retry") { model.runUnit(unit) }
+                .buttonStyle(.bordered)
+                .help(message)
+        case nil:
+            Button("Run now") { model.runUnit(unit) }
+                .buttonStyle(.bordered)
+                .disabled(!unit.canRun || model.hasRunningUnit)
+        }
+    }
+
+    private var filteredUnits: [ReviewUnit] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.units.filter {
+            matchesSearch($0, query: query) &&
+            matchesType($0) &&
+            matchesSource($0) &&
+            matchesPolicy($0) &&
+            matchesAvailability($0)
+        }
+    }
+
+    private var visibleUnitCountText: String {
+        if hasActiveFilters {
+            return "\(filteredUnits.count) of \(model.units.count) shown"
+        }
+        return "\(model.units.count) units"
+    }
+
+    private var activeFilterCount: Int {
+        [
+            typeFilter != .all,
+            sourceFilter != .all,
+            policyFilter != .all,
+            availabilityFilter != .all,
+        ].filter { $0 }.count
+    }
+
+    private var hasActiveFilters: Bool {
+        activeFilterCount > 0 || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func matchesSearch(_ unit: ReviewUnit, query: String) -> Bool {
+        query.isEmpty ||
+        unit.name.localizedCaseInsensitiveContains(query) ||
+        unit.path.localizedCaseInsensitiveContains(query) ||
+        unit.type.localizedCaseInsensitiveContains(query)
+    }
+
+    private func matchesType(_ unit: ReviewUnit) -> Bool {
+        switch typeFilter {
+        case .all: true
+        case .skills: unit.isSkill
+        case .agents: !unit.isSkill
+        }
+    }
+
+    private func matchesSource(_ unit: ReviewUnit) -> Bool {
+        switch sourceFilter {
+        case .all: true
+        case .marketplace: !unit.isExternal
+        case .external: unit.isExternal
+        }
+    }
+
+    private func matchesPolicy(_ unit: ReviewUnit) -> Bool {
+        switch policyFilter {
+        case .all:
+            true
+        case .defaultPolicy:
+            !unit.isExternal && model.policy(for: unit) == .defaultPolicy
+        case .autoMerge:
+            !unit.isExternal && model.policy(for: unit) == .autoMerge
+        case .reviewPR:
+            !unit.isExternal && model.policy(for: unit) == .reviewPR
+        case .editInPlace:
+            unit.isExternal
+        }
+    }
+
+    private func matchesAvailability(_ unit: ReviewUnit) -> Bool {
+        switch availabilityFilter {
+        case .all: true
+        case .ready: unit.canRun && model.isEligible(unit)
+        case .excluded: !model.isEligible(unit)
+        case .issues: !unit.canRun
+        }
+    }
+
+    private func clearFilters() {
+        searchText = ""
+        typeFilter = .all
+        sourceFilter = .all
+        policyFilter = .all
+        availabilityFilter = .all
+    }
+
+    private var defaultPolicyLabel: String {
+        model.config.deployMode == "pr" ? "Default (PR)" : "Default (auto)"
+    }
+
+    private func chooseSkill() {
+        let panel = NSOpenPanel()
+        panel.title = "Add skill"
+        panel.message = "Choose a SKILL.md file to add to the review loop."
+        panel.prompt = "Add skill"
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+
+        let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".copilot", isDirectory: true)
+        if FileManager.default.fileExists(atPath: defaultDirectory.path) {
+            panel.directoryURL = defaultDirectory
+        } else {
+            panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        }
+
+        let completion: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in model.addExternalSkill(at: url) }
+        }
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
+    }
+
+    private func chooseSkillsFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Add skills folder"
+        panel.message = "Choose a folder containing SKILL.md or immediate child skill folders."
+        panel.prompt = "Add folder"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+
+        let copilotDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".copilot", isDirectory: true)
+        let skillsDirectory = copilotDirectory.appendingPathComponent("skills", isDirectory: true)
+        if FileManager.default.fileExists(atPath: skillsDirectory.path) {
+            panel.directoryURL = skillsDirectory
+        } else if FileManager.default.fileExists(atPath: copilotDirectory.path) {
+            panel.directoryURL = copilotDirectory
+        } else {
+            panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        }
+
+        let completion: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in model.addExternalSkillFolder(at: url) }
+        }
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
     }
 
     // MARK: Footer
@@ -193,6 +597,57 @@ struct ConfigWindow: View {
             Text("Changes save automatically")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private enum UnitTypeFilter: String, CaseIterable, Identifiable {
+    case all, skills, agents
+    var id: Self { self }
+    var label: String {
+        switch self {
+        case .all: "All types"
+        case .skills: "Skills"
+        case .agents: "Agents"
+        }
+    }
+}
+
+private enum UnitSourceFilter: String, CaseIterable, Identifiable {
+    case all, marketplace, external
+    var id: Self { self }
+    var label: String {
+        switch self {
+        case .all: "All sources"
+        case .marketplace: "Marketplace"
+        case .external: "External"
+        }
+    }
+}
+
+private enum UnitPolicyFilter: String, CaseIterable, Identifiable {
+    case all, defaultPolicy, autoMerge, reviewPR, editInPlace
+    var id: Self { self }
+    var label: String {
+        switch self {
+        case .all: "All policies"
+        case .defaultPolicy: "Default"
+        case .autoMerge: "Auto-merge"
+        case .reviewPR: "Review via PR"
+        case .editInPlace: "Edit in place"
+        }
+    }
+}
+
+private enum UnitAvailabilityFilter: String, CaseIterable, Identifiable {
+    case all, ready, excluded, issues
+    var id: Self { self }
+    var label: String {
+        switch self {
+        case .all: "All availability"
+        case .ready: "Ready"
+        case .excluded: "Excluded"
+        case .issues: "Issues"
         }
     }
 }
@@ -287,102 +742,178 @@ private struct WeekdayRow: View {
     }
 }
 
-/// A labelled, editable list of unit names rendered as removable chips.
-private struct UnitScopeRow: View {
-    let title: String
-    @Binding var items: [String]
-    @State private var draft = ""
+private struct UnitSettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let unit: ReviewUnit
+    @ObservedObject var model: ConfigModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label(title, systemImage: "tag")
-                Spacer(minLength: 0)
-            }
-            if !items.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(items, id: \.self) { item in
-                        chip(item)
+        VStack(spacing: 0) {
+            Form {
+                Section("Unit") {
+                    LabeledContent("Name", value: unit.name)
+                    LabeledContent("Type", value: unit.typeLabel)
+                    LabeledContent("Source", value: sourceLabel)
+                    LabeledContent("Path") {
+                        Text(unit.displayPath)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    if unit.isFolderSource {
+                        LabeledContent("Source folder") {
+                            Text(ReviewUnit.abbreviateHome(in: unit.sourceRoot))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
+
+                Section("Review settings") {
+                    Picker("Eligibility", selection: Binding(
+                        get: { model.eligibility(for: unit) },
+                        set: { model.setEligibility($0, for: unit) }
+                    )) {
+                        Text("Default").tag(UnitEligibility.defaultScope)
+                        Text("Included").tag(UnitEligibility.included)
+                        Text("Excluded").tag(UnitEligibility.excluded)
+                    }
+                    .pickerStyle(.menu)
+
+                    if unit.isExternal {
+                        LabeledContent("Change handling", value: "Edit in place")
+                        Text("External skills bypass marketplace commits, pull requests, and plugin deployment.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Deployment policy", selection: Binding(
+                            get: { model.policy(for: unit) },
+                            set: { model.setPolicy($0, for: unit) }
+                        )) {
+                            Text(defaultPolicyLabel).tag(UnitPolicy.defaultPolicy)
+                            Text("Auto-merge").tag(UnitPolicy.autoMerge)
+                            Text("Review via PR").tag(UnitPolicy.reviewPR)
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    Text(eligibilityHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Button("Open \(unit.typeLabel) file") {
+                        model.openUnitFile(unit)
+                    }
+                    .disabled(!unit.exists)
+                }
             }
-            HStack(spacing: 6) {
-                TextField("Add unit…", text: $draft)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
-                    .onSubmit(add)
-                Button("Add", action: add)
-                    .disabled(trimmed.isEmpty)
+            .formStyle(.grouped)
+
+            Divider()
+
+            HStack {
+                if unit.isExternal {
+                    if unit.isFolderSource {
+                        Button("Exclude this skill") {
+                            model.setEligibility(.excluded, for: unit)
+                            dismiss()
+                        }
+                    } else {
+                        Button("Remove from review loop", role: .destructive) {
+                            model.removeExternalSkill(unit)
+                            dismiss()
+                        }
+                    }
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
             }
+            .padding(16)
         }
-        .padding(.vertical, 2)
+        .frame(minWidth: 480, idealWidth: 520, minHeight: 360, idealHeight: 420)
     }
 
-    private func chip(_ item: String) -> some View {
-        HStack(spacing: 4) {
-            Text(item).font(.callout)
-            Button {
-                items.removeAll { $0 == item }
-            } label: {
-                Image(systemName: "minus.circle.fill")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+    private var sourceLabel: String {
+        switch unit.source {
+        case "marketplace": unit.plugin.isEmpty ? "Marketplace" : unit.plugin
+        case "external": unit.isFolderSource ? "External skills folder" : "External file"
+        default: "Configured override"
         }
-        .padding(.leading, 9)
-        .padding(.trailing, 5)
-        .padding(.vertical, 3)
-        .background(Color.secondary.opacity(0.15))
-        .clipShape(Capsule())
     }
 
-    private var trimmed: String { draft.trimmingCharacters(in: .whitespaces) }
+    private var defaultPolicyLabel: String {
+        model.config.deployMode == "pr" ? "Default (Review via PR)" : "Default (Auto-merge)"
+    }
 
-    private func add() {
-        let value = trimmed
-        guard !value.isEmpty else { return }
-        if !items.contains(value) { items.append(value) }
-        draft = ""
+    private var eligibilityHelp: String {
+        if model.config.include.isEmpty {
+            return "Default units are eligible unless explicitly excluded."
+        }
+        return "An Include allowlist is active. Only units marked Included are eligible; Excluded always wins."
     }
 }
 
-/// Minimal wrapping layout for the unit chips (macOS 13+ Layout protocol).
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
+private struct SkillSourcesSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var model: ConfigModel
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                if model.config.skillPaths.isEmpty && model.config.skillFolders.isEmpty {
+                    Text("No external skill sources are configured.")
+                        .foregroundStyle(.secondary)
+                }
+
+                if !model.config.skillPaths.isEmpty {
+                    Section("Individual SKILL.md files") {
+                        ForEach(model.config.skillPaths, id: \.self) { path in
+                            sourceRow(path: path) {
+                                model.removeSkillPath(path)
+                            }
+                        }
+                    }
+                }
+
+                if !model.config.skillFolders.isEmpty {
+                    Section {
+                        ForEach(model.config.skillFolders, id: \.self) { path in
+                            sourceRow(path: path) {
+                                model.removeSkillFolder(path)
+                            }
+                        }
+                    } header: {
+                        Text("Skills folders")
+                    } footer: {
+                        Text("Each folder contributes its own SKILL.md and immediate child folders containing SKILL.md.")
+                    }
+                }
             }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+            .formStyle(.grouped)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
         }
-        let width = maxWidth.isFinite ? maxWidth : x
-        return CGSize(width: width, height: y + rowHeight)
+        .frame(minWidth: 560, idealWidth: 620, minHeight: 320, idealHeight: 430)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+    private func sourceRow(path: String, remove: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(ReviewUnit.abbreviateHome(in: path))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(path)
+                .textSelection(.enabled)
+            Spacer(minLength: 12)
+            Button("Remove", role: .destructive, action: remove)
         }
     }
 }

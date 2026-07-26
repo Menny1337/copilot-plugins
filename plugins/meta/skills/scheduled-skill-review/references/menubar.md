@@ -1,4 +1,3 @@
-<!-- validate:allow-user-paths -->
 # Menu-bar control (native macOS app)
 
 The daemon ships a self-built native macOS menu-bar app, `SkillReviewMenuBar`, for status and control. It is a SwiftUI `MenuBarExtra` app with no third-party menu-bar runtime. The app is only a presentation/control layer over `scripts/daemon-ctl.sh`; daemon logic stays in the scripts.
@@ -98,7 +97,7 @@ Every control action triggers a status refresh afterward. Silent actions spawn `
 
 `Settings…` opens a native SwiftUI window (`ConfigWindow`) that edits the daemon's
 `config.json` through a real form instead of raw JSON. It is a presentation layer
-over two `daemon-ctl.sh` subcommands and never writes `config.json` directly:
+over three `daemon-ctl.sh` subcommands and never writes `config.json` directly:
 
 - `daemon-ctl.sh config-get` prints the full effective config (defaults merged) as JSON.
 - `daemon-ctl.sh config-set` reads a JSON patch on stdin, validates and coerces each
@@ -107,6 +106,9 @@ over two `daemon-ctl.sh` subcommands and never writes `config.json` directly:
   `schedule`, it also rewrites the launchd plist's `StartCalendarInterval` (via
   `schedule.mjs`) and reloads launchd, so editing the schedule here reschedules the
   **real** trigger — no separate plist edit needed.
+- `daemon-ctl.sh unit-catalog` returns every marketplace skill/agent plus configured
+  external `SKILL.md` files and folder-discovered skills, including source paths,
+  source roots, and missing/conflict state.
 
 The form mirrors the dropdown's visual language (teal test-tube glyph, green/blue
 toggles, orange numeric values) and is grouped into sections:
@@ -117,8 +119,21 @@ toggles, orange numeric values) and is grouped into sections:
 | Schedule | `Hour`, `Minute` steppers, and seven `Days of week` circle toggles (Sun…Sat = JS `getDay` 0…6; empty = every day). Saving rewrites the launchd plist and reloads it, so the change takes effect on the next fire. |
 | Deployment | `Auto-deploy` / `Auto-revert` toggles, `Default policy` (auto/PR), `Reverts` (auto/PR/per-unit), `Concurrency` stepper. |
 | Selection & tuning | `Signal threshold`, `Observation window`, `First-run lookback`, `Max first-run sessions` steppers. |
-| Unit scope | Editable chip lists for `Include`, `Exclude`, `Auto-merge`, and `Review via PR` units. |
+| Skills & agents under review | Native searchable full-height row list showing every evaluated unit, its path and policy, plus per-row `Edit`, `Run now`, and `More` controls. Type, source, policy, and availability filters can be combined, and the visible count updates immediately. It shares the form's single scrollbar so no rows are trapped inside a nested scroll surface. `Edit` opens a native settings sheet for eligibility/policy and file opening. |
 | Paths & identity | `Repo directory`, `Marketplace name`, `gh account` text fields. |
+
+**Add** is a native menu with two `NSOpenPanel` flows. **SKILL.md…** starts at
+`~/.copilot` and adds one file. **Skills folder…** starts at `~/.copilot/skills`
+when available and persists the selected root; the root's own `SKILL.md` and
+immediate child directories containing `SKILL.md` are discovered on every
+catalog refresh and scheduled scan. **Sources…** lists configured files and
+folders for removal, while **Refresh** immediately reloads folder contents.
+
+The app validates scalar kebab-case frontmatter names and rejects names that
+collide with any reviewed skill or agent. External rows show `Edit in place`
+instead of a marketplace deploy policy. Their review runs copy only the
+selected/discovered `SKILL.md` into
+private staging and apply it atomically only when the source remained unchanged.
 
 The footer offers `Edit raw JSON…` (opens `config.json` in the default editor for
 keys the form does not expose) and an autosave indicator. There is no Save button:
@@ -127,6 +142,10 @@ so rapid edits coalesce into a single `config-set` call; the indicator shows
 `Saving…`, then `Saved`, or an error. The `Auto-merge` and `Review via PR` lists
 are kept mutually exclusive as you edit (matching `config-set`, where `prUnits`
 wins). The window reloads fresh config each time it opens.
+
+`Run now` invokes `daemon-ctl.sh review-unit <name>` without opening Terminal. The
+row uses native `ProgressView` and completion/failure states while the asynchronous
+review runs; only one review cycle can run at a time.
 
 Window scenes for the menu bar are accessory by default; opening Settings switches
 the app to a regular activation policy so the window can take focus, and restores
@@ -145,5 +164,6 @@ The app refreshes status on a timer and watches `~/.copilot/agent-architect/skil
 | App cannot find `daemon-ctl.sh` | Missing `SKILL_REVIEW_SCRIPT_DIR` or stale `menubar.json` | Re-run `scripts/menubar-install.sh` from the current checkout. |
 | App does not start at login | LaunchAgent not loaded or failed | Run `launchctl print gui/$(id -u)/com.copilotplugins.skill-review.menubar`; if absent, rerun the installer. |
 | Run now does not open visibly | Helper command missing or not executable | Re-run the installer and check `~/.copilot/agent-architect/skill-reviews/RunSkillReviewNow.command`. |
+| External skill is missing or cannot run | The configured path moved, the file is not named `SKILL.md`, or its frontmatter name is invalid/duplicated | Use the row's `Edit`/`More` controls to remove it, then add the correct file again. |
 
 Soft pause does not unload either LaunchAgent: it only sets `enabled=false`, so scheduled launches no-op and the menu-bar app reports `paused`.

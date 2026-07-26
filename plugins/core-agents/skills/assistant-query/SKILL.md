@@ -1,6 +1,7 @@
 ---
 name: assistant-query
 description: "Search, filter, and summarize personal assistant data: find notes by keyword or date, list tasks by status or priority, check due reminders, surface related context, and generate persistent daily and weekly briefings saved as markdown files in ~/.copilot/assistant/briefings/ (so they can be re-read, edited, and tracked as history). Triggers: good morning, morning, boker tov, daily brief, today's briefing, weekly brief, weekly review, what's due, find notes, search, show tasks, daily summary, what did I decide, overdue, list, briefing."
+argument-hint: "<what to look up, or a date range>"
 ---
 
 # Assistant Query

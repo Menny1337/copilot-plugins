@@ -1,5 +1,5 @@
 {
   "name": "meta",
-  "version": "1.9.2",
+  "version": "1.11.0",
   "description": "Meta-tooling for creating, auditing, packaging, scheduling, and continuously improving Copilot agents, skills, hooks, plugins, and workflows."
 }

@@ -46,7 +46,11 @@ if (!existsSync(sessionDir)) {
   process.exit(2);
 }
 
-const { skills: ourSkills, agents: ourAgents } = enumerateUnits(repoDir);
+const {
+  skills: ourSkills,
+  agents: ourAgents,
+  entries: unitEntries,
+} = enumerateUnits(repoDir, cfg.skillPaths, cfg.skillFolders);
 const include = new Set(cfg.include || []);
 const exclude = new Set(cfg.exclude || []);
 const eligible = (unit) => (include.size === 0 || include.has(unit)) && !exclude.has(unit);
@@ -174,6 +178,7 @@ const manifest = {
       : (watermark ? 'Incremental scan since last watermark.' : 'First run (full lookback window).'),
   },
   ourUnits: { skills: [...ourSkills], agents: [...ourAgents] },
+  unitEntries,
   units: unitList,
 };
 

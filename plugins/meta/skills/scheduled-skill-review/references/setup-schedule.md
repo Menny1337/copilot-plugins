@@ -1,4 +1,3 @@
-<!-- validate:allow-user-paths -->
 # Setup — scheduling the autonomous review daemon (macOS `launchd`)
 
 This wires the daemon to run at a fixed hour daily, deploy validated changes, and
@@ -62,6 +61,8 @@ falls back to `DEFAULT_CONFIG` in `scripts/lib.mjs`.
   "revertDeployMode": "auto",
   "include": [],
   "exclude": [],
+  "skillPaths": [],
+  "skillFolders": [],
   "signalThreshold": 3,
   "observationWindowDays": 3,
   "firstRunLookbackDays": 7,
@@ -89,6 +90,24 @@ sources use the same system-Git path.
 
 `include` (allowlist) and `exclude` (denylist) take **bare** unit names
 (`memory`, `agent-architect`). Manage them live with `daemon-ctl.sh include/exclude`.
+
+`skillPaths` contains absolute paths to individual external `SKILL.md` files.
+`skillFolders` contains persistent folder roots. Each root contributes a
+`SKILL.md` in the root itself, when present, plus every `SKILL.md` in an immediate
+child directory; deeper descendants are not scanned. Folder roots are rediscovered
+on each catalog/scan run, so newly added child skills need no config change.
+
+Prefer adding both source types from the native Settings window's **Add** menu.
+The individual-file picker starts in `~/.copilot`; the folder picker starts in
+`~/.copilot/skills` when it exists. Both can navigate anywhere on the machine.
+External names must be kebab-case and globally unique across reviewed skills and
+agents because lifecycle and policy controls use bare unit names. The daemon
+copies only each selected/discovered `SKILL.md` into a private staging directory
+(never neighboring files), then applies the validated file back in place if the
+original did not change concurrently or resolve to a different target. Removing
+an external source also prevents its old lifecycle cycle from being routed to a
+marketplace unit with the same name. External review does not commit, push, open
+a PR, version a plugin, or perform automatic git rollback.
 
 ## 3. Headless git-push authentication (the autoDeploy blocker)
 
@@ -126,9 +145,9 @@ warning and PR steps are skipped.
 
 ## 3a. Per-unit deploy policy (auto-merge vs. review PR)
 
-`autoDeploy` is the master switch: when `false` the daemon never merges **and never
-opens PRs** — a no-side-effects test mode. When `true`, each passing change is routed
-per unit:
+`autoDeploy` is the master switch: when `false` the daemon never merges, opens PRs,
+or applies a staged external edit — a no-side-effects test mode. When `true`, each
+passing marketplace change is routed per unit:
 
 - **`deployMode`** (`"auto"` | `"pr"`) — the default for any unit not named in a list.
   `auto` merges straight to `main` + pushes + plugin refresh; `pr` opens a GitHub PR and
@@ -140,6 +159,9 @@ per unit:
 - **`revertDeployMode`** (`"auto"` | `"pr"` | `"unit"`) — how regression **reverts** are
   deployed. Defaults to `"auto"` so a safety revert fast-paths to `main` even for
   pr-mode units; set `"unit"` to make reverts follow each unit's normal policy.
+
+External skills always use the explicit in-place path described above; marketplace
+deploy-policy and revert-policy pins do not apply to them.
 
 Manage these live (writes `config.json`, no restart needed):
 

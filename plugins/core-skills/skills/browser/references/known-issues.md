@@ -360,3 +360,62 @@ Even with the fixes above, Chrome re-prompts *Allow debugging* **per tab** — t
 > **Re-evaluation triggers (per `~/.copilot/research/browser-use-2026/v2-addendum-findings.md` §5.6):** Reconsider only if (a) first-class Edge channel support lands with `--browser=msedge`, AND (b) #4763 closes, AND (c) Auth0/SSO bugs (#4796) close. Until all three, the project is structurally wrong for this user.
 
 ---
+
+## `attach --extension` hangs forever on a stale/wrong token — HIGH (solved)
+
+**Verified live 2026-07-25.** `playwright-cli attach --extension=<session>` has **no timeout
+flag** and **never validates the token itself**. Reading `coreBundle.js`, `attach` starts a
+local WebSocket relay, spawns the browser at
+`chrome-extension://mmlmfjhmonkocbjadbfplnigmagldckm/connect.html?mcpRelayUrl=…&token=<token>`,
+then `await`s the extension's callback. Validation happens **inside the extension**
+(`lib/ui/connect.js`: `if (token === expectedToken)`), and a mismatch just shows
+*"Invalid token provided."* in a browser tab — so the CLI waits **forever with no output**.
+That is the "the script got stuck" symptom, and it is easily misread as a slow attach.
+
+**Root cause of mismatches.** The extension is installed **per browser profile**, and each
+installation mints its own token, so a token is only valid for the profile that minted it.
+Copying one profile's token over another's guarantees a permanent hang.
+
+### The fix: read the token from the profile instead of guessing
+
+The extension stores its own token in the extension page's `localStorage` under the key
+`auth-token` (`lib/ui/authToken.js`), which Chromium persists in the profile's
+`Local Storage/leveldb`. It is therefore readable from disk **without launching anything**.
+
+`scripts/bridge-token.mjs` does exactly that:
+
+```bash
+node scripts/bridge-token.mjs list                    # every profile: name, account, token, status
+node scripts/bridge-token.mjs check --session msedge  # exit 1 on drift
+node scripts/bridge-token.mjs sync-all                # refresh one token file per profile
+node scripts/bridge-token.mjs get --session msedge --raw   # for `export PLAYWRIGHT_MCP_EXTENSION_TOKEN=…`
+```
+
+Measured against the failure that motivated this work:
+
+| Situation | Before | After |
+|---|---|---|
+| Stale/cross-profile token file | hang forever | **attaches anyway in ~1.1s** (profile token wins) |
+| Session names a non-existent profile | hang forever | **fails in ~0.15s**, `profile-not-found` |
+| Profile lacks the extension | hang forever | **fails in ~0.15s**, `extension-not-installed` |
+| Enumerating all profiles + tokens | manual, per-profile consent dialog | **~0.11s**, no UI |
+
+Implementation notes, if the extractor ever needs repair:
+
+- localStorage records are keyed `_chrome-extension://<id>\0\x01auth-token`, but leveldb
+  **prefix-compresses keys within a block**, so the origin and even part of the extension id
+  can be truncated mid-string (observed: `mmlmfjhmonkocbjadbfpln\x0e\x80\x08Lgldckm`).
+  Anchor on the stable `\0\x01auth-token` suffix, then confirm scope by looking **back** for
+  a surviving id fragment — matching the full id fails.
+- The value is a bare 43-char `[A-Za-z0-9_-]` run. Requiring the following byte to be outside
+  that class rejects other origins' JSON `auth-token` values.
+- Prefer scoped hits, then the newest file by mtime, then the latest offset (leveldb appends).
+
+**Residual guidance.** Keep a bounded attach (`timeout 25 playwright-cli attach …`) as a
+backstop for cases where the profile cannot be read, and never treat a hanging attach as
+progress. Token files remain useful as a cache for tools that read
+`PLAYWRIGHT_MCP_EXTENSION_TOKEN` from the environment; refresh them with `sync-all`. Two
+files with identical contents still means one was overwritten (`md5 …/*.token`). Tokens are
+43 characters, do not rotate on their own, and must never be committed.
+
+---

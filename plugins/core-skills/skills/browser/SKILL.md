@@ -1,6 +1,7 @@
 ---
 name: browser
-description: "Drive, inspect, and automate the user's live browser — open pages, click, fill forms, take screenshots, read page content, sign in to sites, capture network traffic, manage cookies. Use when the user asks to open a URL, screenshot a page, automate a flow, log into a site, scrape something interactively, or inspect what's on screen. Not for mockups, UI components, headless scraping pipelines, or authoring Playwright tests."
+description: "Drive, inspect, and automate the user's live browser — open pages, click, fill forms, take screenshots, read page content, sign in to sites, capture network traffic, manage cookies. Includes a one-shot Outlook on the web driver for drafting, replying to, and reading mail. Use when the user asks to open a URL, screenshot a page, automate a flow, log into a site, draft or reply to an email in Outlook/OWA, scrape something interactively, or inspect what's on screen. Not for mockups, UI components, headless scraping pipelines, or authoring Playwright tests."
+argument-hint: "<URL, or what to do in the browser>"
 ---
 
 # Browser Automation — Live Session
@@ -15,6 +16,22 @@ description: "Drive, inspect, and automate the user's live browser — open page
 > 3. You need to type into a cross-origin iframe via `Input.insertText` → `cdp.mjs type`
 >
 > **In all other cases — including "drive my real daily browser with all my logins" — use `playwright-cli`** (see Mode A in Quick Start). If `playwright-cli` is not installed, **auto-install it** (`npm install -g @playwright/cli@latest`, no need to ask) and retry — see Prerequisites. A *missing* `playwright-cli` is NEVER a reason to fall back to `cdp.mjs`; the escape hatch is for the three cases above, not for a tool that simply hasn't been installed yet.
+
+## 📖 Site playbooks — check before improvising
+
+Some sites have already been mapped, with the traps documented and a bundled driver written.
+If the task touches one of them, **read the playbook first**. Improvising against a mapped
+site is the main cause of retry loops.
+
+| Site | Playbook | One-shot driver |
+|---|---|---|
+| **Outlook on the web** (`outlook.office.com`, `outlook.cloud.microsoft`) — drafting, replying, reading mail | [references/outlook-web.md](references/outlook-web.md) | `scripts/owa-compose.mjs` |
+
+> 🚨 **Outlook, in one line:** don't hand-drive it. Run
+> `node scripts/owa-compose.mjs draft --spec mail.json` — it opens the compose, fills
+> To/Cc/Bcc, sets the subject, injects rich HTML, and verifies the result in a single
+> command. **Never press `Escape` in an OWA compose** — it maps to *Discard* and silently
+> destroys the draft. Drafting is the default; sending requires an explicit `--confirm`.
 
 ## 🎯 Pick your mode — keyed on user pain
 
@@ -408,5 +425,24 @@ For long, iterative single-page exploration sessions (where the agent benefits f
 - For DPR-aware coordinates with `cdp.mjs clickxy`: CSS px = screenshot image px / DPR. Typical Retina (DPR=2): divide by 2.
 - After an interactive sign-in on any site (M365, GitHub, your bank, etc.) in a Mode A or Mode B session, the cookies survive `close`/restart cycles. No need to re-authenticate per run.
 - Reach for `cdp.mjs evalraw` when you need a raw `Network.*`, `Performance.*`, `Target.*`, or other CDP method that `playwright-cli`'s `run-code` can't reach ergonomically.
+- **Drafting mail in Outlook? Use `scripts/owa-compose.mjs`, not hand-rolled clicks.** See [references/outlook-web.md](references/outlook-web.md) for the verified DOM contract and the trap list (Escape = Discard, Bcc hidden until toggled, invisible decoy Close button, full-page compose has no Close).
+- **Each browser profile has its own Playwright Bridge token**, and `attach --extension` **never validates it** — a wrong token makes the CLI hang forever with no output, because validation happens inside the extension. Don't guess the token: `scripts/bridge-token.mjs` reads the real one straight from the profile on disk (`list` / `check` / `sync-all`, ~0.1s, no browser launch, no consent dialog). See [known-issues](references/known-issues.md#attach---extension-hangs-forever-on-a-stalewrong-token--high-solved).
 
-> **See also:** `references/agent-patterns.md` for the May-2026 ecosystem snapshot, the MCP-vs-CLI decision table, and the field consensus on DOM/A11y vs vision; `references/known-issues.md` for `playwright-cli` and `playwright-mcp` known issues, mitigations, and security considerations.
+## Bundled References
+
+Load these only when the trigger applies — none are needed for routine navigation, clicking,
+or form filling.
+
+| Read | When |
+|------|------|
+| `references/outlook-web.md` | Any Outlook / OWA task: drafting, replying, forwarding, reading mail, or picking a browser profile |
+| `references/known-issues.md` | An attach hangs or fails, a launch mode misbehaves, you hit the automation infobar, a work profile gets signed out, or you need the security/mitigation notes |
+| `references/agent-patterns.md` | Choosing between the CLI, MCP, and `cdp.mjs`; wiring `.mcp.json`; or justifying the DOM/A11y-vs-vision approach |
+
+## Bundled Scripts
+
+| Run | When |
+|-----|------|
+| `scripts/owa-compose.mjs` | Drafting, replying to, reading, or sending Outlook mail. Use it instead of hand-driving OWA — `draft --spec` is one shot and self-verifying |
+| `scripts/bridge-token.mjs` | Anything token- or profile-related: an attach hangs, you need a different browser profile, or you want to see/repair every profile's Playwright Bridge token (`list`, `check`, `sync-all` — no browser launch) |
+| `scripts/cdp.mjs` | Raw CDP escape hatch only — `Network.*`/`Performance.*`/`Target.*` methods, cross-origin iframe input, or driving a running browser without the bridge extension |

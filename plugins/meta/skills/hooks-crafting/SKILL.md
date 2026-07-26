@@ -10,6 +10,10 @@ compatibility: "GitHub Copilot CLI or Copilot cloud agent; lifecycle events and 
 A practical workflow for authoring Copilot hooks — shell/HTTP/prompt handlers that run at
 key points in the agent lifecycle (`hooks.json`).
 
+Hook decision and exit-code semantics have changed several times. Verify version-sensitive
+behaviour against `../agent-skill-audit/references/cli-feature-baseline.md` before relying
+on memory.
+
 ## When to Use
 
 - Creating or editing a `hooks.json` (plugin, repo, or user level)
@@ -37,8 +41,6 @@ that Copilot runs when a lifecycle **event** fires. Hooks are declared in JSON f
 
 Hooks are loaded from these sources and **combined** in this order — **policy → user →
 project → plugins** (when the same event appears in multiple sources, all entries run):
-
-<!-- validate:allow-user-paths -->
 
 | Source | Path | Scope |
 |--------|------|-------|
@@ -116,8 +118,10 @@ hook that returns JSON to control behavior.
 |-------|-----------|-----------------------|
 | `sessionStart` | A new or resumed session begins | Inject `additionalContext` |
 | `sessionEnd` | The session terminates | No |
-| `userPromptSubmitted` | The user submits a prompt | No |
+| `userPromptSubmitted` | The user submits a prompt | Inject `additionalContext`, or answer directly and skip the model (CLI only — the cloud agent fires it but ignores the output) |
+| `userPromptTransformed` | After the prompt has been transformed | Replace it via `modifiedTransformedPrompt` |
 | `preToolUse` | Before each tool executes | Allow / deny / modify args |
+| `preMcpToolCall` | Before an MCP tool call specifically | Allow / deny / modify args |
 | `postToolUse` | After a tool succeeds | Modify result / inject context |
 | `postToolUseFailure` | After a tool fails | Recovery `additionalContext` |
 | `permissionRequest` | Before the permission service runs (CLI only) | Allow / deny programmatically |
@@ -134,17 +138,21 @@ hook that returns JSON to control behavior.
 > is read, and only `bash`/`command` entries are honored (no `powershell`, no user/plugin hooks).
 > Keep cloud-agent hooks self-contained and send output over `http` since the sandbox is ephemeral.
 
-> Event names may be written in **camelCase** (e.g. `sessionStart`) or **PascalCase** (e.g.
-> `SessionStart`, `PreToolUse`, `Stop`). PascalCase selects the VS Code-compatible payload
-> with `snake_case` fields. Pick one convention per hook and match the payload format you parse.
+> **Aliases are not mechanical.** Most events also accept a Claude/VS Code-compatible
+> **PascalCase** name that selects a `snake_case` payload — but the mapping is *not* simple
+> re-casing. `userPromptSubmitted` → **`UserPromptSubmit`** and `agentStop` → **`Stop`**;
+> `UserPromptSubmitted` and `AgentStop` are **not** recognised and such a hook silently never
+> fires. `userPromptTransformed` and `preMcpToolCall` have no alias at all. Pick one
+> convention per hook and match the payload format you parse.
 
 ### Matchers
 
-`notification`, `permissionRequest`, `preCompact`, `preToolUse`, and `subagentStart` accept an
-optional `matcher` regex (anchored as `^(?:pattern)$`) that filters which invocations fire the
-hook — matched against `notification_type`; `toolName` for `permissionRequest`; `trigger`;
-`toolName` for `preToolUse`; and `agentName`, respectively. Invalid regexes cause the entry
-to be skipped.
+`notification`, `permissionRequest`, `preCompact`, `preToolUse`, `postToolUse`, and
+`subagentStart` accept an optional `matcher` regex (anchored as `^(?:pattern)$`) that filters
+which invocations fire the hook — matched against `notification_type`; `toolName` for
+`permissionRequest`; `trigger`; `toolName` for `preToolUse` and `postToolUse` (honored since
+CLI 1.0.63, previously dropped silently); and `agentName`, respectively. Invalid regexes cause
+the entry to be skipped.
 
 > **Claude-format `preToolUse` matchers differ.** A hook configured with the **PascalCase**
 > event name `PreToolUse` (Claude Code / Open Plugins format) uses Claude matcher semantics
@@ -160,7 +168,20 @@ Command hooks emit a decision by writing a single-line JSON object to **stdout**
 - **`permissionRequest`** → `{ "behavior": "allow"|"deny", "message": "...", "interrupt": true }`. CLI only; short-circuits the normal permission flow. Returning empty falls through to normal handling.
 - **`postToolUse`** → `{ "modifiedResult": {...}, "additionalContext": "..." }`. Return `{}` to keep the original result.
 - **`agentStop` / `subagentStop`** → `{ "decision": "block"|"allow", "reason": "<prompt for next turn>" }`.
+- **`userPromptSubmitted`** → `{ "additionalContext": "..." }` to add context, or a direct response to handle the request without a model call.
 - **`sessionStart` / `subagentStart` / `notification`** → `{ "additionalContext": "..." }`.
+
+> **`agentStop` blocking is capped.** A hook that always blocks no longer loops forever: the
+> CLI force-ends the turn after **8 consecutive blocks** and warns. The `agentStop` payload
+> carries `stop_hook_active` — true when the turn is already continuing because of a previous
+> block. Check it and stop blocking, rather than relying on the cap:
+>
+> ```bash
+> [ "$(jq -r '.stop_hook_active // false')" = "true" ] && { echo '{}'; exit 0; }
+> ```
+>
+> An `agentStop` hook that only reports and never blocks (always `echo '{}'; exit 0`) needs no
+> such guard — that is the safest default for observability hooks.
 
 > **Emit exactly one final decision object.** The CLI strips recognized progress lines (below)
 > from stdout, then concatenates and `JSON.parse`s everything that remains as a single object.
@@ -188,8 +209,14 @@ the decision parser.
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | Success. `stdout` parsed as decision JSON if present. |
-| `2` | Special: treated as `deny` for `permissionRequest` (stdout merged); `additionalContext` for `postToolUseFailure`; a surfaced warning otherwise (run continues). |
-| other non-zero | Logged as failure; **run continues (fail-open)**. |
+| `2` | Special: **denies** for `preToolUse` and `permissionRequest` (stdout merged); `additionalContext` for `postToolUseFailure`; a surfaced warning otherwise (run continues). |
+| other non-zero | `preToolUse` **denies the tool call**. Every other event logs the failure and the run continues. |
+
+> **"Hooks fail open" is no longer true across the board.** It still holds for most events, but
+> `preToolUse` now fails **closed**: exit code `2` denies (CLI 1.0.70), and a hook *error* denies
+> rather than silently allowing (CLI 1.0.57). A flaky or slow `preToolUse` hook will therefore
+> block real work — keep it fast, deterministic, and dependency-free. Hook *timeouts* are the
+> exception: since 1.0.67 the tool call continues when a hook times out.
 
 ## Step-by-Step: Create a Hook
 
@@ -210,9 +237,14 @@ the decision parser.
 
 ## Security and Reliability
 
-- **Hooks are not a hard security boundary.** Most command-hook failures are **fail-open** (the
-  run continues). For enforcement use the dedicated decision events (`preToolUse` deny,
-  `permissionRequest` deny) and verify they actually block — don't assume a failed gate denied.
+- **Hooks are not a hard security boundary.** Failures on most events are **fail-open** (the
+  run continues), so a gate that errors may not have denied anything. The exception is
+  `preToolUse`, which fails closed — plan for both directions. For enforcement use the
+  dedicated decision events (`preToolUse` deny, `permissionRequest` deny) and verify they
+  actually block.
+- **Hook commands run in the current session directory.** Since CLI 1.0.72 lifecycle and
+  subagent hook commands follow `/cd`, so don't assume the directory the CLI started in.
+  Resolve paths from the payload or an absolute base.
 - **HTTPS is required** for `http` hooks (and mandatory for `preToolUse`/`permissionRequest`).
   Only expose env vars to headers via `allowedEnvVars`.
 - **Never leak secrets** to stdout/stderr or to logs a hook writes; stdout is parsed/echoed.

@@ -15,7 +15,8 @@
  *      (allowlist: documentation-only files explicitly tagged with HTML comment
  *       <!-- validate:allow-user-paths -->)
  *   8. No broken symlinks
- *   9. No skill-name collisions across plugins
+ *   9. No agent-name collisions across plugins (skill-name collisions warn only —
+ *      Copilot CLI 1.0.66+ disambiguates same-named plugin skills via invocationName)
  *  10. Every plugin.json with a "hooks" field points to an existing hooks JSON
  *      FILE (e.g. "hooks/hooks.json", not a directory — a dir throws EISDIR at
  *      load time), and that hooks.json has a valid schema (version, known event
@@ -24,18 +25,19 @@
  *
  * Usage:
  *   node scripts/validate.mjs                  # full marketplace validation (CI)
- *   node scripts/validate.mjs --check-cli-schema [--bundle <index.js>]
- *                                              # compare SKILL_LIMITS against the
- *                                              # installed @github/copilot bundle
- *                                              # (local drift check; fails closed)
+ *   node scripts/validate.mjs --check-cli-schema [--copilot <path>]
+ *                                              # probe the installed Copilot CLI
+ *                                              # with boundary skills to confirm
+ *                                              # SKILL_LIMITS still matches what
+ *                                              # it enforces (fails closed)
  * Exits 0 on success, 1 on any failure.
  */
 
-import { readFileSync, statSync, readdirSync, lstatSync } from 'node:fs';
+import { readFileSync, statSync, readdirSync, lstatSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
-import { execSync } from 'node:child_process';
+import { homedir, tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -105,14 +107,14 @@ function readFrontmatter(path) {
 // when the file is otherwise well-formed — so we enforce them here to catch the
 // problem in CI before the CLI does.
 //
-// SOURCE OF TRUTH: @github/copilot/index.js. These constants are maintained by
-// hand on purpose (they change rarely), but you do NOT have to discover drift by
-// hand: run `node scripts/validate.mjs --check-cli-schema` to compare them
-// against the locally-installed CLI bundle (it fails loudly on any mismatch).
-// To verify manually, grep the bundle for these stable anchor strings:
-//   "Skill description must be at most 1024 characters"      -> descriptionMax
-//   "Skill name must be at most 64 characters"               -> nameMax
-//   /^[a-zA-Z0-9][a-zA-Z0-9._\- ]*$/  (the skill-name regex)  -> namePattern
+// SOURCE OF TRUTH: the Copilot CLI itself. As of CLI 1.0.75 these constants are
+// NOT statically scrapable — they moved out of the JS bundle into the native
+// `prebuilds/<platform>/runtime.node`, where the messages are assembled from
+// fragments at runtime. So we verify them BEHAVIOURALLY instead: run
+// `node scripts/validate.mjs --check-cli-schema` and it feeds the installed CLI
+// purpose-built probe skills that sit exactly on, and one past, each boundary,
+// then asserts the CLI accepted/rejected each one as we predict. It fails loudly
+// on any mismatch and never rewrites anything.
 //
 // Agents are intentionally NOT capped here: the CLI schema defines no agent
 // description/name limit, so inventing one would reject valid agents.
@@ -139,99 +141,195 @@ function checkSkillFrontmatter(fields, label) {
 }
 
 // ── --check-cli-schema: drift detector ───────────────────────────────────────
-// Optional, local-only check: when an installed @github/copilot bundle is
-// available, confirm SKILL_LIMITS above still matches the CLI's real zod schema.
-// It NEVER rewrites anything — it only reports drift, and it FAILS CLOSED:
-//   • bundle present + values differ        → exit 1 (update SKILL_LIMITS)
-//   • bundle present + an anchor won't match → exit 1 (the CLI changed its
-//                                              wording/format; update the anchors)
-//   • no bundle found                        → exit 0 (nothing to check; this is
-//                                              expected in CI, which has no CLI)
-// Pick the active bundle with `--bundle <path>`; otherwise it scans the bun
-// cache and the npm global root and uses the highest version it finds.
+// Optional, local-only check: confirm SKILL_LIMITS above still matches what the
+// installed Copilot CLI actually enforces.
+//
+// This is a BEHAVIOURAL probe, not a string scrape. It writes throwaway skills
+// into a temp project — one sitting exactly on each limit (must load) and one
+// sitting just past it (must be rejected) — then runs `copilot skill list --json`
+// there and checks the CLI's own verdict. That survives minification, bundling,
+// and the constants moving into the native runtime, which is what broke the
+// previous string-anchor approach at CLI 1.0.75.
+//
+// It NEVER rewrites anything, and it FAILS CLOSED:
+//   • CLI present + a boundary behaves unexpectedly → exit 1 (update SKILL_LIMITS)
+//   • CLI present + probe could not be run/parsed   → exit 1 (unverified is not OK)
+//   • no `copilot` on PATH                          → exit 0 (nothing to check;
+//                                                     expected in CI)
+// Point at a specific binary with `--copilot <path>`.
 
-/** Locate an installed @github/copilot CLI bundle (index.js). Returns {file, version} or null. */
-function locateCopilotBundle(override) {
-  if (override) {
-    if (!exists(override)) {
-      console.error(`✗ --bundle path not found: ${override}`);
-      process.exit(1);
-    }
-    return { file: override, version: 'override' };
-  }
-  const found = [];
-  // bun cache: ~/.bun/install/cache/@github/copilot@<ver>[@@@n]/index.js
-  const bunDir = join(homedir(), '.bun/install/cache/@github');
-  if (isDir(bunDir)) {
-    for (const d of readdirSync(bunDir)) {
-      if (!d.startsWith('copilot@')) continue;
-      const file = join(bunDir, d, 'index.js');
-      if (exists(file)) found.push({ file, version: d.slice('copilot@'.length) });
-    }
-  }
-  // npm global: <npm root -g>/@github/copilot/index.js
-  try {
-    const ngr = execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    const file = join(ngr, '@github/copilot/index.js');
-    if (exists(file)) {
-      let version = 'npm-global';
-      try { version = JSON.parse(readFileSync(join(ngr, '@github/copilot/package.json'), 'utf8')).version || version; } catch { /* ignore */ }
-      found.push({ file, version });
-    }
-  } catch { /* npm not available */ }
-  if (!found.length) return null;
-  // highest version string wins (best-effort; the chosen version is always printed)
-  found.sort((a, b) => (a.version < b.version ? 1 : -1));
-  return found[0];
-}
+const PROBE_PREFIX = 'zzprobe';
 
-/** Require exactly one capture of `re` in `src`; fail closed otherwise. */
-function extractOne(src, re, what) {
-  const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
-  const hits = [];
-  let m;
-  while ((m = g.exec(src)) !== null) hits.push(m[1]);
-  if (hits.length !== 1) {
-    console.error(`✗ --check-cli-schema: expected exactly 1 match for ${what} in the CLI bundle, found ${hits.length}.`);
-    console.error(`  The CLI's frontmatter schema format changed — update the anchors and SKILL_LIMITS in scripts/validate.mjs.`);
+/** Locate the Copilot CLI executable. Returns {bin, version} or null. */
+function locateCopilotCli(override) {
+  const bin = override || 'copilot';
+  if (override && !exists(override)) {
+    console.error(`✗ --copilot path not found: ${override}`);
     process.exit(1);
   }
-  return hits[0];
+  try {
+    // spawnSync (no shell) — `execSync` would run `bin` through /bin/sh, so a
+    // path like `$(...)` passed to --copilot would be evaluated as a command.
+    const res = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 60_000 });
+    if (res.error) throw res.error;
+    if (res.status !== 0) throw new Error(`exited with status ${res.status}`);
+    const version = ((res.stdout || '').match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/) || [])[0];
+    return { bin, version: version || 'unknown' };
+  } catch (e) {
+    // An explicitly requested binary that cannot be run is a hard failure —
+    // silently reporting "nothing to check" would be a false green.
+    if (override) {
+      console.error(`✗ --check-cli-schema: \`${override} --version\` failed: ${e.message.split('\n')[0]}`);
+      console.error('  Refusing to report success without a verified comparison.');
+      process.exit(1);
+    }
+    return null;
+  }
+}
+
+/**
+ * Probe cases. `name`/`description` are fed to the CLI verbatim; `shouldLoad`
+ * is what SKILL_LIMITS predicts. Any disagreement means our constants are stale.
+ */
+function buildProbeCases() {
+  const { descriptionMax, nameMax } = SKILL_LIMITS;
+  const okName = `${PROBE_PREFIX}-desc`;
+  return [
+    { dir: 'desc-at',   name: okName,                                   description: 'x'.repeat(descriptionMax),     shouldLoad: true,  what: `description of exactly ${descriptionMax} chars` },
+    { dir: 'desc-over', name: `${PROBE_PREFIX}-desc-over`,              description: 'x'.repeat(descriptionMax + 1), shouldLoad: false, what: `description of ${descriptionMax + 1} chars` },
+    { dir: 'name-at',   name: PROBE_PREFIX + 'a'.repeat(nameMax - PROBE_PREFIX.length),     description: 'probe', shouldLoad: true,  what: `name of exactly ${nameMax} chars` },
+    { dir: 'name-over', name: PROBE_PREFIX + 'a'.repeat(nameMax - PROBE_PREFIX.length + 1), description: 'probe', shouldLoad: false, what: `name of ${nameMax + 1} chars` },
+    { dir: 'name-lead', name: `-${PROBE_PREFIX}`,                       description: 'probe', shouldLoad: false, what: 'name with a leading hyphen' },
+    { dir: 'name-char', name: `${PROBE_PREFIX}/slash`,                  description: 'probe', shouldLoad: false, what: 'name containing a slash' },
+  ];
+}
+
+/**
+ * Pull the first well-formed JSON array out of `text`, ignoring surrounding
+ * noise (update notices, warnings) that may itself contain brackets. Scans
+ * candidate `[` positions and bracket-matches with string/escape awareness,
+ * so a banner like `[Notice] ...` can't swallow the real payload.
+ */
+function extractJsonArray(text) {
+  for (let start = text.indexOf('['); start !== -1; start = text.indexOf('[', start + 1)) {
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === '[' || ch === '{') depth++;
+      else if (ch === ']' || ch === '}') {
+        depth--;
+        if (depth === 0) {
+          try {
+            const parsed = JSON.parse(text.slice(start, i + 1));
+            if (Array.isArray(parsed)) return parsed;
+          } catch { /* not this candidate */ }
+          break;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function checkCliSchemaDrift() {
-  const bundle = locateCopilotBundle(flagValue('--bundle'));
-  if (!bundle) {
-    console.log('ℹ --check-cli-schema: no installed @github/copilot bundle found — nothing to compare (expected in CI). Pass --bundle <path> to force.');
+  const cli = locateCopilotCli(flagValue('--copilot'));
+  if (!cli) {
+    console.log('ℹ --check-cli-schema: no runnable `copilot` CLI found — nothing to probe (expected in CI). Pass --copilot <path> to force.');
     process.exit(0);
   }
-  const src = readFileSync(bundle.file, 'utf8');
-  const descMax = Number(extractOne(src, /max\((\d+),"Skill description must be at most \d+ characters"\)/, 'description max'));
-  const nameMax = Number(extractOne(src, /max\((\d+),"Skill name must be at most \d+ characters"\)/, 'name max'));
-  const namePattern = extractOne(src, /(\/\^\[a-zA-Z0-9\]\[a-zA-Z0-9[^/]*\$\/)/, 'name regex').slice(1, -1);
 
-  const diffs = [];
-  if (descMax !== SKILL_LIMITS.descriptionMax) diffs.push(`descriptionMax: ours=${SKILL_LIMITS.descriptionMax} CLI=${descMax}`);
-  if (nameMax !== SKILL_LIMITS.nameMax) diffs.push(`nameMax: ours=${SKILL_LIMITS.nameMax} CLI=${nameMax}`);
-  if (namePattern !== SKILL_LIMITS.namePattern.source) diffs.push(`namePattern: ours=${SKILL_LIMITS.namePattern.source} CLI=${namePattern}`);
+  const cases = buildProbeCases();
 
-  console.log(`ℹ --check-cli-schema: compared against @github/copilot@${bundle.version}`);
-  if (diffs.length) {
-    console.error(`✗ --check-cli-schema: SKILL_LIMITS is stale — update scripts/validate.mjs:`);
-    for (const d of diffs) console.error(`    • ${d}`);
+  // Sanity-check the probe itself: every case must agree with SKILL_LIMITS
+  // locally, otherwise a green run would prove nothing.
+  for (const c of cases) {
+    const localOk = c.name.length <= SKILL_LIMITS.nameMax
+      && SKILL_LIMITS.namePattern.test(c.name)
+      && c.description.length <= SKILL_LIMITS.descriptionMax;
+    if (localOk !== c.shouldLoad) {
+      console.error(`✗ --check-cli-schema: internal probe error — case "${c.dir}" (${c.what}) contradicts SKILL_LIMITS. Fix buildProbeCases().`);
+      process.exit(1);
+    }
+  }
+
+  const tmp = mkdtempSync(join(tmpdir(), 'cli-schema-'));
+  let stdout = '';
+  let stderr = '';
+  try {
+    for (const c of cases) {
+      const d = join(tmp, '.github', 'skills', c.dir);
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, 'SKILL.md'), `---\nname: ${c.name}\ndescription: ${c.description}\n---\n\nThrowaway probe skill.\n`);
+    }
+    const res = spawnSync(cli.bin, ['skill', 'list', '--json', '--no-auto-update'], {
+      cwd: tmp, encoding: 'utf8', timeout: 180_000,
+    });
+    if (res.error) {
+      console.error(`✗ --check-cli-schema: could not run \`${cli.bin} skill list --json\`: ${res.error.message}`);
+      console.error('  Refusing to report success without a verified comparison.');
+      // process.exit() skips `finally`, so clean up before bailing.
+      try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+      process.exit(1);
+    }
+    stdout = res.stdout || '';
+    stderr = res.stderr || '';
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+
+  // `skill list --json` prints the JSON array on stdout; skills the CLI refused
+  // are reported separately on stderr.
+  const listed = extractJsonArray(stdout);
+  if (!listed) {
+    console.error('✗ --check-cli-schema: could not parse `copilot skill list --json` output.');
+    console.error('  The CLI changed its output format — update checkCliSchemaDrift() in scripts/validate.mjs.');
+    console.error(`  First 400 chars of stdout: ${JSON.stringify(stdout.slice(0, 400))}`);
     process.exit(1);
   }
-  console.log('✅ --check-cli-schema: SKILL_LIMITS matches the installed CLI schema (descriptionMax, nameMax, namePattern).');
+  const loaded = new Set(listed.filter((s) => s && s.source === 'project').map((s) => s.name));
+
+  const diffs = [];
+  for (const c of cases) {
+    const didLoad = loaded.has(c.name);
+    if (didLoad === c.shouldLoad) continue;
+    diffs.push(c.shouldLoad
+      ? `we predict a ${c.what} is VALID, but the CLI rejected it`
+      : `we predict a ${c.what} is INVALID, but the CLI accepted it`);
+  }
+
+  console.log(`ℹ --check-cli-schema: probed Copilot CLI ${cli.version} with ${cases.length} boundary skills`);
+  if (diffs.length) {
+    console.error('✗ --check-cli-schema: SKILL_LIMITS is stale — update scripts/validate.mjs:');
+    for (const d of diffs) console.error(`    • ${d}`);
+    const reported = stderr.split('\n').filter((l) => l.includes(PROBE_PREFIX) || /must be at most|must start with/.test(l));
+    if (reported.length) {
+      console.error('  The CLI reported:');
+      for (const l of reported) console.error(`    ${l.trim()}`);
+    }
+    process.exit(1);
+  }
+  console.log(`✅ --check-cli-schema: SKILL_LIMITS matches the installed CLI (descriptionMax=${SKILL_LIMITS.descriptionMax}, nameMax=${SKILL_LIMITS.nameMax}, namePattern=${SKILL_LIMITS.namePattern.source}).`);
   process.exit(0);
 }
 
 // ── Hook schema validation ───────────────────────────────────────────────────
 const HOOK_EVENTS = new Set([
-  // camelCase
-  'sessionStart', 'sessionEnd', 'userPromptSubmitted', 'preToolUse', 'postToolUse',
-  'postToolUseFailure', 'permissionRequest', 'agentStop', 'subagentStart', 'subagentStop',
-  'errorOccurred', 'preCompact', 'notification',
-  // VS Code compatible PascalCase
+  // camelCase — the CLI's canonical event enum (verified against the 1.0.75
+  // native runtime's contiguous event-name cluster).
+  'sessionStart', 'sessionEnd', 'userPromptSubmitted', 'userPromptTransformed',
+  'preToolUse', 'preMcpToolCall', 'postToolUse', 'postToolUseFailure',
+  'errorOccurred', 'agentStop', 'subagentStart', 'subagentStop',
+  'preCompact', 'permissionRequest', 'notification',
+  // Claude-format aliases. NOT a mechanical PascalCase of the above:
+  // `userPromptSubmitted` maps to `UserPromptSubmit` and `agentStop` to `Stop`,
+  // while `userPromptTransformed` and `preMcpToolCall` have no alias.
   'SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse',
   'PostToolUseFailure', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop',
   'ErrorOccurred', 'PreCompact', 'Notification',
@@ -403,8 +501,11 @@ for (const entry of marketplace.plugins ?? []) {
 }
 
 // 9. Collisions
+// Copilot CLI 1.0.66 lets same-named skills from different plugins coexist, disambiguating
+// them via invocationName — so a cross-plugin skill collision is a clarity problem, not a
+// load failure. Agent names still have to be unique.
 for (const [name, owners] of skillIndex) {
-  if (owners.length > 1) err(`Skill name collision: "${name}" defined in plugins ${owners.join(', ')}`);
+  if (owners.length > 1) warn(`Skill name collision: "${name}" defined in plugins ${owners.join(', ')} — the CLI disambiguates via invocationName, but duplicate names are ambiguous for users. Prefer distinct names.`);
 }
 for (const [name, owners] of agentIndex) {
   if (owners.length > 1) err(`Agent name collision: "${name}" defined in plugins ${owners.join(', ')}`);

@@ -27,12 +27,12 @@ Authoring and audit skills need nothing beyond the Copilot CLI.
 
 | Name | Description | Triggers / Keywords |
 | --- | --- | --- |
-| [`agent-crafting`](skills/agent-crafting/SKILL.md) 🔒 | Creates and refines custom Copilot agents. Use for scaffolding, frontmatter or tool configuration, role and boundary design, invocation behavior, and troubleshooting loading or routing errors. | — |
-| [`agent-skill-audit`](skills/agent-skill-audit/SKILL.md) 🔒 | Audits and improves Copilot agents, skills, and hooks. Use for inventory, frontmatter validation, routing or overlap issues, quality scoring, separation-of-concerns, security reviews, and system… | — |
+| [`agent-crafting`](skills/agent-crafting/SKILL.md) 📚 🔒 | Creates and refines custom Copilot agents. Use for scaffolding, frontmatter or tool configuration, role and boundary design, invocation behavior, and troubleshooting loading or routing errors. | — |
+| [`agent-skill-audit`](skills/agent-skill-audit/SKILL.md) 📚 🔒 | Audits and improves Copilot agents, skills, and hooks. Use for inventory, frontmatter validation, routing or overlap issues, quality scoring, separation-of-concerns, security reviews, and system… | — |
 | [`hooks-crafting`](skills/hooks-crafting/SKILL.md) 📚 🔒 | Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications, matchers, and security. | — |
 | [`plugin-crafting`](skills/plugin-crafting/SKILL.md) 🔒 | Builds and troubleshoots Copilot CLI plugins and marketplaces. Use for plugin.json or marketplace.json, packaging agents/skills/hooks/commands/extensions/MCP/LSP servers, install or enable flows,… | — |
 | [`scheduled-headless-copilot`](skills/scheduled-headless-copilot/SKILL.md) 📚 | Schedules unattended Copilot CLI tasks via launchd, cron, systemd, or Windows Task Scheduler. Use to run copilot -p periodically when the terminal or session is closed. | — |
-| [`scheduled-skill-review`](skills/scheduled-skill-review/SKILL.md) 📜 📚 | Manages the macOS daemon that reviews this marketplace's used plugin agents and skills, deploys validated improvements, and reverts regressions. | — |
+| [`scheduled-skill-review`](skills/scheduled-skill-review/SKILL.md) 📜 📚 | Manages scheduled Copilot skill-and-agent reviews on macOS with a menu-bar app for status, control, and per-unit settings. | — |
 | [`skill-crafting`](skills/skill-crafting/SKILL.md) 🔒 | Finds, evaluates, creates, and refines Copilot Agent Skills. Use for skill discovery or installation, SKILL.md and frontmatter design, trigger descriptions, progressive disclosure, security review,… | — |
 | [`skill-improvement-loop`](skills/skill-improvement-loop/SKILL.md) 📚 🔒 | Improves agents or skills using observed session evidence. Use for triggering issues, procedure-adherence gaps, repeated tool failures, user corrections, feedback loops, and regression checks. | — |
 

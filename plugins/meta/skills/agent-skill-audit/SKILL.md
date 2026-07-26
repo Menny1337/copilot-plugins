@@ -8,6 +8,14 @@ user-invocable: false
 
 A structured procedure for auditing, refining, and evolving custom Copilot agent, skill, and hook systems in any repository.
 
+## Bundled Reference
+
+- **`references/cli-feature-baseline.md`** — verified Copilot CLI feature surface
+  (skill/agent frontmatter, discovery locations, skill and plugin commands, hook
+  semantics, headless flags and environment) plus the procedure for re-verifying
+  it against a newer CLI. Read it before judging whether guidance is current, and
+  refresh it when the baseline version falls behind `copilot --version`.
+
 ## When to Use
 
 - Periodic health check of all agents and skills in a repository
@@ -123,6 +131,9 @@ For every skill file, verify structural quality:
       an agent body to supply missing steps
 - [ ] **Actionable steps** — Has numbered or ordered procedure, not just prose
 - [ ] **References valid** — All file paths, commands, and patterns still exist
+- [ ] **CLI currency** — Any claim about Copilot CLI behavior, frontmatter fields, commands, or
+      flags matches `references/cli-feature-baseline.md`; the baseline itself is no older than
+      the installed `copilot --version`
 - [ ] **Context efficiency** — Body is under 500 lines; heavy or conditional detail uses
       shallow references and deterministic work uses scripts
 - [ ] **Dependency clarity** — Portable by default; unavoidable host/plugin/agent coupling is
@@ -140,7 +151,7 @@ For every `hooks.json` (plugin, repo, or user level), verify structure and safet
 authoring detail, defer to the `hooks-crafting` skill.
 
 - [ ] **`version: 1`** present and top-level `hooks` is an object keyed by event names
-- [ ] **Valid event names** — only known events (`sessionStart`, `sessionEnd`, `userPromptSubmitted`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `permissionRequest`, `agentStop`, `subagentStart`, `subagentStop`, `errorOccurred`, `preCompact`, `notification`), in camelCase or PascalCase — no typos
+- [ ] **Valid event names** — only known events (`sessionStart`, `sessionEnd`, `userPromptSubmitted`, `userPromptTransformed`, `preToolUse`, `preMcpToolCall`, `postToolUse`, `postToolUseFailure`, `permissionRequest`, `agentStop`, `subagentStart`, `subagentStop`, `errorOccurred`, `preCompact`, `notification`) — no typos. PascalCase aliases exist for most but are **not** mechanical re-casing (`userPromptSubmitted` → `UserPromptSubmit`, `agentStop` → `Stop`); an unrecognised name silently never fires.
 - [ ] **Valid type per entry** — `command` (default), `http`, or `prompt`
 - [ ] **Command hooks** provide `bash` and/or `powershell` (or `command`) for cross-platform parity
 - [ ] **HTTP hooks** set `url` using `https://` (required for `preToolUse`/`permissionRequest`); secrets only via `allowedEnvVars`
@@ -195,6 +206,16 @@ Rate each agent and skill on a 0–5 scale across these dimensions:
 | **Boundaries** | No when-to-use/skip | Basic triggers listed | Clear triggers with redirects |
 | **Context Efficiency** | Bloated / deep refs | Acceptable but noisy | Lean body, shallow refs, scripts for deterministic work |
 | **Security & Evaluation** | Unsafe or untested | Partial safeguards/tests | Least privilege plus baseline, near-miss, held-out checks |
+
+**Hook quality dimensions:**
+
+| Dimension | 0 (Poor) | 3 (Adequate) | 5 (Excellent) |
+|-----------|----------|--------------|----------------|
+| **Schema** | Invalid version/event/type | Valid but minimal | Valid, complete, correct fields per type |
+| **Portability** | Single-shell only | One platform plus notes | `bash` and `powershell` parity, or justified single-platform |
+| **Safety** | Unquoted input, `eval`, leaks secrets | Basic quoting | Parsed JSON, quoted values, allowlisted actions, no secret output |
+| **Reliability** | No timeout, missing/non-executable script | Runs but slow or noisy | Sane `timeoutSec`, executable script with shebang, correct exit codes |
+| **Wiring** | `plugin.json` points at a directory or missing file | Points at a file | Points at the hooks JSON file and is indexed in the catalog |
 
 ### Step 7: Refine
 
@@ -268,6 +289,9 @@ After auditing, propose improvements:
 
 | Skill | Completeness | Portability | Actionability | Accuracy | Boundaries | Context | Security/Evals | Avg |
 |-------|--------------|-------------|---------------|----------|------------|---------|----------------|-----|
+
+| Hook | Schema | Portability | Safety | Reliability | Wiring | Avg |
+|------|--------|-------------|--------|-------------|--------|-----|
 
 ### Evidence
 - Verified defects: [validator failures, broken references, schema mismatches]

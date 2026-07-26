@@ -1,6 +1,7 @@
 ---
 name: write-prd
 description: 'Create product requirements documents through structured discovery and interview. Use when creating a PRD, planning a feature, writing a spec, or designing a solution before implementation.'
+argument-hint: "<feature or product idea>"
 ---
 
 # Write a PRD

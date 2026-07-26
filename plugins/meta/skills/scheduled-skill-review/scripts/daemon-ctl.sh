@@ -16,6 +16,7 @@
 #   daemon-ctl.sh deploy-default <auto|pr>  set the default policy for unlisted units
 #   daemon-ctl.sh config-get          print the full effective config JSON (defaults merged)
 #   daemon-ctl.sh config-set          read a JSON patch on stdin, validate, merge into config.json
+#   daemon-ctl.sh unit-catalog        list all marketplace + external review units as JSON
 #   daemon-ctl.sh open-digest         print path to the latest digest
 #   daemon-ctl.sh open-config         print path to config.json
 #   daemon-ctl.sh reconcile           reconcile PR-status cycles vs GitHub now
@@ -118,6 +119,35 @@ case "$cmd" in
       const { loadConfig } = await import(pathToFileURL(process.env.LIB).href);
       process.stdout.write(JSON.stringify(loadConfig(), null, 2) + '\n');
     " ;;
+  unit-catalog)
+    # Native settings-window catalog: every marketplace unit plus configured
+    # external SKILL.md files. Preserve stale policy entries as removable rows
+    # rather than hiding configuration that no longer resolves to a file.
+    LIB="$DIR/lib.mjs" node --input-type=module -e "
+      import { pathToFileURL } from 'node:url';
+      const lib = await import(pathToFileURL(process.env.LIB).href);
+      const cfg = lib.loadConfig();
+      const units = lib.enumerateUnitEntries(
+        lib.expandHome(cfg.repoDir), cfg.skillPaths, cfg.skillFolders
+      );
+      const known = new Set(units.map(u => u.name));
+      const configured = new Set([
+        ...(cfg.include || []), ...(cfg.exclude || []),
+        ...(cfg.autoMergeUnits || []), ...(cfg.prUnits || []),
+      ]);
+      for (const name of configured) {
+        if (!known.has(name)) units.push({
+          name, type: 'unknown', path: '', source: 'configured',
+          plugin: '', exists: false, conflict: false,
+        });
+      }
+      units.sort((a, b) =>
+        (a.type === 'skill' ? 0 : a.type === 'agent' ? 1 : 2) -
+        (b.type === 'skill' ? 0 : b.type === 'agent' ? 1 : 2) ||
+        a.name.localeCompare(b.name) || a.path.localeCompare(b.path)
+      );
+      process.stdout.write(JSON.stringify({ units }, null, 2) + '\n');
+    " ;;
   config-set)
     # Read a JSON patch object from stdin, validate/coerce each known key, then
     # merge into config.json (schedule deep-merged; unknown/unmanaged keys are
@@ -154,7 +184,8 @@ case "$cmd" in
           case 'revertDeployMode': enumKey(k, v, ['auto', 'pr', 'unit']); break;
           case 'notify': enumKey(k, v, ['auto', 'none']); break;
           case 'repoDir': case 'marketplaceName': case 'ghAccount': strKey(k, v); break;
-          case 'include': case 'exclude': case 'autoMergeUnits': case 'prUnits': strArr(k, v); break;
+          case 'include': case 'exclude': case 'autoMergeUnits': case 'prUnits':
+          case 'skillPaths': case 'skillFolders': strArr(k, v); break;
           case 'schedule': {
             if (v === null || typeof v !== 'object' || Array.isArray(v)) { errs.push('schedule must be an object'); break; }
             const s = {};
@@ -246,6 +277,6 @@ case "$cmd" in
     " ;;
   *)
     echo "unknown command: $cmd" >&2
-    echo "usage: status|pause|resume|run-now|review-unit <n>|include <n>|exclude <n>|unset <n>|auto-merge <n>|review-pr <n>|deploy-default <auto|pr>|config-get|config-set|open-digest|open-config|reconcile" >&2
+    echo "usage: status|pause|resume|run-now|review-unit <n>|include <n>|exclude <n>|unset <n>|auto-merge <n>|review-pr <n>|deploy-default <auto|pr>|config-get|config-set|unit-catalog|open-digest|open-config|reconcile" >&2
     exit 2 ;;
 esac

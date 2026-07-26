@@ -1,6 +1,7 @@
 ---
 name: scheduled-headless-copilot
 description: "Schedules unattended Copilot CLI tasks via launchd, cron, systemd, or Windows Task Scheduler. Use to run copilot -p periodically when the terminal or session is closed."
+argument-hint: "<task to run on a schedule>"
 user-invocable: true
 compatibility: "Requires GitHub Copilot CLI and launchd, cron, systemd, or Windows Task Scheduler."
 ---
@@ -10,10 +11,10 @@ compatibility: "Requires GitHub Copilot CLI and launchd, cron, systemd, or Windo
 Make a Copilot CLI task run on a clock — unattended, with no session or terminal open — by
 driving a headless `copilot -p` run from an OS-level scheduler.
 
-> **Why this skill exists.** The in-session `/every` command is **session-bound**: it only
-> fires while a Copilot session stays alive, and stops the moment you quit. To run *when
-> Copilot is off*, you need an OS scheduler (launchd / cron / systemd / Task Scheduler) that
-> launches Copilot headlessly. This skill is the reusable pattern;
+> **Why this skill exists.** The in-session `/every` and `/after` commands are
+> **session-bound**: they only fire while a Copilot session stays alive, and stop the moment
+> you quit. To run *when Copilot is off*, you need an OS scheduler (launchd / cron / systemd /
+> Task Scheduler) that launches Copilot headlessly. This skill is the reusable pattern;
 > `scheduled-skill-review` is one concrete, shipped implementation of it.
 
 ## When to Use
@@ -27,8 +28,9 @@ driving a headless `copilot -p` run from an OS-level scheduler.
 ## When to Skip
 
 - You only need recurrence **while a Copilot session stays open** → use the in-session
-  `/every` command. It is session-bound and stops when Copilot closes — it does **not** run
-  when Copilot is off.
+  `/every` (recurring) or `/after` (one-shot, delayed) commands. Both accept natural language
+  and can schedule slash commands, but both are session-bound and stop when Copilot closes —
+  they do **not** run when Copilot is off.
 - You want the specific *\* skill/agent self-review daemon* → use `scheduled-skill-review`,
   which is a ready-made implementation of this pattern (scan → review → deploy → revert) with
   a menu-bar UI. Use this skill only when building a **different** scheduled task.

@@ -1,6 +1,7 @@
 ---
 name: m365-messaging
 description: "Read and send Microsoft Teams messages via the Teams MCP server (chats, channels, presence, mentions, search). Use for catch-up on chats, replying to people, posting to a channel, checking if someone is online before pinging, or searching past Teams conversations. Triggers: check Teams, any new messages, unread, DMs, message Sarah, ping the team, post to channel, what did X say, mentions, who messaged me, Teams catch up, is X online, send Teams message, notes to self, reply on Teams, send Teams file, m365 user lookup."
+argument-hint: "<person or channel, and the message to send>"
 ---
 
 # M365 Messaging

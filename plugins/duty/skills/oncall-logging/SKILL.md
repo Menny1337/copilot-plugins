@@ -1,6 +1,7 @@
 ---
 name: oncall-logging
 description: "Structured on-call data entry: workspace initialization, shift lifecycle, log entries (incidents, actions, notes, escalations, comms), entry linking, incident management, and file naming conventions. Triggers: log, incident, shift start, shift end, on-call entry, escalation, action taken."
+argument-hint: "<incident, action, note, or escalation to log>"
 ---
 
 # On-Call Logging

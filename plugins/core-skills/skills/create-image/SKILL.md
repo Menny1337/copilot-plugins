@@ -1,6 +1,7 @@
 ---
 name: create-image
 description: "Generate and edit images with OpenAI gpt-image-2 deployed on Azure AI Foundry, via the bundled `gpt-image` Node wrapper (no external CLI required). Use for presentation visuals, hero images, mascots, icons, stickers, UI mockups, marketing art, transparent assets, and reference-image edits. The wrapper calls the Azure OpenAI v1 images API with a Bearer key and writes PNG/JPEG files. Triggers: generate image, create image, edit image, gpt-image, gpt-image-2, Azure image, transparent asset, mascot, icon, sticker, mockup, hero image, illustration, Foundry image."
+argument-hint: "<what to generate> [path to a reference image]"
 user-invocable: true
 ---
 

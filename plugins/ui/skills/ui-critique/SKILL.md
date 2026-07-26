@@ -1,6 +1,7 @@
 ---
 name: ui-critique
 description: "Review and evaluate UI components against design principles. Use when reviewing, scoring, or critiquing React/TypeScript UI code for quality, accessibility, hierarchy, and design system compliance."
+argument-hint: "<component path or code to review>"
 ---
 
 # UI Critique Procedure

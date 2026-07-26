@@ -1,6 +1,7 @@
 ---
 name: oncall-query
 description: "Search, filter, aggregate, and report on on-call data. Timeline views, active incidents, shift handoffs, weekly summaries, and metrics. Triggers: query, search, find, show, list, report, handoff, summary, metrics, timeline, what happened, open incidents."
+argument-hint: "<what to search, or a report to generate>"
 ---
 
 # On-Call Query & Reporting

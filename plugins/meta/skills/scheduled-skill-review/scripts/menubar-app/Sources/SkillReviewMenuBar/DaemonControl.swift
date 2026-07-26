@@ -1,10 +1,19 @@
 import Foundation
 
+enum DaemonControlError: LocalizedError {
+    case reviewDidNotStart
+
+    var errorDescription: String? {
+        "The review did not start. Another review cycle may already be running."
+    }
+}
+
 protocol DaemonControlling {
     func pause() async throws
     func resume() async throws
     func reconcile() async throws
     func runNow() async throws
+    func reviewUnit(_ name: String) async throws -> String
     func openLatestDigest() async throws
     func openConfig() async throws
     func openWorkspace() async throws
@@ -31,6 +40,14 @@ struct ShellDaemonControl: DaemonControlling {
         try await open(arguments: ["-a", "Terminal", commandURL.path])
     }
 
+    func reviewUnit(_ name: String) async throws -> String {
+        let output = try await runDaemonCommand("review-unit", arguments: [name])
+        let summary = String(data: output.stdout, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !summary.isEmpty else { throw DaemonControlError.reviewDidNotStart }
+        return summary
+    }
+
     func openLatestDigest() async throws {
         try await open(arguments: [Constants.workspaceURL.appendingPathComponent("latest-digest.md").path])
     }
@@ -47,9 +64,10 @@ struct ShellDaemonControl: DaemonControlling {
         try await open(arguments: [url])
     }
 
-    private func runDaemonCommand(_ subcommand: String) async throws {
+    @discardableResult
+    private func runDaemonCommand(_ subcommand: String, arguments: [String] = []) async throws -> ProcessOutput {
         let scriptURL = try discovery.resolveDaemonControlScript()
-        _ = try await ProcessRunner.runOrThrow(scriptURL, arguments: [subcommand])
+        return try await ProcessRunner.runOrThrow(scriptURL, arguments: [subcommand] + arguments)
     }
 
     private func open(arguments: [String]) async throws {

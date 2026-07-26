@@ -31,6 +31,6 @@ struct SkillReviewMenuBarApp: App {
             ConfigWindow(model: configModel)
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 540, height: 780)
+        .defaultSize(width: 820, height: 820)
     }
 }

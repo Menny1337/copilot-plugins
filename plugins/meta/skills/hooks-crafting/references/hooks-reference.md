@@ -32,11 +32,13 @@ camelCase shapes shown; PascalCase equivalents use snake_case keys plus `hook_ev
 | `sessionStart` | `source: "startup"\|"resume"\|"new"`, `initialPrompt?` |
 | `sessionEnd` | `reason: "complete"\|"error"\|"abort"\|"timeout"\|"user_exit"` |
 | `userPromptSubmitted` | `prompt` |
+| `userPromptTransformed` | `prompt`, `transformedPrompt` — fires after the prompt is transformed (e.g. by `userPromptSubmitted` context injection). Output may set `modifiedTransformedPrompt`. No PascalCase alias. |
 | `preToolUse` | `toolName`, `toolArgs` |
+| `preMcpToolCall` | `toolName`, `toolArgs` for MCP tool calls specifically. No PascalCase alias. |
 | `permissionRequest` | `toolName`, `toolArgs` (CLI only; fires before the permission service) |
 | `postToolUse` | `toolName`, `toolArgs`, `toolResult: { resultType: "success", textResultForLlm }` |
 | `postToolUseFailure` | `toolName`, `toolArgs`, `error` |
-| `agentStop` | `transcriptPath`, `stopReason: "end_turn"` (PascalCase event name is `Stop`) |
+| `agentStop` | `transcriptPath`, `stopReason: "end_turn"`, `stop_hook_active` (PascalCase event name is `Stop`) |
 | `subagentStart` | `transcriptPath`, `agentName`, `agentDisplayName?`, `agentDescription?` |
 | `subagentStop` | `transcriptPath`, `agentName`, `agentDisplayName?`, `stopReason: "end_turn"` |
 | `errorOccurred` | `error: {message,name,stack?}`, `errorContext: "model_call"\|"tool_execution"\|"system"\|"user_input"`, `recoverable` |
@@ -96,6 +98,10 @@ For command hooks, exit `2` ⇒ `{"behavior":"deny"}` (stdout JSON merged in).
 | `decision` | `"block"` / `"allow"` | `"block"` forces another turn using `reason` as the prompt. |
 | `reason` | string | Prompt for the forced next turn. |
 
+The CLI ends the turn after **8 consecutive blocks** and warns. Read `stop_hook_active` from
+the payload — it is true when this turn only exists because a previous invocation blocked —
+and return `{}` instead of blocking again.
+
 ### `sessionStart` / `subagentStart` / `notification`
 
 `{ "additionalContext": "..." }` — injected into the session (for `subagentStart`, prepended
@@ -139,8 +145,11 @@ reports `tool_name` as the **Claude tool name** (e.g. `Bash`, not `bash`):
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | Success. `stdout` parsed as decision JSON if present. |
-| `2` | Warning by default (`stderr` surfaced, run continues). `permissionRequest`: treated as `deny`. `postToolUseFailure`: treated as `additionalContext`. |
-| other non-zero | Logged as a hook failure; run continues (**fail-open**). |
+| `2` | `preToolUse` and `permissionRequest`: treated as **deny**. `postToolUseFailure`: treated as `additionalContext`. Otherwise a warning (`stderr` surfaced, run continues). |
+| other non-zero | `preToolUse`: **denies the tool call** (hook errors fail closed since CLI 1.0.57). Every other event logs the failure and the run continues (**fail-open**). |
+
+A hook that *times out* does not block the tool call (CLI 1.0.67) — only explicit denials and
+`preToolUse` errors do.
 
 If multiple hooks of the same type fire, they run in order; for `preToolUse` any `deny` blocks
 the tool. Later hook outputs override earlier ones when merged.

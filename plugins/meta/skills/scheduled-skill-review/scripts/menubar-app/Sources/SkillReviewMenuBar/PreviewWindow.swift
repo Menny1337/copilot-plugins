@@ -23,10 +23,12 @@ enum PreviewWindow {
             autoRevert: true,
             deployMode: "pr",
             revertDeployMode: "pr",
-            include: ["assistant", "narrate"],
-            exclude: ["pptx"],
+            include: [],
+            exclude: [],
+            skillPaths: ["/Users/you/.copilot/skills/assistant-capture/SKILL.md"],
+            skillFolders: ["/Users/you/.copilot/skills"],
             autoMergeUnits: ["memory", "browser"],
-            prUnits: ["research-methodology", "assistant"],
+            prUnits: ["research-methodology", "agent-skill-audit"],
             signalThreshold: 5,
             observationWindowDays: 3,
             firstRunLookbackDays: 7,
@@ -35,11 +37,23 @@ enum PreviewWindow {
             marketplaceName: "menny1337-plugins",
             ghAccount: "the user"
         )
-        let root = ConfigWindow(model: ConfigModel(snapshot: config), autoLoad: false)
+        let units = [
+            ReviewUnit(name: "agent-crafting", path: "/Users/you/Repos/copilot-plugins/plugins/meta/skills/agent-crafting/SKILL.md", plugin: "meta"),
+            ReviewUnit(name: "agent-skill-audit", path: "/Users/you/Repos/copilot-plugins/plugins/meta/skills/agent-skill-audit/SKILL.md", plugin: "meta"),
+            ReviewUnit(name: "assistant-capture", path: "/Users/you/.copilot/skills/assistant-capture/SKILL.md", source: "external"),
+            ReviewUnit(name: "govuk-style", path: "/Users/you/.copilot/skills/govuk-style/SKILL.md", source: "external", sourceKind: "folder", sourceRoot: "/Users/you/.copilot/skills"),
+            ReviewUnit(name: "browser", path: "/Users/you/Repos/copilot-plugins/plugins/core-skills/skills/browser/SKILL.md", plugin: "core-skills"),
+            ReviewUnit(name: "memory", path: "/Users/you/Repos/copilot-plugins/plugins/core-skills/skills/memory/SKILL.md", plugin: "core-skills"),
+            ReviewUnit(name: "research-methodology", path: "/Users/you/Repos/copilot-plugins/plugins/core-skills/skills/research-methodology/SKILL.md", plugin: "core-skills"),
+            ReviewUnit(name: "scheduled-skill-review", path: "/Users/you/Repos/copilot-plugins/plugins/meta/skills/scheduled-skill-review/SKILL.md", plugin: "meta"),
+            ReviewUnit(name: "skill-crafting", path: "/Users/you/Repos/copilot-plugins/plugins/meta/skills/skill-crafting/SKILL.md", plugin: "meta"),
+            ReviewUnit(name: "agent-architect", type: "agent", path: "/Users/you/Repos/copilot-plugins/plugins/meta/agents/agent-architect.agent.md", plugin: "meta"),
+        ]
+        let root = ConfigWindow(model: ConfigModel(snapshot: config, units: units), autoLoad: false)
         let hosting = NSHostingView(rootView: root)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 900),
+            contentRect: NSRect(x: 0, y: 0, width: 840, height: 1_700),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false

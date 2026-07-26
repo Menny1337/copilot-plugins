@@ -36,6 +36,8 @@ struct Config: Codable, Equatable {
     var revertDeployMode: String
     var include: [String]
     var exclude: [String]
+    var skillPaths: [String]
+    var skillFolders: [String]
     var autoMergeUnits: [String]
     var prUnits: [String]
     var signalThreshold: Int
@@ -57,6 +59,8 @@ struct Config: Codable, Equatable {
         revertDeployMode: String = "auto",
         include: [String] = [],
         exclude: [String] = [],
+        skillPaths: [String] = [],
+        skillFolders: [String] = [],
         autoMergeUnits: [String] = [],
         prUnits: [String] = [],
         signalThreshold: Int = 3,
@@ -77,6 +81,8 @@ struct Config: Codable, Equatable {
         self.revertDeployMode = revertDeployMode
         self.include = include
         self.exclude = exclude
+        self.skillPaths = skillPaths
+        self.skillFolders = skillFolders
         self.autoMergeUnits = autoMergeUnits
         self.prUnits = prUnits
         self.signalThreshold = signalThreshold
@@ -101,6 +107,8 @@ struct Config: Codable, Equatable {
         revertDeployMode = try c.decodeIfPresent(String.self, forKey: .revertDeployMode) ?? d.revertDeployMode
         include = try c.decodeIfPresent([String].self, forKey: .include) ?? d.include
         exclude = try c.decodeIfPresent([String].self, forKey: .exclude) ?? d.exclude
+        skillPaths = try c.decodeIfPresent([String].self, forKey: .skillPaths) ?? d.skillPaths
+        skillFolders = try c.decodeIfPresent([String].self, forKey: .skillFolders) ?? d.skillFolders
         autoMergeUnits = try c.decodeIfPresent([String].self, forKey: .autoMergeUnits) ?? d.autoMergeUnits
         prUnits = try c.decodeIfPresent([String].self, forKey: .prUnits) ?? d.prUnits
         signalThreshold = try c.decodeIfPresent(Int.self, forKey: .signalThreshold) ?? d.signalThreshold

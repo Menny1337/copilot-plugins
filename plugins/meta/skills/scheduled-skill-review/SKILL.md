@@ -1,6 +1,7 @@
 ---
 name: scheduled-skill-review
-description: "Manages the macOS daemon that reviews this marketplace's used plugin agents and skills, deploys validated improvements, and reverts regressions. Use to install, run, pause, configure, monitor, or inspect scheduled reviews and menu-bar status."
+description: "Manages scheduled Copilot skill-and-agent reviews on macOS with a menu-bar app for status, control, and per-unit settings. Use to install, run, pause, configure, or inspect scheduled reviews, per-skill runs, local SKILL.md sources, and review status."
+argument-hint: "[install|run|pause|resume|status|configure]"
 user-invocable: true
 compatibility: "Requires macOS, launchd, Git, Node.js, GitHub CLI, Agency, and the meta plugin."
 ---
@@ -16,6 +17,7 @@ reverts what regresses — with a menu-bar control surface for the human.
 
 - Install or operate this marketplace's macOS `plugin` skill/agent review daemon.
 - Run, pause, configure, monitor, or inspect review cycles and menu-bar status.
+- Add a local `SKILL.md` from anywhere on the Mac or run one reviewed unit immediately.
 - Diagnose a daemon cycle, deployment, re-review, or automatic revert.
 
 ## When to Skip
@@ -41,13 +43,14 @@ isolated subprocesses and never reads raw transcripts itself.
 1. **Scan usage** — `scripts/scan-usage.mjs` reads each session's
    `events.jsonl` (`skill.invoked`, the agent that ran, `tool.execution_complete`
    failures, user corrections) since an **event-time watermark**, filtered to this
-   repo's `plugin` skills and agents. Read-only. Honors include/exclude and
+   repo's marketplace units plus configured external `SKILL.md` files. Read-only.
+   Honors include/exclude and
    **excludes self-generated review sessions**. Emits a usage manifest + coverage note.
 2. **Select work** — `scripts/lifecycle.mjs select`: a unit becomes a **new
    candidate** if it has ≥ `signalThreshold` relevant sessions and no open cycle; a
    deployed unit whose observation window has elapsed becomes a **due re-review**.
    One change per unit per cycle.
-3. **Review in isolation** — for each selected unit (bounded concurrency),
+3. **Review in isolation** — for each selected marketplace unit (bounded concurrency),
    `scripts/run-batch-review.sh` creates a git worktree + sanitized branch and runs
    `agency copilot -p --agent meta:agent-architect -C <worktree> "run
    skill-improvement-loop on <unit> …"`. The subprocess harvests/diagnoses/patches
@@ -58,7 +61,13 @@ isolated subprocesses and never reads raw transcripts itself.
    orchestrator then copies that handoff into `runs/<id>/results/<unit>.json` and
    canonicalizes it (schema/identity check; a patch-like action with no real commit
    is downgraded to `no-change`).
-4. **Integrate (serialized, no half-deploys)** — for each passing change the daemon
+   An external skill's `SKILL.md` is instead copied alone to a private staging
+   directory, so unrelated neighboring files are never exposed. The reviewer may
+   change only that staged file; `scripts/external-skill-stage.mjs` rejects
+   changes to other files, verifies the source did not change concurrently, and
+   atomically applies the validated file back in place. External skills bypass
+   marketplace commits, PRs, versioning, plugin refresh, and automatic git rollback.
+4. **Integrate marketplace changes (serialized, no half-deploys)** — for each passing change the daemon
    first runs `version.mjs apply` so the plugin source change is governed (bumps
    `plugin.json` + the marketplace entry, writes a populated `CHANGELOG.md` section, and
    bumps `metadata.version`; the bump level is derived from the subprocess's Conventional
@@ -101,6 +110,7 @@ rather than closing the cycle.
 | `pause` / `resume` | soft pause (`enabled=false`; orchestrator no-ops, still heartbeats) |
 | `run-now` | trigger a cycle immediately |
 | `review-unit <name>` | force a specific unit into the next selection |
+| `unit-catalog` | print every marketplace and configured external unit with its type, source path, and availability |
 | `include <name>` / `exclude <name>` / `unset <name>` | scope which units are eligible |
 | `deploy-default <auto\|pr>` | set the default deploy policy for unlisted units |
 | `auto-merge <name>` / `review-pr <name>` | pin a unit to auto-merge or review-PR (cleared by `unset`) |
@@ -118,9 +128,11 @@ the menu bar reporting "paused".
 
 `enabled`, `schedule{hour,minute,weekdays}` (`weekdays` = `0`–`6`, JS `getDay`
 convention, `0`/`6` = Sun/Sat; empty = every day), `concurrency`, `autoDeploy`, `autoRevert`,
-`deployMode` (`auto`|`pr` default for unlisted units), `autoMergeUnits[]`/`prUnits[]`
+`deployMode` (`auto`|`pr` default for unlisted marketplace units), `autoMergeUnits[]`/`prUnits[]`
 (per-unit policy pins), `revertDeployMode` (`auto`|`pr`|`unit`),
-`include[]`/`exclude[]`, `signalThreshold`, `observationWindowDays`,
+`include[]`/`exclude[]`, `skillPaths[]` (absolute external `SKILL.md` paths),
+`skillFolders[]` (persistent folders containing external skills),
+`signalThreshold`, `observationWindowDays`,
 `firstRunLookbackDays`, `maxFirstRunSessions`, `repoDir` (**required** — absolute path
 to the git working tree), `pluginDir`, `marketplaceName`, `selfMarker`, `branchPrefix`,
 `defaultBranch`, `remoteName`, `notify`. Defaults live in `scripts/lib.mjs`
@@ -131,6 +143,7 @@ to the git working tree), `pluginDir`, `marketplaceName`, `selfMarker`, `branchP
 - `references/setup-schedule.md` — launchd plist, headless git-push auth, plugin-refresh
   wiring, exact Agency invocation, install/uninstall, dry-run, first-run cap.
 - `references/menubar.md` — native menu-bar app install/uninstall, autostart, dropdown actions, and troubleshooting.
+- `references/menubar-icons.md` — the six menu-bar state icons, state precedence, template-image rendering, and how to replace the artwork.
 - `references/agent-signals.md` — agent-specific signals so agents are reviewed as
   agents (orchestration/delegation/scope), not as skills.
 

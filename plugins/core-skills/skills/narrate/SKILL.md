@@ -1,6 +1,7 @@
 ---
 name: narrate
 description: "Turn documents or text into spoken-audio (MP3) via a two-phase workflow: first rewrite the source as a TTS-friendly narration script (.md), then synthesize audio with Azure OpenAI tts-hd (default backend, pluggable). Use when the user asks to narrate a doc, read a doc out loud, create an audio version, audio summary, audio brief, voiceover, listenable version, or podcast-style version of a report, or produce a 1-minute opener / short brief / summary overview / full narration. Triggers: narrate, narration, audio version, listen to this, read out loud, audio summary, audio brief, voiceover, podcast, tts, text-to-speech, mp3 from doc."
+argument-hint: "<file or text to narrate> [opener|brief|full]"
 user-invocable: true
 ---
 

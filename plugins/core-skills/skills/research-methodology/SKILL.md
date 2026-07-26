@@ -1,6 +1,7 @@
 ---
 name: research-methodology
 description: "Structured methodology for externally sourced, cited research: web search, source verification, synthesis, and adversarial review. Use for literature reviews, technology comparisons, market or industry reports, and multi-source investigations needing citations. Do not invoke for codebase-only analysis, project status, log or build diagnosis, or quick factual lookups."
+argument-hint: "<research question or topic>"
 ---
 
 # Research Methodology

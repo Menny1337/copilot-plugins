@@ -8,6 +8,10 @@ user-invocable: false
 
 A practical workflow for locating existing Agent Skills and creating new ones.
 
+Frontmatter fields, discovery locations, and install commands are version-sensitive. Check
+`../agent-skill-audit/references/cli-feature-baseline.md` before relying on memory, and
+refresh it when it falls behind `copilot --version`.
+
 ## When to Use
 
 - User asks to find, discover, browse, or recommend skills
@@ -32,9 +36,18 @@ Skills live in a `skills/` directory with one folder per skill:
 
 | Level | Path |
 |-------|------|
-| Repository | `.github/skills/<skill-name>/SKILL.md` |
-| User (local) | `~/.copilot/skills/<skill-name>/SKILL.md` |
+| Repository | `.github/skills/<skill-name>/SKILL.md`, `.claude/skills/`, `.agents/skills/` |
+| User (local) | `~/.copilot/skills/<skill-name>/SKILL.md`, `~/.agents/skills/` |
 | Plugin | `<plugin-dir>/skills/<skill-name>/SKILL.md` (installed under `~/.copilot/installed-plugins/<marketplace>/<plugin>/`) |
+| Custom | Any directory registered with `copilot skill add <directory>` |
+| Built-in | Ships with the CLI |
+
+`copilot skill list` reports the origin of each skill as one of `project`, `inherited`,
+`personal-copilot`, `personal-agents`, `plugin`, `custom`, or `builtin`.
+
+When the same skill name exists in several locations, the winner is resolved
+`project` > `plugin-dir` > personal (`~/.copilot`, `~/.agents`) > `custom` (CLI 1.0.55).
+Same-named skills from *different plugins* coexist instead of colliding (1.0.66).
 
 Each skill folder contains:
 
@@ -81,17 +94,26 @@ allowed-tools: Read Grep
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | **Yes** | Kebab-case (lowercase, hyphens, digits). Must match folder name. Max 64 chars. |
+| `name` | string | **Yes** | Max 64 chars; CLI-enforced pattern is `^[a-zA-Z0-9][a-zA-Z0-9._\- ]*$`. Kebab-case matching the folder name is the **convention** (and what this repo's validator enforces) — the CLI itself accepts mismatches and underscores. |
 | `description` | string | **Yes** | 1–1024 characters. No angle brackets (`<>`). Describes purpose and trigger conditions. |
 | `license` | string | No | SPDX identifier or reference to a bundled license file. |
 | `compatibility` | string | No | Host, package, operating-system, or network requirements. Max 500 characters. |
 | `metadata` | map | No | String key/value metadata for supporting clients; **unsupported in this scalar-only marketplace** until its parser accepts nested maps. |
-| `allowed-tools` | space-separated string | No | Experimental pre-approval hint; support varies by host. It is not a YAML array. |
+| `allowed-tools` | space-separated string | No | Tools auto-approved while the skill is active. It is not a YAML array. See the security warning below. |
+| `user-invocable` | boolean | No | Defaults to `true`. Set `false` to hide the skill from slash-command invocation, leaving it model-only. |
+| `disable-model-invocation` | boolean | No | Defaults to `false`. Set `true` so the model cannot auto-invoke it and the user must call it explicitly. Fully honored since CLI 1.0.74. |
+| `argument-hint` | string | No | Freeform hint describing expected arguments, shown during slash-command completion. Copilot CLI 1.0.64+. Only meaningful when the skill is user-invocable. |
 
-> **Host extensions:** Copilot/Claude surfaces may additionally support fields such as
-> `user-invocable` and `disable-model-invocation`; Claude Code also exposes
-> `argument-hint`, `context`, `agent`, `hooks`, and `model`. Verify the target host before
-> using them. The Claude Code `hooks` frontmatter field is unrelated to Copilot's
+> **`allowed-tools` is a security decision, not a convenience.** It removes the confirmation
+> step for the tools it names. GitHub's documentation warns explicitly against pre-approving
+> `shell` or `bash`: doing so lets a malicious skill — or a prompt injection reaching one —
+> run arbitrary terminal commands with no prompt. Omit them unless you have read the skill and
+> every script it references, and you trust its source.
+
+> **Host differences:** `argument-hint` is supported on Copilot **skills**, but ignored on
+> Copilot **agents** (it is VS Code-only there) — an easy trap. Claude Code additionally
+> exposes `context`, `agent`, `hooks`, and `model` on skills; verify the target host before
+> using those. The Claude Code `hooks` frontmatter field is unrelated to Copilot's
 > `hooks.json` lifecycle system.
 >
 > **This marketplace is scalar-only:** its generators accept only single-line top-level
@@ -132,6 +154,12 @@ description: "Creates data dashboards and visualizations. Use when the user ment
 
 The description is the only always-loaded text, so redundancy costs budget every turn. Run the critique on a *different* model family than the author (authors rarely catch their own redundancy): use the `task` tool with a `model` override set to the newest cross-family model — Claude author → GPT or Gemini; GPT → Claude or Gemini; Gemini → Claude or GPT. Give that sub-agent the draft `description`, the skill's purpose, and the four cut-tests below, and have it return a tightened description plus what it cut and why. If no cross-model sub-agent is available, self-review instead and note that it was not independent.
 
+> **Retrieval may be semantic.** Copilot CLI 1.0.66 added a persisted `dynamicRetrieval`
+> setting (and `--dynamic-retrieval skills=<on|off>`) that retrieves skills using embeddings
+> rather than name and description matching alone. Keep writing descriptions for trigger
+> accuracy — they still drive routing and are still the always-loaded text — but do not assume
+> exact keyword overlap is the only path to being selected.
+
 Four cut-tests (the reviewer applies them too):
 
 1. **Strip implementation detail** — drop internal mechanics that don't aid discovery (subprocess/threading models, framework names, file/script paths, UI labels, data-file names); they belong in the body, not the always-loaded description.
@@ -150,44 +178,43 @@ Understanding what *type* of skill you're building shapes design, testing, and m
 | **Capability Enhancement** | Extends what the model can do (e.g., PDF form filling, data extraction, complex formatting) | May become obsolete as models improve | If agents start doing this without the skill, consider retiring it |
 | **Workflow / Preference** | Encodes organization-specific processes (e.g., PR review checklist, deploy procedure, NDA workflow) | Durable — processes outlive model upgrades | Update when the process itself changes |
 
-**Why this matters:**
-- Capability skills need periodic review — the model may learn to do it natively
-- Workflow skills need process fidelity — they must match how the team actually works
-- When in doubt, ask: "Would a better model still need this?" If yes → workflow. If maybe not → capability.
+**Why this matters:** capability skills need periodic review (the model may learn to do it
+natively); workflow skills need process fidelity. When in doubt ask: "would a better model
+still need this?" Yes → workflow. Maybe not → capability.
 
 ## Step 1: Check What Already Exists
 
-Before creating a new skill, check for existing ones:
+Before creating a new skill, list everything already loaded — across project, plugin,
+personal, custom, and built-in sources — and check for overlap:
 
 ```bash
-# Repo-level skills
-find .github/skills -name 'SKILL.md' -exec head -5 {} \; 2>/dev/null
-
-# User-level skills
-find ~/.copilot/skills -name 'SKILL.md' -exec head -5 {} \; 2>/dev/null
+copilot skill list            # add --json for scripting
 ```
 
-Scan each SKILL.md frontmatter to understand coverage and avoid duplicates.
+Scan each description to understand coverage and avoid duplicates.
 
 ## Step 2: Find Skills in Other Repositories
 
-Search GitHub for skills to install or learn from:
+Start with the purpose-built channels, then fall back to code search.
+`gh skill` requires **GitHub CLI v2.90.0+** — older versions fail with
+`unknown command "skill" for "gh"`, so check `gh --version` first.
+
+```bash
+gh skill search <query>      # search published agent skills
+gh skill install <skill>     # install one
+gh skill update <skill>      # update it later
+gh skill publish             # publish your own
+```
+
+The public directory is <https://awesome-copilot.github.com/skills/>. The CLI's own
+`copilot plugin marketplace browse awesome-copilot` lists what a marketplace offers.
 
 **Search patterns:**
 
 ```
-path:.github/skills SKILL.md
-"name:" "description:" path:SKILL.md
-path:SKILL.md "When to Use"
-topic:copilot-skills
-```
-
-**Refine by domain:**
-
-```
-path:SKILL.md "When to Use" testing
-path:SKILL.md "When to Use" deployment
-path:SKILL.md "When to Use" documentation
+path:.github/skills SKILL.md          # skills in repos
+path:SKILL.md "When to Use"           # add a domain word: testing, deployment, docs…
+topic:copilot-skills                  # tagged repositories
 ```
 
 Group results by category when browsing (testing, docs, devops, security, platform, etc.).
@@ -217,10 +244,26 @@ Quick quality checklist before installing or using a skill:
 
 1. Treat the skill like software: inspect every bundled file, script, dependency, and external
    URL. Prefer trusted, versioned sources; do not install it if behavior exceeds the stated purpose.
-2. Copy the skill folder into the target location:
-   - Repo-level: `.github/skills/<skill-name>/`
-   - User-level: `~/.copilot/skills/<skill-name>/`
-   - Plugin: add a directory under your plugin's `skills/<skill-name>/` and list the plugin in `marketplace.json`
+2. Install it with the CLI rather than copying folders by hand:
+
+   ```bash
+   copilot skill add <FILE | URL | DIRECTORY>          # add a skill
+   copilot skill list [--json]                         # confirm it loaded, with source
+   copilot skill remove <NAME | DIRECTORY>             # remove it again
+
+   copilot plugins install --skill <FILE | URL>                    # installs for the user
+   copilot plugins install --skill --scope project <FILE | URL>    # into .github/skills/
+   ```
+
+   Installing a **file or URL** copies the content; installing a **directory** registers it as
+   a custom skill source instead. `--scope` accepts `user` (default) or `project`, and applies
+   only to file or URL installs. In session, `/skills` (alias `/skill`) offers `list`, `info`,
+   `add`, `remove`, and `reload` — `/skills reload` picks up a skill added mid-session without
+   restarting. Plugin skills must be managed through their plugin; `/skills info` shows which
+   plugin a skill came from.
+
+   For a skill authored inside this marketplace, no install step is needed: add the directory
+   under your plugin's `skills/<skill-name>/` and list the plugin in `marketplace.json`.
 3. Ensure `SKILL.md` frontmatter `name` matches the folder name.
 4. Verify `description` is non-empty and at most 1024 characters.
 5. Validate frontmatter (use the repository validator if available).
@@ -356,11 +399,11 @@ Optional but recommended:
 ## Step 6: Verify
 
 **Frontmatter validation:**
-- [ ] `name` is kebab-case (lowercase letters, hyphens, digits only), max 64 characters
-- [ ] `name` matches the folder name exactly
-- [ ] `description` is 1–1024 characters, no angle brackets (`<>`)
+- [ ] `name` is kebab-case (convention), max 64 characters, and matches the folder name
+- [ ] `description` is 1–1024 characters (angle brackets are accepted by the CLI)
 - [ ] `description` is third-person, states what and when, and includes distinct trigger keywords
-- [ ] `allowed-tools`, if present, is a space-separated scalar rather than a YAML array
+- [ ] `allowed-tools`, if present, is a space-separated scalar rather than a YAML array, and does not pre-approve `shell` or `bash`
+- [ ] `argument-hint`, if present, is on a user-invocable skill (it is inert otherwise)
 - [ ] Host-specific fields are supported by the intended runtime
 - [ ] `description` critiqued for redundancy by a different-model sub-agent (no implementation detail, no triggers that merely restate the lead or each other) — see "Critique the description before saving"
 - [ ] YAML parses cleanly (quote strings, check for special characters)
@@ -410,50 +453,43 @@ Minimum test set:
 
 ## Step 7: Iterate and Improve
 
-Skills are not write-once artifacts. When improving a skill based on observed behavior:
+Skills are not write-once artifacts. For evidence-driven refinement from observed session
+behavior — harvesting signals, diagnosing the root-cause layer, and re-reviewing for
+regressions — use the `skill-improvement-loop` skill rather than repeating its procedure here.
 
-**Generalize, don't overfit**
-Edits must improve behavior across many prompts, not just the one that revealed the problem.
-Compare against the prior version and reserve held-out cases. Ask: "Will this change help for
-inputs I haven't seen yet?"
+Four rules specific to editing skill text:
 
-**Keep it lean**
-Remove instructions that produce unproductive behavior. Check agent transcripts, not just outputs — if an instruction causes the agent to waste tokens on unnecessary work, cut it.
-
-**Explain the why, not just the what**
-Prefer explaining reasoning over rigid `ALWAYS`/`NEVER` directives. Agents follow reasoned instructions more reliably than arbitrary rules.
-
-> **Instead of:** `"ALWAYS use exactly 3 bullet points"`
->
-> **Write:** `"Use bullet points for scanability — typically 3-5 items. Fewer if each point is complex, more if they're simple."`
-
-**Bundle repeated work**
-If agents using the skill independently perform the same setup step (creating a helper function, parsing a config, building a boilerplate), extract it into `scripts/` or `templates/` so the skill provides it directly.
-
-**Strengthen the description**
-If the skill undertriggers (doesn't activate when it should), add domain synonyms and broaden trigger keywords. If it overtriggers (activates incorrectly), sharpen the scope language and add "not for X" qualifiers.
+- **Generalize, don't overfit.** An edit must improve behavior across many prompts, not just
+  the one that revealed the problem. Reserve held-out cases and compare against the prior version.
+- **Explain the why, not just the what.** Agents follow reasoned instructions more reliably than
+  arbitrary rules. Instead of `"ALWAYS use exactly 3 bullet points"`, write `"Use bullet points
+  for scanability — typically 3-5 items. Fewer if each point is complex, more if they're simple."`
+- **Bundle repeated work.** If agents using the skill keep performing the same setup step, extract
+  it into `scripts/` or `templates/` so the skill provides it directly.
+- **Tune the description by failure mode.** Undertriggering → add domain synonyms and broaden
+  keywords. Overtriggering → sharpen scope language and add "not for X" qualifiers.
 
 ## Agent vs Skill Boundary
 
 Agents define WHO: role, identity, orchestration, and approval boundaries. Skills define HOW:
 procedures, commands, examples, and reusable knowledge. Use the Step 5a matrix when the
-boundary is ambiguous.
+boundary is ambiguous. Keep the skill as the single source of truth for reusable procedure,
+never duplicate a workflow or checklist across an agent and a skill, keep skills portable by
+default while declaring unavoidable integration dependencies, and keep agents focused on
+identity, routing, ownership, and limits.
 
-- Keep the skill as the single source of truth for reusable procedure.
-- Do not duplicate workflows or checklists across an agent and a skill.
-- Keep skills portable by default; declare unavoidable integration dependencies.
-- Keep agents focused on identity, routing, ownership, and limits.
+> **Same-named skills now coexist.** Since CLI 1.0.66 two plugins may each ship a skill called
+> `deploy`; the runtime disambiguates them with an `invocationName`. Loading no longer breaks,
+> but duplicate names are still ambiguous for users, so prefer distinct names. A marketplace
+> may enforce uniqueness as governance — that is a house rule, not a CLI constraint.
 
 ## Tips
 
 - **Search by problem, not solution** — "improve test coverage" not "jest skill"
-- **Prefer focused skills** — one clear purpose or outcome, not a grab bag
 - **Update don't duplicate** — merge overlapping skills instead of creating similar ones
-- **Description is discovery** — write descriptions with the keywords users would search for; be assertive to combat undertriggering
-- **Test the trigger** — after creating a skill, verify it activates on expected prompts *and* stays silent on unrelated ones
+- **Be assertive in descriptions** — timid wording is the most common cause of undertriggering
 - **Version awareness** — note when a skill depends on specific tool versions or APIs
 - **Know your type** — capability skills may become obsolete as models improve; workflow skills need process fidelity
-- **Respect the context budget** — a 500-line skill body + loaded references is more effective than a 1000-line monolith
 - **Extract from history** — if a user already demonstrated a workflow, mine it for steps, corrections, and patterns before writing
 
 ## References

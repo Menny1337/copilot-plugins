@@ -8,6 +8,9 @@ user-invocable: false
 
 A practical workflow for creating, configuring, and maintaining custom Copilot agents.
 
+For version-sensitive CLI behaviour, consult and refresh
+`../agent-skill-audit/references/cli-feature-baseline.md` before relying on memory.
+
 ## When to Use
 
 - Creating a new custom agent from scratch
@@ -61,9 +64,12 @@ Every agent file has two parts:
 | `name` | string | No | From filename | Display name shown in Copilot Chat |
 | `description` | string | **Yes** | — | Purpose and capabilities summary. Appears as placeholder text. |
 | `tools` | string[] / string | No | All (`["*"]`) | Tools the agent can use. Accepts a YAML array or a comma-separated string. See [Tool Aliases](#tool-aliases). |
+| `skills` | string[] | No | — | CLI-only since 1.0.22. Eagerly loads the named skills' content into the agent's context at startup. Must be a YAML array — a bare string makes the agent fail to load. Unknown names are silently ignored. Reserve for procedures needed on every run. |
 | `model` | string | No | Inherits default | Model to use when this agent executes. Powers per-agent subagent model selection (`/subagents`). |
+| `reasoning-effort` | string | No | Inherits current | CLI-only since 1.0.66. Sets reasoning effort for this agent. Use when the role consistently needs deeper or lighter reasoning than the parent session; `/subagents` per-agent settings can still override it. |
 | `target` | string | No | Both | `vscode` or `github-copilot` — restricts which environment the agent loads in. |
 | `mcp-servers` | object | No | — | MCP server configurations. Not used by VS Code/IDE agents. |
+| `deferred-tool-loading` | boolean | No | `false` | CLI-only since 1.0.52. Opts in to tool-search discovery for large tool lists instead of loading every tool definition up front. Use for broad MCP or wildcard tool sets where schema cost is significant; respected with `tools: ["*"]` since CLI 1.0.64. |
 | `disable-model-invocation` | boolean | No | `false` | Set `true` to prevent the model auto-selecting this agent (e.g. as a sub-agent); it must be chosen manually. Equivalent to the retired `infer: false`. |
 | `user-invocable` | boolean | No | `true` | When `false`, the agent can't be manually selected — only invoked programmatically. |
 | `metadata` | object | No | — | `name`/`value` string pair for annotation. Not used by VS Code/IDE agents. |
@@ -74,6 +80,8 @@ Every agent file has two parts:
 >
 > **Ignored fields:** `argument-hint` and `handoffs` are VS Code-only — GitHub.com and the
 > Copilot CLI ignore them (they don't error, but don't rely on them for portable agents).
+> The asymmetry is easy to miss: `argument-hint` is supported on skills in the CLI, but
+> not on agents.
 > Unrecognized `tools` entries are silently ignored, which lets you list product-specific
 > tools without breaking other hosts.
 
@@ -129,6 +137,41 @@ If the environment supports MCP servers, you can also enable namespaced tools su
 Prefer the smallest stable tool set that supports the role. If a host compatibility bug
 requires `tools: ["*"]`, document the exception in the agent and compensate with explicit
 scope and approval boundaries.
+
+For agents with large MCP or wildcard tool surfaces, add `deferred-tool-loading: true`.
+It keeps tool schemas out of the initial prompt and lets the agent discover them through
+tool search when needed. Since CLI 1.0.64 this also works with `tools: ["*"]`, and MCP
+servers configured in `mcp-servers` honour their own `deferTools` setting.
+
+### Preloading skill content
+
+Use frontmatter `skills:` only for procedures the agent needs on essentially every
+invocation:
+
+```yaml
+skills: ["agent-crafting", "agent-skill-audit"]
+```
+
+This is eager loading, not a reference. The named skills' content is loaded into the
+agent's context at startup, whether or not the model would have selected that skill
+on demand. A `## Skills` section in the agent body is the right lightweight way to list
+related skills or operating expectations without spending context on every run.
+
+`skills:` must be a YAML array. A plain string such as `skills: agent-crafting` is rejected
+as malformed frontmatter and the whole agent does not load. Unknown skill names are silently
+ignored, so typo-check this field when behaviour suggests a procedure was not loaded.
+
+Use it deliberately with `deferred-tool-loading`: that setting defers tool schemas to save
+context, while `skills:` pre-loads skill bodies and spends context.
+
+### Plan mode compatibility
+
+CLI 1.0.71 hard-blocks built-in tools that mutate the workspace while planning:
+file edits, mutating shell commands, and opening pull requests. MCP and external tools
+are still allowed. Since 1.0.74 the block is scoped — planning artifacts written inside
+the session folder are permitted, while file mutations outside it stay blocked. If an
+agent should be useful in plan mode, design it to analyse, specify, and hand off using
+read/search tools, and write any interim artifacts to the session folder.
 
 ### Environment Fit
 
@@ -211,6 +254,9 @@ Not every section is mandatory — adapt to the agent's role:
 | Verification | ✅ | ✅ | ✅ | ✅ |
 | Scope | ✅ | ✅ | ✅ | ✅ |
 
+For a worked frontmatter + body template of each archetype above, read
+`references/agent-patterns.md`.
+
 High-value optional sections:
 
 - **Project Knowledge** — Tech stack, versions, file layout, and non-obvious constraints
@@ -244,75 +290,6 @@ High-value optional sections:
 - Use independent review for substantive routing, security, or scope changes, and retain human
   approval for destructive actions, commits, and releases.
 
-## Common Agent Patterns
-
-### Specialist Agent
-
-Focused on one technical domain. Most agents are specialists.
-
-```yaml
----
-name: api-dev
-description: "API developer agent. Designs and implements REST endpoints, request validation, error handling, and API documentation."
----
-```
-
-**Body includes:** Specific file ownership, coding conventions, domain skills, strict scope boundaries.
-
-### Orchestrator Agent
-
-Delegates work to other agents. Does not write code itself. Usually one per project.
-
-```yaml
----
-name: mission-control
-description: "Mission control agent. Receives any task, creates a structured plan, delegates to specialized agents, and ensures quality."
-disable-model-invocation: true
----
-```
-
-**Body includes:** Delegation rules, workflow selection, agent roster, pipeline stages. Set `disable-model-invocation: true` to prevent it being called as a sub-agent.
-
-### Meta Agent
-
-Works on agent/skill files, not application code. Improves the agent system itself.
-
-```yaml
----
-name: meta-system-designer
-description: "Meta-improvement agent. Audits, refines, and evolves Copilot agents and skills to follow best practices and improve quality."
----
-```
-
-**Body includes:** Audit skills, scope limited to agent/skill directories, evolution methodology.
-
-### Reviewer Agent
-
-Reviews code or artifacts. Reads everything, modifies nothing (or only documentation).
-
-```yaml
----
-name: code-reviewer
-description: "Code review agent. Reviews changes for quality, maintainability, DRY violations, and architectural consistency."
----
-```
-
-**Body includes:** Review criteria, severity levels, report format, read-only scope.
-
-### Researcher Agent
-
-Investigates topics using web search. Produces reports, not code changes.
-
-```yaml
----
-name: evidence-researcher
-description: "Research agent. Investigates technologies, patterns, and best practices with proper citations and structured analysis."
-tools: ["read", "search", "web", "agent"]
----
-```
-
-**Body includes:** Research methodology, citation standards, output format, anti-fabrication rules.
-
 ## Anti-Patterns to Avoid
 
 | ❌ Don't | ✅ Do Instead |
@@ -327,65 +304,16 @@ tools: ["read", "search", "web", "agent"]
 | Create agents without scope boundaries | Always define DO / DO NOT sections |
 | Name agents with generic terms like "helper" or "assistant" | Use specific domain names: "api-dev", "test-writer" |
 
-## Troubleshooting
+## Bundled References
 
-### "Attribute X is not supported" error
+Load these only when the trigger applies — they are not needed for routine frontmatter or
+body edits.
 
-Remove the unsupported attribute. The documented frontmatter properties (GitHub.com +
-Copilot CLI) are: `name`, `description`, `tools`, `model`, `target`,
-`disable-model-invocation`, `user-invocable`, `mcp-servers`, and `metadata`. `infer` is
-retired (see above). `argument-hint` and `handoffs` are VS Code-only and are ignored
-elsewhere rather than erroring.
-
-### "Unexpected indentation" error
-
-Caused by multi-line `description` using YAML folded scalar (`>`). Convert to single-line quoted string.
-
-### Agent not appearing in Copilot Chat
-
-- Verify file is in correct directory with `.agent.md` extension
-- Check that `user-invocable` is not set to `false`
-- For repo-level: must be in `.github/agents/`
-- For user-level: must be in `~/.copilot/agents/`
-- For plugin: must be in the plugin's `agents/` directory and the plugin must be installed
-- Restart VS Code or reload the window
-
-### Agent not triggering on expected prompts
-
-- Check `description` — it's used for matching user intent to agents
-- Make description specific about capabilities and trigger keywords
-- Ensure the agent isn't shadowed by a higher-precedence agent with the same name
-
-## Subagents and Parallel Execution
-
-A custom agent can run as a **subagent**: the main agent dispatches work to it (via the
-`agent`/Task tool) in its own isolated context window. `/fleet` runs multiple subagents in
-**parallel** to speed up decomposable tasks, and `@agent-name` inside a fleet/prompt targets a
-specific custom agent. `/tasks` monitors running subagents. There is **no** `fleet` frontmatter
-key — an agent is eligible for auto-dispatch simply by leaving `disable-model-invocation` unset.
-
-What you control from the agent profile and settings:
-
-| Goal | Where | How |
-|------|-------|-----|
-| Block auto-dispatch as a subagent | frontmatter | `disable-model-invocation: true` |
-| Block manual selection | frontmatter | `user-invocable: false` |
-| Pick this agent's model | frontmatter | `model: <model-id>` |
-| Per-agent model / effort / context tier | `~/.copilot/settings.json` | `subagents.agents.<name>` = `{ model, effortLevel, contextTier }` (managed by `/subagents`) |
-| Prevent an agent from being dispatched | `~/.copilot/settings.json` | `subagents.disabledSubagents: [...]` (the built-in `explore`, `task`, and `rubber-duck` can't be disabled) |
-
-Subagents default to a **low-cost model** unless overridden by the `model` frontmatter field
-or a `subagents.agents.<name>.model` setting. (`/sidekicks` is not documented in the public
-CLI reference — don't author against it.)
-
-## Hooks and Agents
-
-Agents are configured purely through their file — they don't declare hooks. The Copilot
-`hooks.json` lifecycle system is separate, but two events relate to agents: `subagentStart`
-(fires before a subagent runs; can prepend `additionalContext` to its prompt) and
-`subagentStop` (fires when a subagent finishes; can `block` to force another turn). The
-built-in `general-purpose` agent does **not** emit these events. To author hooks around the
-agent lifecycle, use the `hooks-crafting` skill.
+| Read | When |
+|------|------|
+| `references/agent-patterns.md` | Scaffolding a new agent and choosing an archetype (specialist, orchestrator, meta, reviewer, researcher) |
+| `references/troubleshooting.md` | An agent errors on load, doesn't appear in chat, or doesn't trigger on expected prompts |
+| `references/advanced-topics.md` | The agent will run as a subagent, needs parallel/fleet or per-agent model/effort/context tuning, targets plan mode, or you're wiring `subagentStart`/`subagentStop` hooks |
 
 ## References
 

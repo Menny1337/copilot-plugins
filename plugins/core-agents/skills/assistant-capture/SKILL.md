@@ -1,6 +1,7 @@
 ---
 name: assistant-capture
 description: "Structured data entry for personal assistant: note creation (meetings, decisions, ideas, scratch), task management (add, update, complete, reopen), reminder management (set, dismiss), workspace initialization, and action item extraction from meeting notes. Triggers: take note, log, capture, add task, new task, set reminder, done with, complete task, jot down."
+argument-hint: "<note, task, or reminder to capture>"
 ---
 
 # Assistant Capture

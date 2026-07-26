@@ -1,6 +1,7 @@
 ---
 name: prompt-builder
 description: "Turns a plain-language situation and goal into a well-engineered prompt for an AI agent. Use when the user wants help writing, drafting, improving, or structuring a prompt, says I want the agent to do X, give me a prompt for, help me ask an AI to, write a prompt that, or describes a coding/agentic task they want to hand to another agent (a coding assistant, Copilot, Claude, a sub-agent). Keywords: prompt, prompt engineering, write a prompt, craft a prompt, meta-prompt. Not for creating or modifying Copilot skill or agent definition files (use skill-crafting or agent-crafting)."
+argument-hint: "<what you want an AI agent to do>"
 user-invocable: true
 ---
 

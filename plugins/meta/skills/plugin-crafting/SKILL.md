@@ -10,6 +10,10 @@ compatibility: "GitHub Copilot CLI plugin and marketplace system."
 A practical workflow for packaging agents, skills, hooks, commands, and servers into a
 Copilot CLI **plugin**, and for publishing plugins through a **marketplace**.
 
+Command surface and manifest fields change often. Verify version-sensitive details against
+`../agent-skill-audit/references/cli-feature-baseline.md`, and treat `copilot plugin --help`
+as definitive.
+
 ## When to Use
 
 - Creating or fixing a `plugin.json` manifest
@@ -86,6 +90,12 @@ conventions when omitted.
 > **`hooks` must point at the file, not the directory.** Use `"hooks": "hooks/hooks.json"` (or
 > `"hooks.json"`). A bare directory is `readFile()`d at load and throws `EISDIR`, so the plugin
 > fails to load. Author the hook entries with `hooks-crafting`.
+
+> **Workspace MCP config is separate from plugin MCP config.** Independently of any plugin,
+> the CLI auto-loads workspace MCP servers from `.mcp.json` **and `.github/mcp.json`**
+> (1.0.61). `.vscode/mcp.json` and devcontainer config are *not* CLI sources. Use a plugin's
+> `mcpServers` when the server belongs to the plugin; use the workspace files when it belongs
+> to the repository.
 
 ### Example `plugin.json`
 
@@ -172,18 +182,40 @@ relying on it.
 
 ### CLI commands (run in the terminal, not slash commands)
 
+`copilot plugin` and `copilot plugins` **overlap but are not identical**. Both accept
+`install`, `list`, `marketplace`, and `update`. `uninstall` is **singular-only**;
+`enable`, `disable`, `remove|rm`, and the cross-kind `--plugin`/`--mcp`/`--skill` flags
+are **plural-only**. Using the wrong form fails with
+`error: too many arguments for 'plugin'`.
+
 ```
 copilot plugin install SPEC          # SPEC: plugin@marketplace | OWNER/REPO[:PATH] | git-url | ./path
-copilot plugin uninstall NAME
+copilot plugin uninstall NAME        # singular only
 copilot plugin list
 copilot plugin update NAME [--all]
-copilot plugin enable NAME
-copilot plugin disable NAME
-copilot plugin marketplace add SPEC  # register a marketplace (repo, URL, or local dir)
-copilot plugin marketplace list
-copilot plugin marketplace browse NAME
-copilot plugin marketplace remove NAME
+copilot plugins enable NAME          # plural only
+copilot plugins disable NAME         # plural only
+copilot plugins remove NAME          # plural only (alias: rm)
+
+copilot plugin marketplace add SOURCE      # owner/repo | owner/repo#ref | URL | local dir
+copilot plugin marketplace list [--json]
+copilot plugin marketplace browse NAME [--json]
+copilot plugin marketplace update [NAME]   # omit NAME to update all (no `refresh` alias)
+copilot plugin marketplace remove NAME [--force]
+
+copilot plugins install --skill <FILE|URL|DIR> [--scope user|project]
+copilot plugins enable|disable|remove NAME --plugin|--mcp|--skill
 ```
+
+- `--plugin` is the default kind for `enable` / `disable` / `remove`.
+- `marketplace remove` is refused while plugins from it are installed; `--force` uninstalls
+  them too. The built-in `copilot-plugins` and `awesome-copilot` marketplaces cannot be removed.
+- A marketplace registers under its own `name` from `marketplace.json` — there is no local alias.
+- MCP servers install from a policy-configured registry, not `copilot plugins install`; use the
+  `/plugins` dashboard or `/mcp`.
+- `--config-dir` is deprecated — use `COPILOT_HOME`.
+- `COPILOT_PLUGIN_DIR_ONLY` disables automatic plugin discovery, giving a deterministic set
+  alongside `--plugin-dir`.
 
 ### Declarative enable via settings
 
@@ -194,8 +226,6 @@ from a marketplace when a needed skill or hook lives in a **different** plugin �
 plugin whose components you depend on.
 
 ### Locations (reference)
-
-<!-- validate:allow-user-paths -->
 
 | Item | Path |
 |------|------|
@@ -268,6 +298,27 @@ unique component names across plugins, generated catalog/README indexes, and a v
 that bumps a plugin's `version` (in both `plugin.json` and the matching `marketplace.json`
 entry) plus the marketplace `metadata.version` whenever plugin source changes. Follow the host
 repo's `AGENTS.md`/CI for the exact workflow; treat any generated index files as outputs.
+
+> **Name uniqueness is governance, not a CLI requirement — for skills.** Since CLI 1.0.66,
+> same-named skills from different plugins coexist and are disambiguated by `invocationName`,
+> so a collision is a clarity problem rather than a load failure; enforce it as a warning.
+> Agent names are different — keep those strictly unique.
+
+### Pinning and reproducibility
+
+- Set `sha` in a plugin's source configuration to pin it to an exact commit (CLI 1.0.70).
+  Prefer this over a floating branch for anything unattended.
+- `owner/repo#ref` on `marketplace add` pins the marketplace itself to a ref.
+- A trusted repository can auto-install plugins, extend `extraKnownMarketplaces`, pin the
+  model/effort/context tier, and extend URL/MCP/skill deny lists via
+  `.github/copilot/settings.json` (CLI 1.0.70).
+
+### Open Plugin Spec v1 (CLI 1.0.74)
+
+Opt in by setting the canonical Agent Plugins v1.0.0 `$schema` URL in `plugin.json`. It is
+additive: opted-in plugins and marketplaces may use dots in names (e.g. `acme.tools`), the
+`extensions` field changes meaning, and `mcp.json` configuration is supported. Leave `$schema`
+off to keep the existing behaviour.
 
 ## Security and Supply-Chain Review
 

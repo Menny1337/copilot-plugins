@@ -21,9 +21,9 @@
 import { homedir } from 'node:os';
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, readdirSync,
-  rmSync, statSync,
+  realpathSync, rmSync, statSync,
 } from 'node:fs';
-import { dirname, resolve, join } from 'node:path';
+import { basename, dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const HOME = homedir();
@@ -79,6 +79,8 @@ export const DEFAULT_CONFIG = {
   revertDeployMode: 'auto', // 'auto' | 'pr' | 'unit'
   include: [],            // if non-empty, ONLY these units are eligible
   exclude: [],            // these units are always skipped
+  skillPaths: [],         // external SKILL.md files reviewed in place
+  skillFolders: [],       // folders containing one or more external skills
   signalThreshold: 3,     // min relevant sessions to open a new cycle
   observationWindowDays: 3, // post-deploy wait before Phase E re-review
   firstRunLookbackDays: 7,
@@ -219,33 +221,179 @@ export function safeName(name) {
   return String(name).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unit';
 }
 
-/**
- * Enumerate our own units (skills + agents) from a git working tree by reading
- * the marketplace manifest and walking each plugin's skills/ and agents/ dirs.
- * Returns { skills:Set<string>, agents:Set<string> } of bare names.
- */
-export function enumerateUnits(repoDir) {
-  const skills = new Set();
-  const agents = new Set();
-  const mp = readJson(join(repoDir, '.github', 'plugin', 'marketplace.json'));
-  if (!mp || !Array.isArray(mp.plugins)) return { skills, agents };
-  for (const entry of mp.plugins) {
-    if (!entry.source) continue;
-    const pdir = resolve(repoDir, entry.source);
-    const sdir = join(pdir, 'skills');
-    if (existsSync(sdir)) {
-      for (const n of readdirSync(sdir)) {
-        if (existsSync(join(sdir, n, 'SKILL.md'))) skills.add(n);
-      }
+/** Read a skill's scalar `name` frontmatter value without a YAML dependency. */
+export function readSkillName(skillPath) {
+  let raw;
+  try { raw = readFileSync(skillPath, 'utf8'); } catch { return ''; }
+  const lines = raw.split(/\r?\n/);
+  if (lines[0]?.trim() !== '---') return '';
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '---') break;
+    const match = line.match(/^name:\s*(.+?)\s*$/);
+    if (!match) continue;
+    let value = match[1].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
     }
-    const adir = join(pdir, 'agents');
-    if (existsSync(adir)) {
-      for (const f of readdirSync(adir)) {
-        if (f.endsWith('.agent.md')) agents.add(f.replace(/\.agent\.md$/, ''));
+    return value.trim();
+  }
+  return '';
+}
+
+export function isValidSkillName(name) {
+  return typeof name === 'string' &&
+    name.length >= 1 &&
+    name.length <= 64 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name);
+}
+
+/**
+ * Enumerate reviewable units with their source paths. Marketplace units are
+ * discovered from the configured repo; external skills come from `skillPaths`
+ * plus `skillFolders` (the folder itself and its immediate child folders).
+ */
+export function enumerateUnitEntries(repoDir, skillPaths = [], skillFolders = []) {
+  const entries = [];
+  const resolvedRepo = repoDir ? resolve(expandHome(repoDir)) : '';
+  const mp = resolvedRepo
+    ? readJson(join(resolvedRepo, '.github', 'plugin', 'marketplace.json'))
+    : null;
+
+  if (mp && Array.isArray(mp.plugins)) {
+    for (const plugin of mp.plugins) {
+      if (!plugin.source) continue;
+      const pdir = resolve(resolvedRepo, plugin.source);
+      const sdir = join(pdir, 'skills');
+      if (existsSync(sdir)) {
+        for (const name of readdirSync(sdir)) {
+          const skillPath = join(sdir, name, 'SKILL.md');
+          if (!existsSync(skillPath)) continue;
+          entries.push({
+            name,
+            type: 'skill',
+            path: skillPath,
+            source: 'marketplace',
+            plugin: plugin.name || '',
+            exists: true,
+          });
+        }
+      }
+      const adir = join(pdir, 'agents');
+      if (existsSync(adir)) {
+        for (const file of readdirSync(adir)) {
+          if (!file.endsWith('.agent.md')) continue;
+          entries.push({
+            name: file.replace(/\.agent\.md$/, ''),
+            type: 'agent',
+            path: join(adir, file),
+            source: 'marketplace',
+            plugin: plugin.name || '',
+            exists: true,
+          });
+        }
       }
     }
   }
-  return { skills, agents };
+
+  const addExternalSkill = (configuredPath, sourceKind, sourceRoot) => {
+    if (typeof configuredPath !== 'string' || !configuredPath.trim()) return;
+    const requestedPath = resolve(expandHome(configuredPath.trim()));
+    let skillPath = requestedPath;
+    let isFile = false;
+    try {
+      isFile = statSync(requestedPath).isFile();
+      if (isFile) skillPath = realpathSync(requestedPath);
+    } catch {}
+    const declaredName = readSkillName(skillPath);
+    const name = declaredName || basename(dirname(skillPath));
+    entries.push({
+      name,
+      type: 'skill',
+      path: skillPath,
+      source: 'external',
+      sourceKind,
+      sourceRoot,
+      plugin: '',
+      exists: isFile && basename(skillPath) === 'SKILL.md' && isValidSkillName(declaredName),
+    });
+  };
+
+  for (const configuredPath of skillPaths || []) {
+    if (typeof configuredPath !== 'string' || !configuredPath.trim()) continue;
+    const skillPath = resolve(expandHome(configuredPath.trim()));
+    addExternalSkill(skillPath, 'file', skillPath);
+  }
+
+  for (const configuredFolder of skillFolders || []) {
+    if (typeof configuredFolder !== 'string' || !configuredFolder.trim()) continue;
+    const folderPath = resolve(expandHome(configuredFolder.trim()));
+    let isDirectory = false;
+    try { isDirectory = statSync(folderPath).isDirectory(); } catch {}
+    if (!isDirectory) continue;
+
+    const candidates = new Set();
+    const directSkill = join(folderPath, 'SKILL.md');
+    if (existsSync(directSkill)) candidates.add(directSkill);
+    let children = [];
+    try { children = readdirSync(folderPath); } catch {}
+    for (const child of children) {
+      const childDirectory = join(folderPath, child);
+      try {
+        if (!statSync(childDirectory).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      const childSkill = join(childDirectory, 'SKILL.md');
+      if (existsSync(childSkill)) candidates.add(childSkill);
+    }
+    for (const skillPath of candidates) {
+      addExternalSkill(skillPath, 'folder', folderPath);
+    }
+  }
+
+  const uniqueEntries = [];
+  const seenPaths = new Set();
+  for (const entry of entries) {
+    const key = `${entry.type}:${entry.path}`;
+    if (seenPaths.has(key)) continue;
+    seenPaths.add(key);
+    uniqueEntries.push(entry);
+  }
+
+  uniqueEntries.sort((a, b) =>
+    a.type.localeCompare(b.type) ||
+    a.name.localeCompare(b.name) ||
+    a.source.localeCompare(b.source) ||
+    a.path.localeCompare(b.path)
+  );
+
+  const nameCounts = new Map();
+  for (const entry of uniqueEntries) {
+    const key = entry.name;
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
+  return uniqueEntries.map((entry) => {
+    const key = entry.name;
+    return { ...entry, conflict: nameCounts.get(key) > 1 };
+  });
+}
+
+/**
+ * Enumerate unit names used by session scanning. The returned `entries` retain
+ * paths so the orchestrator can distinguish marketplace and external skills.
+ */
+export function enumerateUnits(repoDir, skillPaths = [], skillFolders = []) {
+  const skills = new Set();
+  const agents = new Set();
+  const entries = enumerateUnitEntries(repoDir, skillPaths, skillFolders);
+  for (const entry of entries) {
+    if (!entry.name || !entry.exists || entry.conflict) continue;
+    if (entry.type === 'skill') skills.add(entry.name);
+    if (entry.type === 'agent') agents.add(entry.name);
+  }
+  return { skills, agents, entries };
 }
 
 /** Strip a plugin prefix from an agentName (meta:agent-architect → agent-architect). */

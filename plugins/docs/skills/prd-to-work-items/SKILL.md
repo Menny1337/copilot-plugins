@@ -1,6 +1,7 @@
 ---
 name: prd-to-work-items
 description: 'Decompose and create vertical-slice work items from a PRD with dependency tracking. Use when breaking down a PRD, feature spec, or requirements document into trackable GitHub issues or ADO work items using tracer bullet methodology.'
+argument-hint: "<path to the PRD>"
 ---
 
 # PRD to Work Items

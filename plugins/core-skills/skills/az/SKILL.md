@@ -1,6 +1,7 @@
 ---
 name: az
 description: "Generate and explain Azure CLI (`az`) commands for managing Azure and Azure DevOps. Use when the user asks for Azure CLI commands or wants to manage Azure or Azure DevOps from the `az` CLI: `az login`, `az devops`, resource groups, Key Vault, Bicep, App Service, AKS, storage, networking, monitoring, databases, and `az acr`. Do not invoke when the prompt explicitly names another tool such as Docker, `kubectl`, Terraform, GitHub CLI (`gh`), AWS CLI, or PowerShell Az."
+argument-hint: "<what to do in Azure or Azure DevOps>"
 ---
 
 > **Path resolution:** `references/...` paths in this file are relative to this skill's installation directory. The agent should resolve them by combining the skill's install path (provided by Copilot CLI when the skill is invoked) with the relative path.

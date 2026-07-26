@@ -1,6 +1,7 @@
 ---
 name: grok-search
 description: "Ask Grok a question through the user's own logged-in browser at zero API cost, and get the answer plus cited X post links. Use for real-time X/Twitter questions and Grok-powered web search: latest tweet, what did someone post on X, search X/Twitter, live tweet sentiment, breaking news with sources, or any current-events query that benefits from Grok's live retrieval. Keywords: Grok, X, Twitter, latest tweet, what did X post, real-time tweets, X sentiment, tweet with citations, live web search, current events, xAI. Not for static general-knowledge questions, headless scraping pipelines, or when no logged-in browser is available."
+argument-hint: "<question to ask Grok>"
 user-invocable: true
 ---
 

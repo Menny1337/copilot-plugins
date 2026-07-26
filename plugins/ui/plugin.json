@@ -1,5 +1,5 @@
 {
   "name": "ui",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "UI design agents (ui-designer, ui-critic) and supporting skills (ui-generation, ui-critique, ui-design-system) for production-quality React/TypeScript/Tailwind UI."
 }

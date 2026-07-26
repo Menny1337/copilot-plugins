@@ -1,6 +1,7 @@
 ---
 name: ui-generation
 description: "Generate beautiful React/TypeScript UI components through a step-by-step workflow. Use when building new components, layouts, pages, or UI features. Includes phased generation, prompt techniques, and curated component examples."
+argument-hint: "<component, page, or layout to build>"
 ---
 
 # UI Generation Workflow

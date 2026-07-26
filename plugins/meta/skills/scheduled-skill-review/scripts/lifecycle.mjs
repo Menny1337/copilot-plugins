@@ -15,7 +15,8 @@
  *
  * Subcommands:
  *   select  --manifest <f> [--out <f>]      emit work list (new + due re-reviews)
- *   open    --unit U --type T --mode M --run R --branch B   → prints cycleId
+ *   open    --unit U --type T --mode M --run R [--branch B]
+ *           [--source S --source-path P]                    → prints cycleId
  *   set     <cycleId> key=value ...          update fields (status, commit, …)
  *   ingest-result <cycleId> <resultJson>     copy verdict/changeSummary/etc. from a result file
  *   policy  --unit U [--action A]             print integration policy: auto|pr
@@ -43,33 +44,51 @@ function out(obj) { process.stdout.write(JSON.stringify(obj, null, 2) + '\n'); }
 function cmdSelect() {
   const manifest = readJson(flag('--manifest'));
   if (!manifest) { console.error('select: --manifest not readable'); process.exit(2); }
-  const cycles = loadCycles();
-  const openByUnit = new Map();
-  for (const c of cycles) if (OPEN.has(c.status)) openByUnit.set(c.unit, c);
-
   const include = new Set(cfg.include || []);
   const exclude = new Set(cfg.exclude || []);
   const eligible = (u) => (include.size === 0 || include.has(u)) && !exclude.has(u);
-
   const work = [];
+  withLock(() => {
+    const cycles = loadCycles();
+    const openByUnit = new Map();
+    for (const c of cycles) if (OPEN.has(c.status)) openByUnit.set(c.unit, c);
+    let cyclesChanged = false;
 
-  // 1. New candidates meeting the signal threshold with no open cycle.
-  for (const u of manifest.units || []) {
-    if (!eligible(u.unit)) continue;
-    if (openByUnit.has(u.unit)) continue;
-    if ((u.sessionCount || 0) < (cfg.signalThreshold || 3)) continue;
-    work.push({ mode: 'review', unit: u.unit, type: u.type, sessionCount: u.sessionCount, signals: u.signals });
-  }
+    // 1. New candidates meeting the signal threshold with no open cycle.
+    for (const u of manifest.units || []) {
+      if (!eligible(u.unit)) continue;
+      if (openByUnit.has(u.unit)) continue;
+      if ((u.sessionCount || 0) < (cfg.signalThreshold || 3)) continue;
+      work.push({ mode: 'review', unit: u.unit, type: u.type, sessionCount: u.sessionCount, signals: u.signals });
+    }
 
-  // 2. Due re-reviews: deployed/observing cycles past their reviewDueAt.
-  const now = Date.now();
-  for (const c of cycles) {
-    if (!['deployed', 'observing'].includes(c.status)) continue;
-    if (!c.reviewDueAt || Date.parse(c.reviewDueAt) > now) continue;
-    if (!eligible(c.unit)) continue;
-    work.push({ mode: 're-review', unit: c.unit, type: c.unitType, cycleId: c.id });
-  }
+    // 2. Due re-reviews: deployed/observing cycles past their reviewDueAt.
+    const now = Date.now();
+    for (const c of cycles) {
+      if (!['deployed', 'observing'].includes(c.status)) continue;
+      if (!c.reviewDueAt || Date.parse(c.reviewDueAt) > now) continue;
+      if (!eligible(c.unit)) continue;
+      const source = c.source || 'marketplace';
+      const sourceStillExists = (manifest.unitEntries || []).some((entry) =>
+        entry.name === c.unit &&
+        entry.type === c.unitType &&
+        entry.source === source &&
+        entry.exists &&
+        !entry.conflict &&
+        (source !== 'external' || !c.sourcePath || entry.path === c.sourcePath)
+      );
+      if (!sourceStillExists) {
+        c.status = 'closed';
+        c.closedAt = nowIso();
+        c.closedReason = 'review source is no longer configured or available';
+        cyclesChanged = true;
+        continue;
+      }
+      work.push({ mode: 're-review', unit: c.unit, type: c.unitType, cycleId: c.id });
+    }
 
+    if (cyclesChanged) saveCycles(cycles);
+  });
   const result = { selectedAt: nowIso(), count: work.length, work };
   if (flag('--out')) writeJson(flag('--out'), result);
   out(result);
@@ -81,6 +100,8 @@ function cmdOpen() {
   const mode = flag('--mode') || 'review';
   const run = flag('--run') || nowIso();
   const branch = flag('--branch') || '';
+  const source = flag('--source') || 'marketplace';
+  const sourcePath = flag('--source-path') || '';
   if (!unit) { console.error('open: --unit required'); process.exit(2); }
   const id = `${cfg.branchPrefix || 'skill-review'}/${safeName(unit)}/${run}`;
   withLock(() => {
@@ -89,6 +110,8 @@ function cmdOpen() {
       id, unit, unitType: type, mode,
       status: 'candidate',
       branch,
+      source,
+      sourcePath,
       commit: null,
       openedAt: nowIso(),
       deployedAt: null,
