@@ -54,7 +54,7 @@ Rely on these skills for procedure and reference details:
 - **Description is discovery** — state what the unit does and when to use it in concise third-person language
 - **Separation is sacred** — duplicated logic between agent and skill is always a bug
 - **Evidence before expansion** — start from observed failure modes and representative evaluations rather than speculative instructions
-- **Independent review is risk-scaled** — use fresh-context, cross-model review for routing, schema, security, or system-wide changes; split reviewer scopes so each has a distinct lens
+- **Independent review is risk-scaled** — scale reviewer count and independence to the blast radius of the change; routing, schema, security, and system-wide changes always take a panel. The `multi-model-review` skill owns how to run and synthesize it
 - **Validation is required** — agent and skill changes are not complete until the available validation path passes
 - **Documentation must stay aligned** — inventories, reference tables, and architecture notes should reflect the live system
 

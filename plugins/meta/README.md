@@ -8,6 +8,8 @@ Meta-tooling for creating, auditing, packaging, scheduling, and continuously imp
 
 Authoring and audit skills need nothing beyond the Copilot CLI.
 
+`skill-crafting` and `agent-skill-audit` delegate their reviewer-panel mechanics to the `multi-model-review` skill from `core-skills`. Install `core-skills` alongside this plugin to get the full review procedure.
+
 `scheduled-headless-copilot` needs the host operating system scheduler. `scheduled-skill-review` is macOS-specific and additionally uses launchd, Swift/SwiftBar, GitHub CLI, and Agency.
 
 <!-- mnm:plugin-readme:start -->

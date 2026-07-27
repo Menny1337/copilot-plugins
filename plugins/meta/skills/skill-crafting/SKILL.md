@@ -152,7 +152,7 @@ description: "Creates data dashboards and visualizations. Use when the user ment
 
 **Critique the description before saving — required on every create OR change.**
 
-The description is the only always-loaded text, so redundancy costs budget every turn. Run the critique on a *different* model family than the author (authors rarely catch their own redundancy): use the `task` tool with a `model` override set to the newest cross-family model — Claude author → GPT or Gemini; GPT → Claude or Gemini; Gemini → Claude or GPT. Give that sub-agent the draft `description`, the skill's purpose, and the four cut-tests below, and have it return a tightened description plus what it cut and why. If no cross-model sub-agent is available, self-review instead and note that it was not independent.
+The description is the only always-loaded text, so redundancy costs budget every turn. Delegate this to the `multi-model-review` skill at panel size 1: one critic from a *different vendor family* than the author, with the lens set to description tightening and the four cut-tests below as the rubric. Give that critic the draft `description`, **the skill's purpose**, and the cut-tests — it cannot judge trigger accuracy without knowing what the skill is for. Authors rarely catch their own redundancy, which is precisely why the reviewer must sit outside the author's family. This is a **rewrite lens**, so the critic returns the tightened description plus what it cut and why — not that skill's finding shape, rubric, or synthesis steps. If no cross-family sub-agent is available, self-review instead and note that it was not independent.
 
 > **Retrieval may be semantic.** Copilot CLI 1.0.66 added a persisted `dynamicRetrieval`
 > setting (and `--dynamic-retrieval skills=<on|off>`) that retrieves skills using embeddings
@@ -405,7 +405,7 @@ Optional but recommended:
 - [ ] `allowed-tools`, if present, is a space-separated scalar rather than a YAML array, and does not pre-approve `shell` or `bash`
 - [ ] `argument-hint`, if present, is on a user-invocable skill (it is inert otherwise)
 - [ ] Host-specific fields are supported by the intended runtime
-- [ ] `description` critiqued for redundancy by a different-model sub-agent (no implementation detail, no triggers that merely restate the lead or each other) — see "Critique the description before saving"
+- [ ] `description` critiqued for redundancy by a sub-agent from a different vendor family (no implementation detail, no triggers that merely restate the lead or each other) — see "Critique the description before saving"
 - [ ] YAML parses cleanly (quote strings, check for special characters)
 
 **Structure validation:**

@@ -2,7 +2,7 @@
   "name": "menny1337-plugins",
   "metadata": {
     "description": "Public Copilot CLI plugin marketplace: reusable agents and skills organized by domain (core, meta, presentation, docs, ui, duty).",
-    "version": "2.5.0"
+    "version": "2.6.0"
   },
   "owner": {
     "name": "Menny1337",
@@ -11,8 +11,8 @@
   "plugins": [
     {
       "name": "core-skills",
-      "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
-      "version": "2.2.0",
+      "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), multi-model-review (adversarial cross-vendor review panel with synthesis), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
+      "version": "2.3.0",
       "source": "./plugins/core-skills",
       "author": {
         "name": "Menny1337",
@@ -28,6 +28,8 @@
         "browser",
         "prompt",
         "prompt-engineering",
+        "review",
+        "multi-model",
         "azure",
         "az-cli",
         "narrate",
@@ -69,7 +71,7 @@
     {
       "name": "meta",
       "description": "Meta-tooling for creating, auditing, packaging, scheduling, and continuously improving Copilot agents, skills, hooks, plugins, and workflows.",
-      "version": "1.11.0",
+      "version": "1.12.0",
       "source": "./plugins/meta",
       "author": {
         "name": "Menny1337",
@@ -93,7 +95,7 @@
     {
       "name": "presentation",
       "description": "Presentation-designer agent and supporting skills for PPTX and HTML decks, structured presentation workflows, critique, and image generation.",
-      "version": "2.0.2",
+      "version": "2.1.0",
       "source": "./plugins/presentation",
       "author": {
         "name": "Menny1337",

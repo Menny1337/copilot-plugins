@@ -232,10 +232,10 @@ Fix issues found in steps 2–6:
 Before applying:
 
 1. Label each finding as **verified defect**, **evidence-backed risk**, or **recommendation**.
-2. Use independent fresh-context review for schema, routing, security, or system-wide changes.
-   For multi-model review, assign non-overlapping lenses and reconcile disagreements explicitly.
-3. Run a different-model critique for every changed skill description.
-4. Preserve human approval for deletions, splits/merges, commits, releases, and other
+2. Use independent fresh-context review for schema, routing, security, or system-wide changes,
+   and run a different-model critique of every changed skill description. Follow the
+   `multi-model-review` skill for panel sizing, lens assignment, and synthesis.
+3. Preserve human approval for deletions, splits/merges, commits, releases, and other
    irreversible actions unless the user explicitly authorized them.
 
 ### Step 8: Evolve (Recommendations)

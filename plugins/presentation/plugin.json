@@ -1,5 +1,5 @@
 {
   "name": "presentation",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Presentation-designer agent and supporting skills for PPTX and HTML decks, structured presentation workflows, critique, and image generation."
 }

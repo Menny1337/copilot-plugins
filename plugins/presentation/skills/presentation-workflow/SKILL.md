@@ -160,23 +160,25 @@ Deliver:
 
 ## Step 7: Multi-Model Critique
 
-**Critical: Critique must happen in fresh context to avoid bias.**
+**Critique must happen in fresh context — the sub-agent that built the deck cannot judge it.**
 
-### Scope-Based Critique Routing
+Follow the `multi-model-review` skill (invoke it by name) for the panel mechanics: model
+selection, parallel launch, the shared finding shape, synthesis, and the generic stop
+conditions. This step supplies only the presentation-specific parameters.
 
-- **Quick scope (~5 slides):** Launch 1 critique sub-agent (use the best available model). Faster, cheaper — appropriate for simple decks.
-- **Standard scope (~10 slides):** Launch 3 critique sub-agents in parallel (full multi-model).
-- **Deep scope (~20+ slides):** Launch 3 critique sub-agents in parallel (full multi-model).
+### Panel Size by Scope
 
-### Critique Delegation Template
+| Scope | Panel |
+| --- | --- |
+| Quick (~5 slides) | 1 critic — faster and cheaper, appropriate for simple decks |
+| Standard (~10 slides) | 3 critics |
+| Deep (~20+ slides) | 3 critics |
 
-For each critique sub-agent:
+### Critique Brief
+
+Launch each critic as a background `general-purpose` task with this brief:
 
 ```
-task → general-purpose (model: [MODEL])
-  mode: "background"
-
-PROMPT TEMPLATE:
 You are an expert presentation critic. Evaluate this presentation against professional standards.
 
 ## Instructions
@@ -191,10 +193,13 @@ Read the presentation-critique skill (invoke it by name), then apply the full 35
 - This is Round [N] of critique.
 
 ## Required Output Format
-Return findings in this EXACT structure:
+Return findings in this EXACT structure — it supersedes the output format in the
+`presentation-critique` skill, including its "always end with What Works Well" rule.
+Argue against the deck rather than validating it; a critique that agrees with everything
+has cost a model call and bought nothing.
 
 ### Scores
-| Dimension | Score (1-5) |
+| Category | Score (1-5) |
 |-----------|------------|
 | Narrative & Structure | X |
 | Writing Quality | X |
@@ -203,77 +208,101 @@ Return findings in this EXACT structure:
 | Speaker Notes | X |
 | Professionalism | X |
 
+Score each category 1–5 by mapping the `presentation-critique` checkpoint marks it covers:
+5 = all ✅; 4 = one ⚠️, no ❌; 3 = two or more ⚠️, no ❌; 2 = one ❌; 1 = two or more ❌.
+Apply the full 35-checkpoint rubric even if early checkpoints fail — do not stop early, because
+a downstream category cannot be scored from an unexamined deck.
+
 ### Findings
-For each issue found:
-- **Category:** [narrative/writing/density/design/notes/professionalism]
+For each issue:
+- **id:** [prefix]/F1 — use the prefix assigned in this brief (`A/`, `B/`, `C/`)
 - **Slide:** [number]
+- **Category:** [narrative/writing/density/design/notes/professionalism]
+- **Dimension:** [correctness/gaps/risks/contradictions/falsification]
+- **Type:** [mechanical/factual/narrative/design/style]
+- **Class:** [objective/structural/subjective]
 - **Severity:** [critical/major/minor]
-- **Type:** [mechanical/factual/narrative/style]
-- **Finding:** [specific description]
+- **Claim:** [the issue in one sentence]
+- **Evidence:** [what on the slide shows it]
 - **Fix:** [concrete suggestion]
 
+Class definitions: `objective` = verifiable against the deck (broken image link, missing
+notes, fabricated metric); `structural` = reasoned but contestable (narrative, layout);
+`subjective` = taste (tone, density).
+
 ### Overall Verdict
-[PASS / NEEDS WORK — with 1-sentence rationale]
+VERDICT: [ship / hold / needs-rework] — with a 1-sentence rationale
 ```
-
-Use 3 different frontier models for multi-model critique. Current recommended defaults: `claude-opus-4.6`, `gpt-5.4`, `gemini-3-pro-preview`. Update these as newer frontier models become available.
-
-### Waiting for Results
-
-After launching background critique agents, use `read_agent` with `wait: true` for each agent ID. **Do not proceed to Step 8 until all critique agents have completed.**
 
 ## Step 8: Consolidate & Decide
 
-### For Single-Model Critique (Quick scope)
+### Quick scope (1 critic)
 
-Read the findings directly. If all scores ≥ 4 and no critical/major issues → deliver. Otherwise → fix.
+Read the findings directly. With one critic there is nothing to corroborate — rank by severity,
+label every finding UNCORROBORATED, and treat class as an annotation. If all six categories
+score ≥ 4 with no critical or major findings, deliver. Otherwise fix and re-run.
 
-### For Multi-Model Critique (Standard/Deep scope)
+### Standard and deep scope (3 critics)
 
-Read all 3 critique reports and consolidate using **class-based severity rules**:
+Synthesize per `multi-model-review` Step 5, which owns panel verification, clustering,
+agreement labelling, and ranking. Critics emit `critical / major / minor`; read `critical` as
+that skill's `blocker`. The buckets below are named for the *action* they imply, not for a
+severity — a `minor` objective nit lands in Must Fix because it is cheap and certain, not
+because it blocks the release. Delivery is gated by the stop conditions, never by a bucket
+being non-empty.
 
-#### Severity by Issue Type
+### Presentation Issue Types → Finding Classes
 
-| Issue Type | Elevate Threshold | Examples |
-|---|---|---|
-| **Mechanical** (broken refs, missing notes, overflow) | 1 credible hit | Broken image link, missing speaker notes, text overflow |
-| **Factual** (invented data, wrong claims) | 1 credible hit | Fabricated metric, unsupported claim |
-| **Narrative** (structure, flow, story) | 2+ models agree | Weak opening, no narrative spine, disjointed flow |
-| **Design** (visual consistency, layout) | 2+ models agree | Inconsistent palette, cramped layout |
-| **Style** (subjective preferences) | Only if repeated or high-confidence | "Too many bullets", "slide feels heavy" |
+| Issue type | Class | Examples |
+| --- | --- | --- |
+| **Mechanical** | objective | Broken image link, missing speaker notes, text overflow |
+| **Factual** | objective | Fabricated metric, unsupported claim |
+| **Narrative** | structural | Weak opening, no narrative spine, disjointed flow |
+| **Design** | structural | Inconsistent palette, cramped layout |
+| **Style** | subjective | "Too many bullets", "slide feels heavy" |
 
-#### Deduplication
+Every credible finding is reported regardless of how many critics raised it; the agreement
+label records corroboration and drives ordering, per `multi-model-review` Step 5.
 
-Group findings into canonical categories: narrative, writing, density, design, notes, professionalism. When multiple models flag the same issue differently, merge into one finding and note agreement count.
+When clustering, group findings into the canonical categories: narrative, writing, density,
+design, notes, professionalism.
 
-#### Stop Conditions
+### Presentation-Specific Stop Conditions
 
-- **All scores ≥ 4, no critical/major issues** → PASS, deliver
-- **Only minor/style issues remain** → PASS, deliver with notes
-- **Same critical issue persists across 2 rounds** → escalate to user: "I can't resolve this automatically — here's the issue: [X]. How would you like to proceed?"
-- **Critique becomes contradictory** (one model says add content, another says reduce) → deliver best version, note the tradeoff
-- **Max 3 rounds reached** → deliver best version with remaining issues listed
+Evaluate these **before** the generic table in `multi-model-review` Step 7 — first match wins
+across both lists, deck-specific rows first:
+
+- **Round 3 reached with any category < 4, or any critical or major finding open** → **escalate
+  to the user**. The round cap outranks every deck-specific row; check it first so no rule below
+  can schedule a fourth round.
+- **Any category scores < 4** → fix and re-run. A weak category blocks delivery even when no
+  single finding is critical or major.
+- **All six categories ≥ 4 and no critical or major findings** → **ship**, listing any remaining
+  minor or style items as notes. Minor objective items in Must Fix are cheap corrections to
+  apply on the way out; they do not hold delivery.
+
+Then fall through to the generic table for open blockers and escalation.
 
 ### Consolidation Format
 
 ```markdown
 ## Consolidated Critique (Round N)
 
-### Critical — Must Fix
-[Issues that are mechanical/factual OR flagged by all 3 models]
-- Slide X: [description] (flagged by: [models]) — Type: [mechanical/factual/narrative]
+### Must Fix
+[Objective-class findings, and structural findings at critical severity]
+- Slide X: [description] — Class: [objective/structural] · [CONSENSUS / LONE-DISSENT / UNCORROBORATED] (raised by: [vendors])
 
-### Major — Should Fix
-[Issues flagged by 2+ models OR single-model mechanical/factual]
-- Slide X: [description] (flagged by: [models]) — Type: [type]
+### Should Fix
+[Remaining structural findings]
+- Slide X: [description] — Class: [class] · [CONSENSUS / LONE-DISSENT / UNCORROBORATED] (raised by: [vendors])
 
-### Minor — Nice to Fix
-[Style/preference issues, single-model narrative/design]
-- Slide X: [description] (flagged by: [model]) — Type: [style]
+### Notes
+[Subjective findings]
+- Slide X: [description] — Class: [class] · [label] (raised by: [vendor])
 
 ### Scores
-| Dimension | Model A | Model B | Model C | Avg |
-|-----------|---------|---------|---------|-----|
+| Category | Critic A | Critic B | Critic C | Avg |
+|-----------|----------|----------|----------|-----|
 | Narrative | X/5 | X/5 | X/5 | X.X |
 | Writing | X/5 | X/5 | X/5 | X.X |
 | Density | X/5 | X/5 | X/5 | X.X |
@@ -281,17 +310,18 @@ Group findings into canonical categories: narrative, writing, density, design, n
 | Notes | X/5 | X/5 | X/5 | X.X |
 | Professional | X/5 | X/5 | X/5 | X.X |
 
-### Verdict: [PASS / FIX REQUIRED / ESCALATE TO USER]
+### Verdict: [ship / hold / escalate]
 ```
 
 ## Step 9: Fix & Rebuild
 
 If critique findings require changes:
 
-1. Plan specific fixes — classify each as:
+1. Plan specific fixes — classify each by rebuild size (a different axis from the Step 8
+   finding classes):
    - **Cosmetic** (text tweak, color fix) — minor edit
    - **Content** (rewrite a slide, add notes) — targeted rebuild
-   - **Structural** (reorder slides, change narrative) — full rebuild
+   - **Deck-wide** (reorder slides, change narrative) — full rebuild
 2. Delegate a rebuild to a fresh sub-agent with: fix instructions + original outline + critique findings
 3. Run Step 7 critique again on the rebuilt version
 4. Repeat up to **3 total rounds** (see stop conditions in Step 8)

@@ -141,8 +141,9 @@ rule: do not edit the skill for an agent-layer problem.
   for procedure or orchestration changes.
 - Run the repository's available behavioral evaluations in addition to structural validation.
   For units intended to work across model families or tiers, test each supported target.
-- Use independent fresh-context review for routing, security, or governance changes. Skill
-  descriptions require the different-model critique in `skill-crafting`; agent descriptions
+- Use independent fresh-context review for routing, security, or governance changes — the
+  `multi-model-review` skill owns panel sizing, lens assignment, and synthesis. Skill
+  descriptions require the different-vendor critique in `skill-crafting`; agent descriptions
   follow the behavioral and independent-review guidance in `agent-crafting`.
 - **Apply only after explicit human approval.** After applying, run frontmatter
   validation (the repo validator if available, e.g. `node scripts/validate.mjs`). In
