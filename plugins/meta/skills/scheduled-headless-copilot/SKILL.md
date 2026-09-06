@@ -90,9 +90,12 @@ Flags that matter for **unattended** runs:
 | `-C <dir>` | Working directory (e.g. the repo). Schedulers start in `/` or `$HOME`. |
 | `--agent <plugin:agent>` | Select a custom agent that carries the procedure. |
 | `--model <model>` (env `COPILOT_MODEL`) | Pin the model for reproducible runs. |
-| `--add-dir <dir>` | Grant access to an extra path without `--allow-all-paths`. |
-| `--plugin-dir <dir>` | Load a local plugin (for skills/agents not globally installed). |
+| `--add-dir <dir>` | Grant access to a trusted extra path without `--allow-all-paths`; CLI 1.0.81 also discovers `.github/skills/` and `.github/agents/` below it. Relative paths follow `-C` and resumed/worktree cwd in 1.0.83. |
+| `--plugin-dir <dir>` | Load a local plugin (for skills/agents not globally installed). Relative paths follow `-C` and resumed/worktree cwd in 1.0.83. |
+| `--sandbox` / `--no-sandbox` | Pin the selected sandbox policy for this run rather than inheriting saved state. Prefer `--sandbox` after provisioning and testing the host; use `--no-sandbox` only when policy permits and the unsandboxed risk is accepted. |
 | `-s, --silent` + `--output-format json` | Quiet, machine-readable JSONL output for logging/parsing. |
+| `--usage-output-file <file>` | Write final usage statistics as JSON, including per-agent usage. |
+| `--bash-env=<on\|off>` / `--no-bash-env` | Pin whether `BASH_ENV` is honored; default is off and the preference persists. |
 | `--no-auto-update` (env `COPILOT_AUTO_UPDATE=false`) | Don't self-upgrade mid-run in a headless context. |
 | `--log-dir <dir>` | Capture CLI logs for the run. |
 | `--share[=path]` / `--share-gist` | Persist a transcript artifact you can read later. |
@@ -100,10 +103,14 @@ Flags that matter for **unattended** runs:
 > **Permissions reality:** unattended means **full autonomy with no confirmation**. Scope the
 > blast radius — prefer `--allow-all-tools` plus targeted `-C` / `--add-dir` over
 > `--allow-all-paths`, and treat the job as acting on your behalf with your credentials.
+> Only add directories you control: `--add-dir` is also a customization-discovery root.
 
 ### Step 3 — Wrap the invocation in a runner script
 
 Copy `templates/runner.sh`, then customize the prompt, paths, and cadence-independent settings.
+The template intentionally leaves sandbox policy unset: during setup, add the chosen
+`--sandbox` or `--no-sandbox` flag to its Copilot invocation rather than silently inheriting a
+saved/default value. A managed policy can enforce `--sandbox` and reject disable attempts.
 The runner is responsible for everything the scheduler strips away:
 
 - **`PATH`** that resolves `copilot`, `node`, `git`, `gh` (and `agency` if you use it).
@@ -169,10 +176,26 @@ paste checks are in `references/headless-invocation.md`:
    into the agent. Verify under a scheduler-like env:
    `env -i HOME="$HOME" PATH="$PATH" git -C <repo> push --dry-run`.
 4. **Working directory & writable paths** — schedulers start in `/` or `$HOME`. Always pass
-   `-C <repo>` and grant extra paths with `--add-dir`.
+   `-C <repo>` and grant extra paths with `--add-dir`. Since CLI 1.0.83, relative
+   `--add-dir` and `--plugin-dir` values resolve after `-C` and against resumed/worktree cwd
+   regardless of option order.
 5. **Sleep / network / login** — if the laptop is asleep at fire time, launchd runs **once on
    wake** (cron simply skips the slot). Make sure the task tolerates a delayed start and that
    network/login state is available when it runs.
+
+If you pin `--sandbox`, account for the 1.0.83 network model: host and localhost services are
+blocked by default (including localhost servers started by the command on macOS). Set
+`sandbox.userPolicy.network.allowLocalNetwork` only when the job needs that access.
+Linux requires `bwrap` 0.5.0+; every Linux sandbox also needs `slirp4netns`, util-linux 2.35+
+(`unshare` with `--map-current-user` and `--keep-caps`, plus `nsenter`), `iptables`,
+`ip6tables`, both restore binaries, and read/write `/dev/net/tun`. Unprivileged hosts normally
+need the `nf_tables` backend. The host-support probe checks only `bwrap` on Linux and
+`sandbox-exec` on macOS, so missing namespace prerequisites fail sandbox startup later.
+If sandboxing is enabled by the flag, saved state, or policy on an unsupported host, sandboxed
+shell commands and sandboxed MCP/LSP servers fail with a startup warning; the setting is not
+ignored.
+Managed enforcement cannot be disabled locally, so provision the host or contact the
+administrator instead of treating `--no-sandbox` as a universal recovery.
 
 ### Step 6 — Verify before trusting the schedule
 
@@ -217,7 +240,7 @@ file if missing. Do not modify any other files. (NIGHTLY_DEP_AUDIT)"`
 sets `PATH`, locks, logs, then:
 
 ```bash
-copilot -p "$PROMPT" -C "$REPO" --allow-all-tools --no-ask-user --no-color --no-auto-update \
+copilot -p "$PROMPT" -C "$REPO" --sandbox --allow-all-tools --no-ask-user --no-color --no-auto-update \
   --add-dir "$REPO/reports" --log-dir "$STATE/cli-logs" >>"$LOG" 2>&1
 ```
 

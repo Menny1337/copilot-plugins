@@ -18,17 +18,24 @@ What you control from the agent profile and settings:
 |------|-------|-----|
 | Block auto-dispatch as a subagent | frontmatter | `disable-model-invocation: true` |
 | Block manual selection | frontmatter | `user-invocable: false` |
-| Pick this agent's model or effort | frontmatter | `model: <model-id>` and `reasoning-effort: <level>` |
+| Pick this agent's model or effort | frontmatter | `model: <model-id>` or `model: [<primary>, <fallback>]`, plus `reasoning-effort: <level>` |
+| Keep model changes on the configured list | frontmatter | `model-policy: required` (CLI 1.0.83+) |
 | Per-subagent model / effort / context tier | `~/.copilot/settings.json` | `subagents.agents.<name>` = `{ model, effortLevel, contextTier }`; each field accepts the literal `"inherit"` (managed by `/subagents`, alias `/agents`) |
 | Limit nested delegation | `~/.copilot/settings.json` | `subagents.maxDepth`; default lowered from 6 to 4 in CLI 1.0.71, and usage-based-billing users can raise it up to 128 |
 | Prevent agents from being dispatched | `~/.copilot/settings.json` | Exclude or restrict custom and built-in agents for selection, tasks, and subagents (CLI 1.0.66 and 1.0.71) |
 | Defer large tool surfaces | frontmatter / MCP | `deferred-tool-loading: true`; MCP servers configured in agent frontmatter also honour `deferTools` |
 
 Subagents default to a **low-cost model** unless overridden by the `model` frontmatter field
-or a `subagents.agents.<name>.model` setting. Use `reasoning-effort` in frontmatter when
-the agent itself always needs a different effort level; use `/subagents` when the parent
-orchestrator should decide per child. (`/sidekicks` is not documented in the public CLI
-reference — don't author against it.)
+or a `subagents.agents.<name>.model` setting. A `model` array is tried in order until one is
+available. Add `model-policy: required` when later model changes must stay within that list;
+without it, the list provides startup fallback rather than a permanent policy boundary. Use
+`reasoning-effort` in frontmatter when the agent itself always needs a different effort
+level; use `/subagents` when the parent orchestrator should decide per child.
+(`/sidekicks` is not documented in the public CLI reference — don't author against it.)
+
+The bundled 1.0.83-5 SDK's programmatic `CustomAgentConfig` still accepts only
+`model?: string` and has no `modelPolicy` field. Treat ordered models and
+`model-policy` as CLI frontmatter features until the SDK declarations catch up.
 
 The lower `subagents.maxDepth` default matters for orchestrators that delegate to agents
 that delegate again. Keep the delegation graph shallow by default, and document when a

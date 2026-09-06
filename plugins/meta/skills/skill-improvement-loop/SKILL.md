@@ -41,6 +41,7 @@ is replaced by validated AUTO-DEPLOY followed by post-deploy Phase E review:
 
 ## When to Skip
 
+- **Broad Agent Architect self-maintenance** across instructions, references, memory, and update duties — use `agent-architect-self-audit`; it may call this skill for a scoped behavioral finding.
 - **Static structural quality** (frontmatter validity, inventory, duplication, split/merge/retire, quality scoring) — use `agent-skill-audit` instead
 - **Creating a brand-new skill** or editing frontmatter mechanics — use `skill-crafting`
 - **Creating a brand-new agent or fixing one without session evidence** — use `agent-crafting`

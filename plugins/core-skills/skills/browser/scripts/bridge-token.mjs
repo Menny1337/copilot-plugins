@@ -12,14 +12,12 @@
 // detected in milliseconds instead of waiting out a timeout - and usually
 // repaired automatically, with no consent-dialog recapture at all.
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const EXTENSION_ID = 'mmlmfjhmonkocbjadbfplnigmagldckm';
-export const TOKEN_DIR = join(homedir(), '.config', 'playwright-bridge');
-
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
 // ---------------------------------------------------------------------------
@@ -58,6 +56,10 @@ export function parseSession(session) {
 
 const slug = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
+export function isSafeProfileDirectory(value) {
+  return value !== '.' && value !== '..' && value.length <= 64 && !/[\\/]/.test(value);
+}
+
 // ---------------------------------------------------------------------------
 // profile discovery
 // ---------------------------------------------------------------------------
@@ -83,6 +85,7 @@ export function listProfiles(browser = 'msedge') {
   }
 
   return [...dirs]
+    .filter(isSafeProfileDirectory)
     .filter((d) => existsSync(join(root, d)))
     .map((dir) => ({
       browser,
@@ -93,6 +96,15 @@ export function listProfiles(browser = 'msedge') {
       hasExtension: hasExtension(join(root, dir)),
     }))
     .sort((a, b) => (a.dir === 'Default' ? -1 : b.dir === 'Default' ? 1 : a.dir.localeCompare(b.dir)));
+}
+
+export function readLastUsedProfile(root) {
+  try {
+    const profile = JSON.parse(readFileSync(join(root, 'Local State'), 'utf8'))?.profile;
+    return profile?.last_used || profile?.last_active_profiles?.[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 function hasExtension(profilePath) {
@@ -109,16 +121,40 @@ function hasExtension(profilePath) {
 export function profileForSession(session) {
   const { browser, hint } = parseSession(session);
   const profiles = listProfiles(browser);
-  if (!profiles.length) return null;
-  if (!hint) return profiles.find((p) => p.dir === 'Default') || profiles[0];
+  return selectProfile(profiles, hint, readLastUsedProfile(browserRoots()[browser])).profile;
+}
+
+export function selectProfile(profiles, hint = null, lastUsed = null) {
+  if (!profiles.length) return { profile: null, reason: 'profile-not-found', matches: [] };
+  if (!hint) {
+    return {
+      profile: profiles.find((p) => p.dir === lastUsed) ||
+        profiles.find((p) => p.dir === 'Default') ||
+        profiles[0],
+      reason: null,
+      matches: [],
+    };
+  }
+
   const want = slug(hint);
-  return (
-    profiles.find((p) => slug(p.name) === want) ||
-    profiles.find((p) => slug(p.dir) === want) ||
-    profiles.find((p) => slug(p.account).startsWith(want)) ||
-    profiles.find((p) => slug(p.name).startsWith(want)) ||
-    null
-  );
+  if (!want) return { profile: null, reason: 'profile-not-found', matches: [] };
+
+  const exactMatches = profiles.filter((p) =>
+    slug(p.dir) === want || slug(p.name) === want);
+  if (exactMatches.length === 1) {
+    return { profile: exactMatches[0], reason: null, matches: [] };
+  }
+  if (exactMatches.length > 1) {
+    return { profile: null, reason: 'profile-ambiguous', matches: exactMatches };
+  }
+
+  const prefixes = profiles.filter((p) =>
+    slug(p.account).startsWith(want) || slug(p.name).startsWith(want));
+  if (prefixes.length === 1) return { profile: prefixes[0], reason: null, matches: [] };
+  if (prefixes.length > 1) {
+    return { profile: null, reason: 'profile-ambiguous', matches: prefixes };
+  }
+  return { profile: null, reason: 'profile-not-found', matches: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +167,12 @@ export function profileForSession(session) {
 // suffix and confirm the record belongs to the extension by looking back for a
 // surviving id fragment.
 const KEY_ANCHOR = Buffer.from('\u0000\u0001auth-token', 'binary');
-const ID_FRAGMENT = Buffer.from(EXTENSION_ID.slice(0, 18), 'binary');
+const ID_FRAGMENTS = [
+  EXTENSION_ID.slice(0, 18),
+  EXTENSION_ID.slice(-18),
+].map((fragment) => Buffer.from(fragment, 'binary'));
+const KEY_SCOPE_BYTES = 64;
+const VALUE_SCAN_BYTES = 256;
 
 function tokensInBuffer(buf) {
   const out = [];
@@ -143,14 +184,20 @@ function tokensInBuffer(buf) {
 
     // The value follows a short binary header; a bare 43-char base64url run is
     // the extension's token format. JSON values (other origins) never match.
-    const tail = buf.subarray(at, at + 64).toString('binary');
-    const m = tail.match(/[A-Za-z0-9_-]{43}/);
-    if (!m) continue;
-    const after = tail[m.index + 43];
-    if (after && /[A-Za-z0-9_-]/.test(after)) continue; // longer blob, not a token
+    const tail = buf.subarray(at, at + VALUE_SCAN_BYTES).toString('binary');
+    for (const m of tail.matchAll(/[A-Za-z0-9_-]{43}/g)) {
+      const before = m.index > 0 ? tail[m.index - 1] : '';
+      const after = tail[m.index + 43] || '';
+      if (/[A-Za-z0-9_-]/.test(before) || /[A-Za-z0-9_-]/.test(after)) continue;
 
-    const scoped = buf.subarray(Math.max(0, i - 256), i).includes(ID_FRAGMENT);
-    out.push({ token: m[0], scoped, offset: i });
+      const keyPrefix = buf.subarray(Math.max(0, i - KEY_SCOPE_BYTES), i);
+      const scoped = ID_FRAGMENTS.some((fragment) => {
+        const fragmentAt = keyPrefix.lastIndexOf(fragment);
+        return fragmentAt !== -1 &&
+          keyPrefix.length - fragmentAt - fragment.length <= 32;
+      });
+      out.push({ token: m[0], scoped, offset: i });
+    }
   }
   return out;
 }
@@ -183,37 +230,10 @@ export function readProfileToken(profilePath) {
   }
   if (!candidates.length) return null;
 
-  // Prefer records provably scoped to the extension, then the newest file, then
-  // the latest record within that file (leveldb appends, so later wins).
-  candidates.sort((a, b) => Number(b.scoped) - Number(a.scoped) || b.mtime - a.mtime || b.offset - a.offset);
-  return candidates[0].token;
-}
-
-// ---------------------------------------------------------------------------
-// token files
-// ---------------------------------------------------------------------------
-
-export const tokenFile = (session) => join(TOKEN_DIR, `${session}.token`);
-
-export function readTokenFile(session) {
-  const f = tokenFile(session);
-  if (!existsSync(f)) return null;
-  const v = readFileSync(f, 'utf8').trim();
-  // Tolerate a pasted "VAR=value" line.
-  const cleaned = v.includes('=') ? v.slice(v.lastIndexOf('=') + 1).trim() : v;
-  return cleaned || null;
-}
-
-export function writeTokenFile(session, token) {
-  mkdirSync(TOKEN_DIR, { recursive: true });
-  const f = tokenFile(session);
-  writeFileSync(f, `${token}\n`, { mode: 0o600 });
-  try {
-    chmodSync(f, 0o600);
-  } catch {
-    /* best effort */
-  }
-  return f;
+  const scoped = candidates.filter((candidate) => candidate.scoped);
+  if (!scoped.length) return null;
+  scoped.sort((a, b) => b.mtime - a.mtime || b.offset - a.offset);
+  return scoped[0].token;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,12 +241,18 @@ export function writeTokenFile(session, token) {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the token to attach with, preferring the value the extension itself
- * holds. Returns { ok, token, source, profile, fileToken, mismatch, reason }.
+ * Resolve the token held by the extension in the browser's last-used profile.
+ * Returns { ok, token, source, profile, reason }.
  */
-export function resolveToken(session = 'msedge') {
-  const profile = profileForSession(session);
-  const fileToken = readTokenFile(session);
+export function resolveToken(session = 'msedge', profileHint = null) {
+  const { browser, hint } = parseSession(session);
+  const profiles = listProfiles(browser);
+  const selection = selectProfile(
+    profiles,
+    profileHint === null ? hint : profileHint,
+    readLastUsedProfile(browserRoots()[browser]),
+  );
+  const profile = selection.profile;
   const diskToken = profile ? readProfileToken(profile.path) : null;
 
   if (diskToken && TOKEN_RE.test(diskToken)) {
@@ -235,23 +261,19 @@ export function resolveToken(session = 'msedge') {
       token: diskToken,
       source: 'profile',
       profile,
-      fileToken,
-      mismatch: Boolean(fileToken && fileToken !== diskToken),
     };
   }
 
-  if (fileToken && TOKEN_RE.test(fileToken)) {
-    return { ok: true, token: fileToken, source: 'file', profile, fileToken, mismatch: false };
-  }
-
-  if (fileToken) {
-    return { ok: false, reason: 'malformed-file-token', profile, fileToken };
-  }
-  if (profile && !profile.hasExtension) {
-    return { ok: false, reason: 'extension-not-installed', profile };
-  }
   if (!profile) {
-    return { ok: false, reason: 'profile-not-found', profile: null };
+    return {
+      ok: false,
+      reason: selection.reason,
+      profile: null,
+      matches: selection.matches,
+    };
+  }
+  if (!profile.hasExtension) {
+    return { ok: false, reason: 'extension-not-installed', profile };
   }
   return { ok: false, reason: 'no-token', profile };
 }
@@ -265,14 +287,14 @@ export function explain(session, res) {
       L.push(`No browser profile matches session "${session}".`);
       L.push('Run `bridge-token.mjs list` to see the available profiles.');
       break;
+    case 'profile-ambiguous':
+      L.push(`Browser profile selector "${session}" matches multiple profiles:`);
+      for (const match of res.matches || []) L.push(`- ${match.name} (${match.dir})`);
+      L.push('Use the exact profile directory or a unique displayed name.');
+      break;
     case 'extension-not-installed':
       L.push(`The Playwright Bridge extension is not installed in ${p.browser} profile "${p.name}" (${p.dir}).`);
-      L.push('Switch the browser to that profile, install the extension, then run:');
-      L.push(`  playwright-cli attach --extension=${session}`);
-      break;
-    case 'malformed-file-token':
-      L.push(`${tokenFile(session)} does not contain a valid 43-character token.`);
-      L.push('Store the token value only, with no "VAR=" prefix.');
+      L.push('Switch the browser to that profile, install the extension, then retry browser-window.mjs start.');
       break;
     default:
       L.push(`No token found for session "${session}".`);
@@ -289,21 +311,14 @@ export function explain(session, res) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = `bridge-token - resolve and repair Playwright Bridge tokens
+const USAGE = `bridge-token - inspect Playwright Bridge token readiness
 
 Usage:
   bridge-token.mjs list [--browser msedge|chrome|chromium]
-  bridge-token.mjs get     [--session <name>]   print the token to attach with
-  bridge-token.mjs check   [--session <name>]   verify the token file (exit 1 on drift)
-  bridge-token.mjs sync    [--session <name>]   write the profile's token to the file
-  bridge-token.mjs sync-all [--browser msedge]  one token file per profile
+  bridge-token.mjs check [--browser msedge|chrome|chromium] [--profile name]
 
-The session name selects the profile: "msedge" is the default profile,
-"msedge-woodgrove" matches the profile named "Woodgrove".`;
-
-function mask(t) {
-  return t ? `${t.slice(0, 6)}…${t.slice(-4)}` : null;
-}
+The browser's last-used profile is selected unless --profile is provided.
+Token values are never printed.`;
 
 function main(argv) {
   const cmd = argv[0];
@@ -313,9 +328,8 @@ function main(argv) {
     const eq = argv.find((a) => a.startsWith(`--${n}=`));
     return eq ? eq.slice(n.length + 3) : d;
   };
-  const session = flag('session', 'msedge');
-  const browser = flag('browser', parseSession(session).browser);
-  const reveal = argv.includes('--reveal');
+  const browser = flag('browser', 'msedge');
+  const profile = flag('profile');
   const out = (o) => console.log(JSON.stringify(o, null, 2));
 
   switch (cmd) {
@@ -323,96 +337,36 @@ function main(argv) {
       const profiles = listProfiles(browser).map((p) => {
         const token = p.hasExtension ? readProfileToken(p.path) : null;
         const guess = p.dir === 'Default' ? browser : `${browser}-${slug(p.name)}`;
-        const fileToken = readTokenFile(guess);
         return {
           profile: p.dir,
           name: p.name,
           account: p.account,
           extension: p.hasExtension,
           session: guess,
-          token: reveal ? token : mask(token),
-          tokenFile: existsSync(tokenFile(guess)) ? tokenFile(guess) : null,
+          tokenAvailable: Boolean(token),
           status: !p.hasExtension
             ? 'no-extension'
             : !token
               ? 'no-token-yet'
-              : !fileToken
-                ? 'ok (resolved from profile)'
-                : fileToken === token
-                  ? 'ok (file matches)'
-                  : 'FILE STALE - would hang; run sync',
+              : 'ok',
         };
       });
       out({ ok: true, browser, profiles });
       return 0;
     }
 
-    case 'get': {
-      const r = resolveToken(session);
-      if (!r.ok) {
-        out({ ok: false, error: r.reason, message: explain(session, r) });
-        return 1;
-      }
-      if (argv.includes('--raw')) {
-        console.log(r.token);
-        return 0;
-      }
-      out({
-        ok: true,
-        session,
-        source: r.source,
-        profile: r.profile ? `${r.profile.name} (${r.profile.dir})` : null,
-        token: reveal ? r.token : mask(r.token),
-        staleFileIgnored: r.mismatch || undefined,
-      });
-      return 0;
-    }
-
     case 'check': {
-      const r = resolveToken(session);
+      const r = resolveToken(browser, profile);
       if (!r.ok) {
-        out({ ok: false, error: r.reason, message: explain(session, r) });
-        return 1;
-      }
-      if (r.mismatch) {
         out({
           ok: false,
-          error: 'stale-token-file',
-          session,
-          profile: `${r.profile.name} (${r.profile.dir})`,
-          message:
-            `${tokenFile(session)} does not match the token held by profile "${r.profile.name}". ` +
-            'Attaching with it would hang forever. Fix instantly with: ' +
-            `bridge-token.mjs sync --session ${session}`,
+          error: r.reason,
+          message: explain(profile ? `${browser}-${profile}` : browser, r),
         });
         return 1;
       }
-      out({ ok: true, session, source: r.source, profile: `${r.profile.name} (${r.profile.dir})` });
+      out({ ok: true, browser, source: r.source, profile: `${r.profile.name} (${r.profile.dir})` });
       return 0;
-    }
-
-    case 'sync': {
-      const r = resolveToken(session);
-      if (!r.ok || r.source !== 'profile') {
-        out({ ok: false, error: r.reason || 'no-profile-token', message: explain(session, r) });
-        return 1;
-      }
-      const f = writeTokenFile(session, r.token);
-      out({ ok: true, session, wrote: f, profile: `${r.profile.name} (${r.profile.dir})`, changed: r.mismatch });
-      return 0;
-    }
-
-    case 'sync-all': {
-      const wrote = [];
-      for (const p of listProfiles(browser)) {
-        if (!p.hasExtension) continue;
-        const token = readProfileToken(p.path);
-        if (!token) continue;
-        const name = p.dir === 'Default' ? browser : `${browser}-${slug(p.name)}`;
-        wrote.push({ session: name, profile: p.name, file: writeTokenFile(name, token) });
-      }
-      out({ ok: true, browser, wrote });
-      return wrote.length ? 0 : 1;
     }
 
     default:

@@ -40,8 +40,12 @@ For version-sensitive CLI behaviour, consult and refresh
 | Enterprise | `agents/<name>.agent.md` in an enterprise-designated organization's `.github-private` repository | Lowest | Broadest scope |
 | User (local) | `~/.copilot/agents/<name>.agent.md` | User-local | Personal agents, all repos |
 | Plugin | `<plugin-dir>/agents/<name>.agent.md` | Plugin-scoped | Loaded when the plugin is installed |
+| Added directory | `<dir>/.github/agents/<name>.agent.md` | Session-scoped | Loaded from trusted roots passed with `--add-dir` since CLI 1.0.81 |
 
 The filename (minus `.agent.md`) becomes the agent's identifier. Invoke with `@<name>` in Copilot Chat.
+
+`--add-dir` grants file access and discovers `.github/agents/` and `.github/skills/`
+below that root. Add only trusted directories; it is not a path-only permission flag.
 
 **Naming conventions:**
 - Use lowercase kebab-case: `code-reviewer`, `audio-dev`, `doc-updater`
@@ -65,7 +69,8 @@ Every agent file has two parts:
 | `description` | string | **Yes** | — | Purpose and capabilities summary. Appears as placeholder text. |
 | `tools` | string[] / string | No | All (`["*"]`) | Tools the agent can use. Accepts a YAML array or a comma-separated string. See [Tool Aliases](#tool-aliases). |
 | `skills` | string[] | No | — | CLI-only since 1.0.22. Eagerly loads the named skills' content into the agent's context at startup. Must be a YAML array — a bare string makes the agent fail to load. Unknown names are silently ignored. Reserve for procedures needed on every run. |
-| `model` | string | No | Inherits default | Model to use when this agent executes. Powers per-agent subagent model selection (`/subagents`). |
+| `model` | string / string[] | No | Inherits default | Model to use when this agent executes. Since CLI 1.0.83, an array is tried in order until an available model is found. |
+| `model-policy` | string | No | — | CLI-only. Set `required` to keep later model changes within the configured `model` list. |
 | `reasoning-effort` | string | No | Inherits current | CLI-only since 1.0.66. Sets reasoning effort for this agent. Use when the role consistently needs deeper or lighter reasoning than the parent session; `/subagents` per-agent settings can still override it. |
 | `target` | string | No | Both | `vscode` or `github-copilot` — restricts which environment the agent loads in. |
 | `mcp-servers` | object | No | — | MCP server configurations. Not used by VS Code/IDE agents. |
@@ -84,6 +89,12 @@ Every agent file has two parts:
 > not on agents.
 > Unrecognized `tools` entries are silently ignored, which lets you list product-specific
 > tools without breaking other hosts.
+>
+> **Current docs lag:** GitHub's public custom-agent table still describes `model` as a
+> single string and does not list `model-policy`. The ordered list and
+> `model-policy: required` are verified from the 1.0.83 release metadata and live CLI
+> baseline. The bundled SDK's programmatic `CustomAgentConfig` remains narrower
+> (`model?: string`), so do not assume the array form works through that API.
 
 ### Syntax Rules
 

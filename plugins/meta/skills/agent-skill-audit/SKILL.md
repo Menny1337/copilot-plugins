@@ -26,6 +26,7 @@ A structured procedure for auditing, refining, and evolving custom Copilot agent
 
 ## When to Skip
 
+- An explicit Agent Architect self-maintenance review spanning its own toolkit and update duties — use `agent-architect-self-audit`; it may call this skill for the scoped structural assessment.
 - You're doing application work (code, tests, config) — use domain agents instead
 - You're only reading agents/skills for context — no audit needed
 - The requested scope has no repository, plugin, organization, or user-level agent/skill/hook definitions
@@ -77,7 +78,7 @@ For every agent and skill file, verify frontmatter syntax and content:
 - [ ] `description` is present (required) — single-line, quoted string
 - [ ] `name` is present (recommended) — matches filename minus `.agent.md`
 - [ ] `description` is non-empty and within any target-host limit
-- [ ] No unsupported attributes (documented set: `name`, `description`, `tools`, `model`, `target`, `disable-model-invocation`, `user-invocable`, `mcp-servers`, `metadata`). Flag retired `infer` (→ `disable-model-invocation` + `user-invocable`); `argument-hint`/`handoffs` are VS Code-only and ignored elsewhere.
+- [ ] No unsupported attributes (portable documented set: `name`, `description`, `tools`, `model`, `target`, `disable-model-invocation`, `user-invocable`, `mcp-servers`, `metadata`; CLI additions: `skills`, `reasoning-effort`, `deferred-tool-loading`). Flag retired `infer` (→ `disable-model-invocation` + `user-invocable`); `argument-hint`/`handoffs` are VS Code-only and ignored elsewhere.
 - [ ] No multi-line `description` using `>` or `|` folded scalars
 - [ ] `tools` (if present) uses valid aliases: `read`, `edit`, `search`, `execute`, `agent`, `web`, `todo`, or `["*"]`
 

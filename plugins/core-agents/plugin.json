@@ -1,6 +1,6 @@
 {
   "name": "core-agents",
-  "version": "2.2.0",
+  "version": "2.4.7",
   "description": "Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).",
   "hooks": "hooks/hooks.json"
 }

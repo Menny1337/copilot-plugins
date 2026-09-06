@@ -11,6 +11,10 @@ Copilot CLI) are: `name`, `description`, `tools`, `model`, `target`,
 retired — replace it with `disable-model-invocation` and `user-invocable`. `argument-hint`
 and `handoffs` are VS Code-only and are ignored elsewhere rather than erroring.
 
+CLI additions are `skills`, `reasoning-effort`, `deferred-tool-loading`, and
+`model-policy`. Since CLI 1.0.83, `model` may also be a string array; use
+`model-policy: required` to keep model changes within that configured list.
+
 ## "Unexpected indentation" error
 
 Caused by multi-line `description` using a YAML folded scalar (`>`). Convert to a

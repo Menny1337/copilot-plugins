@@ -75,7 +75,8 @@ my-plugin/
 ### Component path fields
 
 These tell the CLI where each component type lives. **All optional** — the CLI uses default
-conventions when omitted.
+conventions when omitted. This table describes the native Copilot plugin manifest; Agent
+Plugins v1 uses the fixed core and client-extension layout described below.
 
 | Field | Type | Default | Points to |
 |-------|------|---------|-----------|
@@ -188,6 +189,10 @@ relying on it.
 are **plural-only**. Using the wrong form fails with
 `error: too many arguments for 'plugin'`.
 
+GitHub's public plugin page currently describes the forms as interchangeable and documents a
+`refresh` alias. Live 1.0.83-5 help differs: use the command split below and `marketplace
+update` for version-specific CLI instructions.
+
 ```
 copilot plugin install SPEC          # SPEC: plugin@marketplace | OWNER/REPO[:PATH] | git-url | ./path
 copilot plugin uninstall NAME        # singular only
@@ -198,8 +203,8 @@ copilot plugins disable NAME         # plural only
 copilot plugins remove NAME          # plural only (alias: rm)
 
 copilot plugin marketplace add SOURCE      # owner/repo | owner/repo#ref | URL | local dir
-copilot plugin marketplace list [--json]
-copilot plugin marketplace browse NAME [--json]
+copilot plugin marketplace list
+copilot plugin marketplace browse NAME
 copilot plugin marketplace update [NAME]   # omit NAME to update all (no `refresh` alias)
 copilot plugin marketplace remove NAME [--force]
 
@@ -212,7 +217,8 @@ copilot plugins enable|disable|remove NAME --plugin|--mcp|--skill
   them too. The built-in `copilot-plugins` and `awesome-copilot` marketplaces cannot be removed.
 - A marketplace registers under its own `name` from `marketplace.json` — there is no local alias.
 - MCP servers install from a policy-configured registry, not `copilot plugins install`; use the
-  `/plugins` dashboard or `/mcp`.
+  `/mcp` Online view. Use `/plugin` for installed plugin management; `/plugins` was removed in
+  1.0.81-10.
 - `--config-dir` is deprecated — use `COPILOT_HOME`.
 - `COPILOT_PLUGIN_DIR_ONLY` disables automatic plugin discovery, giving a deterministic set
   alongside `--plugin-dir`.
@@ -259,6 +265,8 @@ When a private marketplace is registered but its cache is missing:
    delete that checkout. The manifest keeps the same marketplace name, so existing
    `plugin@marketplace` specs remain valid. Preserve the credential-free remote URL
    outside the cache so an eviction can be re-cloned after the source becomes local.
+   Directory-sourced marketplace plugins load live from that directory in CLI 1.0.81:
+   edits take effect after `/restart` or a new session without `plugin update`.
 5. Verify the marketplace manifest and required plugin directories exist before
    launching with `--plugin-dir` or running `copilot plugin update --all`.
 
@@ -313,12 +321,46 @@ repo's `AGENTS.md`/CI for the exact workflow; treat any generated index files as
   model/effort/context tier, and extend URL/MCP/skill deny lists via
   `.github/copilot/settings.json` (CLI 1.0.70).
 
-### Open Plugin Spec v1 (CLI 1.0.74)
+### Open Plugin Spec v1 (CLI 1.0.74+)
 
-Opt in by setting the canonical Agent Plugins v1.0.0 `$schema` URL in `plugin.json`. It is
-additive: opted-in plugins and marketplaces may use dots in names (e.g. `acme.tools`), the
-`extensions` field changes meaning, and `mcp.json` configuration is supported. Leave `$schema`
-off to keep the existing behaviour.
+Opt in by setting the canonical Agent Plugins v1.0.0 `$schema` URL in `plugin.json`
+(`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`). The portable core has fixed
+locations: `skills/` for Agent Skills and root `mcp.json` for MCP servers. The manifest's
+`extensions` object contains client-specific metadata. Leave `$schema` off to keep native
+Copilot manifest fields and component paths.
+
+Client-specific files use reverse-domain top-level directories. Since CLI 1.0.80, a
+spec plugin's Copilot-specific `commands/`, `agents/`, `rules/`, `hooks/hooks.json`,
+`lsp.json`, and `extensions/` are loaded only below `com.github.copilot/`. Root copies
+are ignored with migration guidance. This breaking layout change applies only to plugins
+that declare the Agent Plugins v1.0.0 `$schema`; native Copilot plugin manifests keep the
+component paths above.
+
+### Auto-update (CLI 1.0.78–1.0.79)
+
+- First-party plugins update themselves at session start; nothing to configure.
+- For your own marketplace, set `"autoUpdate": true` on its `extraKnownMarketplaces` entry in
+  user settings to update its plugins at session start too. Weigh this against pinning: it is
+  convenient for a marketplace you control, and a supply-chain risk for one you do not.
+
+## Which Surfaces Consume a Plugin
+
+Package once, but know who reads it. See
+`../agent-skill-audit/references/cli-feature-baseline.md` for the full matrix.
+
+- **Copilot CLI** — full support: `copilot plugin install`, user/repo/plugin hooks, LSP, MCP.
+- **GitHub Copilot app** — the desktop app is built on the CLI, so plugins, skills, and MCP
+  servers installed for the CLI are automatically available. No app-specific packaging is
+  needed. Do not write guidance that assumes a terminal-only UI or an interactive TTY.
+- **Copilot cloud agent** — no `copilot plugin install`. Plugins are enabled declaratively
+  through `enabledPlugins` in `.github/copilot/settings.json`, and only `.github/hooks/*.json`
+  runs (`bash`-only, Linux sandbox). Document this install path separately if you want your
+  plugin usable there.
+- **IDE agent mode** — does not consume plugins at all.
+
+The desktop app additionally reads `.github/github-app.yml` for repo-level instructions,
+scripts, and automation. That file is app-only; the CLI ignores it, and it is not a plugin
+manifest.
 
 ## Security and Supply-Chain Review
 

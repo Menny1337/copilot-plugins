@@ -21,7 +21,18 @@ for http hooks). Two formats, selected by how you write the event name:
 - **PascalCase event name** (e.g. `SessionStart`, `PreToolUse`, `Stop`) → VS Code-compatible
   payload, fields are snake_case, includes `hook_event_name`, `timestamp` is an ISO 8601 string.
 
-All payloads include `sessionId`/`session_id`, `timestamp`, and `cwd`.
+All payloads include `sessionId`/`session_id`, `timestamp`, and `cwd`. Since CLI
+1.0.81-13, they may also carry W3C `traceparent` and optional `tracestate`;
+command hooks additionally receive trace context through environment variables.
+Treat trace context as propagation metadata and forward it only to trusted
+telemetry systems.
+
+CLI command hooks may use `exec` plus a string-array `args` to invoke an
+executable directly. Do not combine that form with `bash`, `powershell`, or
+`command`; shell expansion, pipes, redirects, and globs are unavailable. This
+marketplace's unchanged `scripts/validate.mjs` still requires `bash`,
+`powershell`, or `command`, so an `exec` + `args`-only entry is valid CLI syntax
+but cannot be committed here without failing local validation.
 
 ## Event input payloads
 
@@ -30,7 +41,7 @@ camelCase shapes shown; PascalCase equivalents use snake_case keys plus `hook_ev
 | Event | Extra fields beyond `sessionId`, `timestamp`, `cwd` |
 |-------|-----------------------------------------------------|
 | `sessionStart` | `source: "startup"\|"resume"\|"new"`, `initialPrompt?` |
-| `sessionEnd` | `reason: "complete"\|"error"\|"abort"\|"timeout"\|"user_exit"` |
+| `sessionEnd` | `reason: "complete"\|"error"\|"abort"\|"timeout"\|"user_exit"`. **Firing differs by run mode:** an interactive run fires once at shutdown (typically `user_exit`); a `-p` run *or* a run whose prompt arrives on **stdin** fires once per completed agent turn with `complete` (or `error`), and fires nothing at all if it exits before completing a turn (stdin parity added in 1.0.78). |
 | `userPromptSubmitted` | `prompt` |
 | `userPromptTransformed` | `prompt`, `transformedPrompt` — fires after the prompt is transformed (e.g. by `userPromptSubmitted` context injection). Output may set `modifiedTransformedPrompt`. No PascalCase alias. |
 | `preToolUse` | `toolName`, `toolArgs` |
