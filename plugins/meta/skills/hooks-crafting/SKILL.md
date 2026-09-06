@@ -73,7 +73,7 @@ project → plugins** (when the same event appears in multiple sources, all entr
 
 | Type | What it does | Key fields | Allowed on |
 |------|--------------|------------|-----------|
-| `command` (default) | Runs a shell script/command | `bash`, `powershell`, `command`, `cwd`, `env`, `timeoutSec` (`timeout` alias) | All events |
+| `command` (default) | Runs a shell command or executable | CLI: `bash`, `powershell`, `command`, or `exec` + `args`; this marketplace validator: `bash`, `powershell`, or `command`; plus `cwd`, `env`, `timeoutSec` (`timeout` alias) | All events |
 | `http` | POSTs the event payload as JSON to a URL | `url`, `headers`, `allowedEnvVars`, `timeoutSec` (`timeout` alias) | All events |
 | `prompt` | Auto-submits text/slash-command as if typed | `prompt` | `sessionStart` only (new interactive sessions) |
 
@@ -82,6 +82,10 @@ project → plugins** (when the same event appears in multiple sources, all entr
 as a cross-platform fallback — `command` is copied into both `bash` and `powershell` when
 those are absent, and an explicit `bash`/`powershell` wins on its own platform. Default
 `timeoutSec` is `30` (`timeout` is accepted as an alias; `timeoutSec` wins if both are set).
+In Copilot CLI, `exec` plus a string-array `args` runs an executable directly without shell
+interpretation. Do not combine `exec` with `bash`, `powershell`, or `command`.
+This repository's unchanged `scripts/validate.mjs` does not yet accept that direct-execution
+form: marketplace hook entries must still provide `bash`, `powershell`, or `command`.
 
 **HTTP hooks** must set `url`. Only `https://` is allowed, except `http://localhost`/`127.*`/
 `[::1]` when `COPILOT_HOOK_ALLOW_LOCALHOST=1`. For `preToolUse` and `permissionRequest` the
@@ -117,7 +121,7 @@ hook that returns JSON to control behavior.
 | Event | Fires when | Can control behavior? |
 |-------|-----------|-----------------------|
 | `sessionStart` | A new or resumed session begins | Inject `additionalContext` |
-| `sessionEnd` | The session terminates | No |
+| `sessionEnd` | The session terminates — but under `-p` or a piped stdin prompt it fires once per completed turn instead | No |
 | `userPromptSubmitted` | The user submits a prompt | Inject `additionalContext`, or answer directly and skip the model (CLI only — the cloud agent fires it but ignores the output) |
 | `userPromptTransformed` | After the prompt has been transformed | Replace it via `modifiedTransformedPrompt` |
 | `preToolUse` | Before each tool executes | Allow / deny / modify args |
@@ -225,8 +229,10 @@ the decision parser.
    service, `prompt` for auto-submitting a starter prompt at `sessionStart`.
 3. **Choose a location** — plugin `hooks/hooks.json` for marketplace plugins; `.github/hooks/`
    for repo-wide; `~/.copilot/hooks/` for personal.
-4. **Write the entry.** For command hooks include both `bash` and `powershell` (or `command`).
-   Keep stdout to a single compact JSON line if the hook returns a decision.
+4. **Write the entry.** For portable shell hooks include both `bash` and `powershell` (or
+   `command`). Outside this marketplace, CLI-only direct execution may use `exec` plus
+   `args`; inside this repository it fails `scripts/validate.mjs`, so use one of the locally
+   accepted fields. Keep stdout to a single compact JSON line if the hook returns a decision.
 5. **Set a sensible `timeoutSec`.** Keep it tight; hooks block the relevant step until they
    return or time out.
 6. **Make scripts executable** (`chmod +x`) with a proper shebang (`#!/usr/bin/env bash`).
@@ -245,6 +251,9 @@ the decision parser.
 - **Hook commands run in the current session directory.** Since CLI 1.0.72 lifecycle and
   subagent hook commands follow `/cd`, so don't assume the directory the CLI started in.
   Resolve paths from the payload or an absolute base.
+- **Trace context is propagation data.** Since CLI 1.0.81-13 hook inputs may include W3C
+  `traceparent` and `tracestate`, and command hooks receive trace context through environment
+  variables. Forward it only to trusted telemetry destinations; do not log it indiscriminately.
 - **HTTPS is required** for `http` hooks (and mandatory for `preToolUse`/`permissionRequest`).
   Only expose env vars to headers via `allowedEnvVars`.
 - **Never leak secrets** to stdout/stderr or to logs a hook writes; stdout is parsed/echoed.
@@ -275,7 +284,7 @@ Debug a script by reading stdin, echoing it to stderr, and tracing with `set -x`
 
 - [ ] `version: 1` and a `hooks` object keyed by valid event names
 - [ ] Each entry has a valid `type` (`command`/`http`/`prompt`) with its required fields
-- [ ] Command hooks provide `bash` and/or `powershell` (or `command`)
+- [ ] Command hooks provide `bash` and/or `powershell` (or `command`); `exec` plus `args` is valid for the CLI but is not accepted by this marketplace's current validator
 - [ ] HTTP hooks use `https://` (required for `preToolUse`/`permissionRequest`)
 - [ ] `prompt` hooks only on `sessionStart`
 - [ ] Decision-returning hooks emit single-line JSON and exit `0`

@@ -1,6 +1,6 @@
 ---
 name: multi-model-review
-description: "Runs several independent critics from different model vendors over one artifact, then synthesizes their findings into a severity-ranked decision that keeps consensus and lone dissent distinct. Use when a change is high-stakes or hard to reverse, when the request asks for model diversity or genuinely independent scrutiny, or before presenting high-stakes work you authored yourself. Keywords: multi-model review, panel review, fleet review, cross-vendor critique, red-team, devil's advocate, second opinion from another model, ship-or-hold call."
+description: "Runs independent critics from different model vendors over one artifact, then synthesizes their findings into a ship-or-hold decision. Use for high-stakes or hard-to-reverse work, panel or fleet reviews, red-team passes, and second opinions from another model."
 argument-hint: "<artifact path or description>"
 ---
 
@@ -54,10 +54,13 @@ after the artifact actually changes.
 - **Lens** — what each critic scrutinizes. See Step 3.
 - **Done-criteria** — what the synthesis must answer: "ship or hold", "top three risks",
   "is claim X defensible". Step 7 tests against this, so make it checkable.
+- **Round** — current round number and surviving cluster ids from the prior round. Use round 1
+  when no prior synthesis exists.
 
-If the critics will need context you do not yet have, run **one `explore` pass now**, before
-Step 2, and fold its output into every brief. An explore agent is not a panel member: it
-produces context, not findings, and nothing downstream clusters it.
+If the critics need context beyond the artifact, collect it before Step 2 and give every critic
+the same source paths and verified facts. Do not give them an `explore` agent's interpretation:
+shared conclusions bias the panel before it starts. An `explore` agent is not a panel member,
+and its output never counts as a finding.
 
 ### Step 2: Size the panel and pick models
 
@@ -66,29 +69,51 @@ produces context, not findings, and nothing downstream clusters it.
 | 1 | You authored a short artifact and need one reader outside your own family | One critic, different vendor from the author |
 | 2 | Light artifacts, low blast radius | Two vendors |
 | **3 (default)** | Standard review | Three vendors, one critic each |
-| 4–5 | High-stakes, irreversible, or security-relevant | Three vendors, plus extra critics on the riskiest lens |
+| 4–5 | High-stakes, irreversible, or security-relevant | Four or five vendors when available; duplicate a vendor only after distinct vendors are exhausted |
 
-Current strongest tier per vendor:
+Before every launch, read the exact `model` and `agent_type` values in the current `task` tool
+declaration. The live declaration is authoritative; this dated table is a convenience, not an
+allowlist.
 
-| Vendor | Model | Substitute |
+Preferred fixed models currently available per vendor (verified 2026-09-02):
+
+| Vendor | Preferred | Example same-vendor alternatives |
 | --- | --- | --- |
-| Anthropic | `claude-opus-5` | `claude-opus-4.8` |
-| OpenAI | `gpt-5.6-sol` | `gpt-5.6-terra` |
-| Google | `gemini-3.1-pro-preview` | `gemini-3.6-flash` (lighter panels only) |
+| OpenAI | `gpt-5.6-sol` | `gpt-5.6-terra`, `gpt-5.6-luna` |
+| Google | `gemini-3.7-flash` | `gemini-3.6-flash` |
+| xAI | `grok-4.6` | `grok-4.5` |
+| Microsoft | `mai-code-1.1-flash` | — |
+| Anthropic | `claude-opus-5` | `claude-sonnet-5`, `claude-opus-4.8` |
 
-**These IDs age out; the rule behind them does not.** Take one model per vendor at the
-strongest tier the `task` tool currently lists. If you authored the artifact, at least one
-critic must come from a different vendor than you.
+Use this selection order:
 
-**Extra critics beyond one per vendor buy lens coverage, not consensus weight** — Step 5 counts
-distinct vendors, so a second critic from a family already on the panel never converts a lone
-finding into consensus.
+1. Validate every candidate against the live declaration before planning the panel. Never
+   launch an ID from the dated table unless it is still listed.
+2. Group live fixed-model IDs by vendor: `gpt-*` = OpenAI, `claude-*` = Anthropic,
+   `gemini-*` = Google, `grok-*` = xAI, and `mai-*` = Microsoft. Treat an unmatched prefix as
+   unknown; count it only when the live tool metadata identifies a vendor.
+3. Choose the strongest suitable model from distinct vendors before adding a second critic from
+   any vendor. If you authored the artifact, panel size 1 must use a different vendor. Determine
+   the author's vendor from host/session metadata; when it is unknown, use at least two vendors.
+4. Pass an explicit live `model` ID on every critic call. Never launch selector or router IDs
+   such as `*-picker` as critics or substitutes.
+5. If a model or agent type is rejected, that critic is missing. Choose a same-vendor alternative,
+   then another distinct vendor, or reduce the panel and report the reduction. Never count a
+   failed launch.
+6. Check the chosen model's declared capabilities before passing `reasoning_effort` or
+   `context_tier`. Prefer high effort for substantive reviews and long context when needed, but
+   omit unsupported parameters or choose another model. On a parameter rejection, retry once
+   with supported values before treating the critic as missing.
 
-> **The panel can collapse silently.** A rejected or misspelled `model` value may fall back to
-> the orchestrator's own model, returning confident critiques that are all one family. Because
-> Step 5 treats agreement as independent evidence, a collapsed panel manufactures false
-> consensus. Step 5 therefore reconciles the models you requested here against what `read_agent`
-> reports, before counting anything.
+Extra same-vendor critics buy lens coverage, not consensus weight: Step 5 counts distinct
+vendors, so another critic from an already represented family never turns a lone finding into
+consensus.
+
+> **A missing or substituted model can collapse the panel.** Keep a launch record of requested
+> model, vendor, agent type, mode, lens, critic prefix, accepted parameters, and substitutions;
+> reconcile every returned critique against it before counting agreement. The alternatives above
+> are examples, not a closed fallback pool; any suitable live fixed model from that vendor may be
+> used.
 
 ### Step 3: Assign lenses
 
@@ -102,6 +127,7 @@ all five *within its lens*. Splitting lenses divides the artifact; it never divi
 | Code change or PR quality — **needs an existing diff**; for a whole or new file use `general-purpose` | `code-review` |
 | Security vulnerabilities | `security-review` |
 | Structure, information architecture, usability, soundness | `general-purpose` |
+| Rewrite or text tightening | `general-purpose`; use the rewrite exception in Step 4 |
 
 **Default to split lenses.** Choose shared only when the question is itself "do independent
 reviewers agree?" — split buys coverage, which is what a panel is usually for.
@@ -147,8 +173,8 @@ findings under a scheme nothing downstream understands.
 **Output contract.** Every critic emits findings in a fixed shape so that synthesis is grouping
 rather than parsing:
 
-- `id` — `<prefix>/F1`, `<prefix>/F2`. **Assign the prefix yourself in the brief** (`A/`, `B/`,
-  `C/`). Do not tell critics to derive it from their own vendor: they mis-identify themselves,
+- `id` — `A/F1`, `A/F2`, and so on. **Assign a bare prefix yourself in the brief** (`A`, `B`,
+  `C`). Do not tell critics to derive it from their own vendor: they mis-identify themselves,
   and two critics that both believe they are OpenAI will both emit `OpenAI/F1`, reintroducing
   the collision the namespacing exists to prevent.
 - `dimension` — which of the five rubric items above.
@@ -160,12 +186,10 @@ rather than parsing:
 
 Close with one line: `VERDICT: ship` / `hold` / `needs-rework`.
 
-**Rewrite lenses are exempt from the finding shape, the rubric, and Steps 5–7.** If the
-assignment is to rewrite rather than to judge — tighten this text, sharpen this description —
-the output contract is the rewritten text plus what changed and why, and the lens's own criteria
-replace the five dimensions. Such a run **exits after this step**: deliver the rewrite and the
-rationale. Clustering, agreement labelling, and the decision table have nothing to operate on,
-and routing a rewrite through them lands it on Hold for want of a matching row.
+**Rewrite is a whole-run mode, never one lens in a mixed judging panel.** When the assignment is
+to rewrite rather than judge — tighten this text, sharpen this description — every critic uses a
+rewrite contract: rewritten text plus what changed and why. The run exits after this step because
+the finding rubric and Steps 5–7 do not apply.
 
 Tell critics to **argue against the artifact, not validate it**. The characteristic failure of
 a review panel is N models politely agreeing.
@@ -173,21 +197,24 @@ a review panel is N models politely agreeing.
 **Tell critics they are read-only.** A critic given a working tree will use it — writing
 before/after copies, scratch notes, or extracted snippets next to the files it is reviewing. Those
 land in the change set under review and can be committed by accident. State the constraint
-explicitly ("do not write any files; read only"), and check `git status` for strays before
-committing.
+explicitly ("do not write files or launch sub-agents; critique directly"), and verify the working
+directory for strays before finishing (`git status` when it is a Git repository).
 
 **Launch all critics in one response so they run concurrently.** Prefer **sync** `task` calls:
-they return in-band, so a partial panel is structurally impossible and no waiting protocol is
-needed. Use background mode only when you have real independent work to do meanwhile — then
-collect each with `read_agent` (`wait: true`), re-issuing if it times out, and use `write_agent`
-to push back on a thin critique instead of launching a replacement.
+they return in-band and make result accounting straightforward. Individual calls can still fail,
+so require one contract-valid result per launch: every required finding field plus a verdict, or
+an explicit empty finding list plus a verdict. Use background mode only when you have real
+independent work to do meanwhile; collect every result with `read_agent` before synthesis. If a
+critique is missing, malformed, or unusably thin, relaunch the same brief in fresh context rather
+than coaching the original critic with follow-up messages.
 
 **Never launch and end the turn in a non-interactive run** (`copilot -p`, scheduled jobs): the
 process exits, the critics' output is discarded, and nothing is ever synthesized.
 
-**Write each critique to the session workspace as it returns**, then synthesize from those files.
-Raw critiques are bulky and Step 5 needs all of them at once; persisting them means a context
-trim cannot silently shorten your action list, and it leaves an auditable trail.
+**Persist each critique outside the reviewed repository** as it returns, using the host-provided
+session workspace or structured session storage rather than assuming the current directory is
+safe. Raw critiques are bulky and Step 5 needs all of them at once; persistence prevents a
+context trim from silently shortening the action list and leaves an auditable trail.
 
 ### Step 5: Synthesize — judgment stays with the orchestrator
 
@@ -201,19 +228,21 @@ return silently demotes CONSENSUS clusters to LONE-DISSENT; a 1-of-3 return trip
 single-critic branch and produces a thin, clean-looking pass. If a critic fails or times out,
 relaunch it, or recompute N and state the reduced panel explicitly — never report the planned N.
 
-**Then verify the panel — from your own records, not the critics' claims.** Compare the models
-you requested in Step 2 against the model each agent actually ran on — both `read_agent` and
-`list_agents` report it. Note the vendor set you actually got. If it is smaller than planned, say so explicitly rather than
-reporting the agreement you intended to buy: with more than one critic, two critics on one
-vendor count as one voice, and a panel that collapsed onto a single vendor should be relaunched
-rather than reported as consensus. A single-critic panel is not a collapse — it has no agreement
-to inflate; verify only that the critic differs in vendor from the artifact's author.
+**Then verify the panel from the launch record, not the critics' claims.** Require one usable
+result for every planned critic and confirm that every request used a live fixed-model ID and
+the recorded vendor set. When the runtime exposes actual model metadata, compare it with the
+request; if it does not, report diversity as requested and recorded, not proven. A mismatch,
+missing result, or smaller vendor set invalidates the planned panel: relaunch, or explicitly
+recompute N and the vendor set before clustering. With more than one critic, two critics from
+one vendor count as one voice; a panel reduced to one vendor cannot report consensus. Do not
+synthesize or decide while the panel is invalid. If it cannot be reconciled to the Step 1
+done-criteria, hold and report the failed panel rather than issuing a review verdict.
 
 > **Do not ask critics to self-report their model** — they get it wrong. In testing, a critic
-> running on `gemini-3.1-pro-preview` reported itself as `gpt-4o / OpenAI`, which would have
-> faked a vendor collapse that had not happened. Your launch records are authoritative. Genuine
-> server-side substitution is not observable from inside the session, so treat vendor diversity
-> as requested and recorded, not proven.
+> from one vendor reported itself as a model from another, which would have faked a vendor
+> collapse that had not happened. Your launch records and any host-reported metadata are
+> authoritative. Genuine server-side substitution may be unobservable, so distinguish requested
+> diversity from verified diversity.
 
 Then:
 
@@ -221,7 +250,9 @@ Then:
    cluster a stable id (`C1`, `C2`). Clustering is inherently cross-critic — no critic sees
    the others — so it cannot move upstream into Step 4. A deterministic similarity pass may
    *propose* clusters for you to confirm; never hand the decision to an LLM sub-agent.
-2. **Classify** each cluster as `objective`, `structural`, or `subjective`.
+2. **Classify** each cluster as `objective`, `structural`, or `subjective`. Set cluster severity
+   to the highest credible member severity; lower it only when the higher rating fails the
+   evidence check below.
 
 **Agreement ranks findings. It never removes them.** Reviewing this skill produced the same
 defect in three consecutive rounds — first at panel size 1, then in split-lens mode, then for
@@ -243,8 +274,9 @@ drop anything; one model catching the real defect is the panel's highest-value o
 requiring a vote on it is the most expensive mistake available in this step.
 
 3. **Label** each cluster CONSENSUS, LONE-DISSENT, or UNCORROBORATED per the table above.
-4. **Rank** by severity first, then by label (CONSENSUS above LONE-DISSENT above UNCORROBORATED),
-   then objective before structural before subjective.
+4. **Rank** by severity first, then class (objective before structural before subjective), then
+   label (CONSENSUS above UNCORROBORATED above LONE-DISSENT). An unexamined finding carries
+   uncertainty; a dissenting finding carries contrary evidence, but both remain visible.
 5. **Resolve** direct disagreements explicitly: state both positions and your adjudication
    with reasoning, rather than silently picking one. Where critics in a cluster assigned
    different classes, your classification governs — keep `objective` whenever the cited evidence
@@ -267,9 +299,9 @@ cheaply — a `grep`, a file read, one tool call — before it reaches the actio
 
 ### Step 6: Report
 
-Present the synthesized action list — not the raw transcripts, which can be linked or
-appended. Each item carries: cluster id, finding, severity, class, agreement label, the evidence
-pointer, and the next step.
+Present the synthesized action list — not the raw transcripts, which can be linked or appended.
+Include the round, planned and delivered vendor set, and verification status. Each item carries:
+cluster id, finding, severity, class, agreement label, the evidence pointer, and the next step.
 
 **Cap the render.** Blockers and majors in full; minors collapsed to a count plus a pointer to
 the saved synthesis. Lead with whatever the Step 1 done-criteria asked for. A twenty-cluster wall
@@ -290,11 +322,12 @@ Evaluate top to bottom; **first match wins**.
 
 | Condition | Action |
 | --- | --- |
+| The panel is incomplete or unreconciled against Step 1 | **Hold** — report the failed launches or missing vendor coverage; do not synthesize a review verdict |
 | A blocker has survived two rounds | **Escalate to the user** with both positions — do not loop |
 | Three rounds reached and blockers or majors are still open | **Escalate.** The cap ends the iteration; it does not clear the findings |
 | Any blocker or major is still open | **Hold** — state exactly what must change before a re-run |
-| Critics contradict on fix direction, with nothing blocking left | Adjudicate, state the tradeoff, record the chosen direction — then **Ship**. More rounds will not resolve taste |
-| No open blockers or majors, and the Step 1 done-criteria are satisfied | **Ship** — list any remaining subjective items as notes |
+| No blockers or majors remain, the Step 1 done-criteria are satisfied, but critics contradict on fix direction | Adjudicate, state the tradeoff, record the chosen direction — then **Ship**. More rounds will not resolve taste |
+| No open blockers or majors, and the Step 1 done-criteria are satisfied | **Ship** — list any remaining minor findings as notes |
 | Any other state | **Hold** — report the action list and state what must change |
 
 Ordering is load-bearing: the open-blocker row sits above the adjudication and ship rows so that
@@ -305,8 +338,9 @@ an approval.
 
 **Re-invoking.** Round N+1 is warranted once the artifact has actually changed in a section a
 finding cited — carry the cluster table forward so surviving blockers stay identifiable, since
-fresh critics renumber from scratch. Re-running an unchanged artifact against the same panel
-reproduces the same critiques at full cost.
+fresh critics renumber from scratch. Match survivors by normalized claim and evidence pointer,
+not critic or cluster number. Re-running an unchanged artifact against the same panel reproduces
+the same critiques at full cost.
 
 ## Notes
 

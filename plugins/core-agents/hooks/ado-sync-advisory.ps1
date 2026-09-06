@@ -44,7 +44,7 @@
 #                             taskBackend -eq 'ado' in ~/.copilot/assistant/config.json.
 
 # Force-disable, checked before ANYTHING else touches disk (payload/lock/watermark).
-if ($env:ADO_SESSION_SYNC -eq '0') { exit 0 }
+if ($env:ADO_SESSION_SYNC -eq '0' -or $env:COPILOT_PLUGIN_GITHUB_SESSION_SYNC -eq '0' -or $env:COPILOT_PLUGIN_TASK_SESSION_SYNC -eq '0') { exit 0 }
 
 try {
   $logDir = Join-Path $HOME '.copilot/logs/ado-session-sync'
@@ -62,14 +62,15 @@ try {
     try { New-Item -ItemType Directory -Path $lock -ErrorAction Stop | Out-Null } catch { exit 0 }
   }
 
-  # Opt-in (env=0 already exited above).
+  # Opt-in (env=0 already exited above). Backend-neutral: ado (legacy) OR github.
   $enabled = $false
-  if ($env:ADO_SESSION_SYNC -eq '1') {
+  if ($env:ADO_SESSION_SYNC -eq '1' -or $env:COPILOT_PLUGIN_GITHUB_SESSION_SYNC -eq '1' -or $env:COPILOT_PLUGIN_TASK_SESSION_SYNC -eq '1') {
     $enabled = $true
   } elseif (Test-Path $config) {
     try {
       $cfg = Get-Content -Raw $config | ConvertFrom-Json
       if ($cfg.adoSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'ado') { $enabled = $true }
+      elseif ($cfg.taskSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'github') { $enabled = $true }
     } catch { }
   }
   if (-not $enabled) { exit 0 }

@@ -24,26 +24,39 @@ try {
   # and ado-auth.sh) are exposed on PATH by link-commands.sh and intentionally omitted here.
   $commands = @(
     'skills/assistant-capture/scripts/assistant-store.mjs'
+    'skills/assistant-capture/scripts/github-state-transition.mjs'
     'skills/assistant-query/scripts/ado-query.mjs'
+    'skills/assistant-query/scripts/github-query.mjs'
     'skills/ado-session-sync/scripts/sync-ui.mjs'
   )
 
-  # Run-once-per-session guard (see link-commands.sh): de-dupe multiple invocations in one
-  # session on the sessionStart stdin payload's sessionId via a directory lock. On any
-  # failure or missing sessionId, run normally.
-  $__sid = ''
-  if ([Console]::IsInputRedirected) {
-    $__payload = [Console]::In.ReadToEnd()
-    if ($__payload -match '"sessionId"\s*:\s*"([A-Za-z0-9._-]+)"') { $__sid = $Matches[1] }
-  }
-  if ($__sid) {
-    $__lock = Join-Path ([System.IO.Path]::GetTempPath()) "link-commands.$__sid"
-    try { New-Item -ItemType Directory -Path $__lock -ErrorAction Stop | Out-Null }
-    catch { return }
-  }
-
   $hookDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
-  $pluginDir = (Resolve-Path -LiteralPath (Join-Path $hookDir '..')).Path
+  $invokedPluginDir = (Resolve-Path -LiteralPath (Join-Path $hookDir '..')).Path
+  $pluginDir = $invokedPluginDir
+  $pluginName = ''
+  try { $pluginName = (Get-Content -LiteralPath (Join-Path $invokedPluginDir 'plugin.json') -Raw | ConvertFrom-Json).name } catch { }
+  $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE '.copilot' }
+  $agencySessions = Join-Path $env:USERPROFILE '.local\agency\plugins\sessions'
+  $tempRoot = [System.IO.Path]::GetTempPath().TrimEnd('\', '/')
+  $invokedNormalized = $invokedPluginDir -replace '/', '\'
+  $agencySessionsNormalized = $agencySessions -replace '/', '\'
+  $tempRootNormalized = $tempRoot -replace '/', '\'
+  $invokedIsEphemeral = $invokedNormalized.StartsWith($agencySessionsNormalized + '\agency-plugin-') `
+    -or $invokedNormalized.StartsWith($tempRootNormalized + '\agency-plugin-')
+  $installedRoot = Join-Path $copilotHome 'installed-plugins'
+  if ($invokedIsEphemeral -and $pluginName -and (Test-Path -LiteralPath $installedRoot)) {
+    foreach ($marketplace in (Get-ChildItem -LiteralPath $installedRoot -Directory -ErrorAction SilentlyContinue | Sort-Object FullName)) {
+      $candidate = Join-Path $marketplace.FullName $pluginName
+      if (-not (Test-Path -LiteralPath $candidate)) { continue }
+      try {
+        $candidateName = (Get-Content -LiteralPath (Join-Path $candidate 'plugin.json') -Raw | ConvertFrom-Json).name
+        if ($candidateName -eq $pluginName) {
+          $pluginDir = (Resolve-Path -LiteralPath $candidate).Path
+          break
+        }
+      } catch { }
+    }
+  }
   $destDir   = Join-Path $env:USERPROFILE '.local\bin'
   New-Item -ItemType Directory -Path $destDir -ErrorAction SilentlyContinue | Out-Null
   if (-not (Test-Path -LiteralPath $destDir)) { return }
@@ -51,6 +64,23 @@ try {
   $marker     = ':: link-commands'   # identifies shims this hook owns
   $scriptExts = @('.mjs', '.cjs', '.js', '.sh', '.ps1', '.cmd', '.bat')
   $linked     = New-Object System.Collections.Generic.List[string]
+
+  function Get-TargetRank([string]$target, [string]$rel) {
+    if (-not $target -or -not $pluginName) { return 0 }
+    $normalized = $target -replace '/', '\'
+    $relWin = $rel -replace '/', '\'
+    $installedPrefix = ((Join-Path $copilotHome 'installed-plugins') -replace '/', '\') + '\'
+    if ($normalized.StartsWith($installedPrefix) -and $normalized.EndsWith("\$pluginName\$relWin")) { return 40 }
+    if ($normalized -match '\\(?:Library\\Caches\\copilot|\.cache\\copilot|[^\\]+\\marketplaces)\\.*\\plugins\\' + [regex]::Escape($pluginName) + '\\' + [regex]::Escape($relWin) + '$') { return 30 }
+    if ($normalized.StartsWith($agencySessionsNormalized + '\agency-plugin-') -and $normalized.EndsWith("\$pluginName\$relWin")) { return 10 }
+    if ($normalized.StartsWith($tempRootNormalized + '\agency-plugin-') -and $normalized.EndsWith("\$pluginName\$relWin")) { return 10 }
+    if ($normalized -eq ((Join-Path $invokedPluginDir $relWin) -replace '/', '\')) {
+      if ($invokedIsEphemeral) { return 10 }
+      return 50
+    }
+    if ($normalized -eq ((Join-Path $pluginDir $relWin) -replace '/', '\')) { return 30 }
+    return 0
+  }
 
   foreach ($rel in $commands) {
     $rel = $rel.Trim()
@@ -67,11 +97,16 @@ try {
 
     $shim = Join-Path $destDir ($cmd + '.cmd')
     $content = "@echo off`r`n$marker`r`nnode `"$real`" %*`r`n"
+    $sourceRank = Get-TargetRank $real $rel
 
     if (Test-Path -LiteralPath $shim) {
       $existing = Get-Content -LiteralPath $shim -Raw -ErrorAction SilentlyContinue
       if ($existing -notmatch [regex]::Escape($marker)) { continue }   # foreign — never clobber
       if ($existing -eq $content) { continue }                         # already correct
+      if ($existing -match 'node\s+"([^"]+)"') {
+        $currentRank = Get-TargetRank $Matches[1] $rel
+        if ($currentRank -gt $sourceRank) { continue }
+      }
     }
     Set-Content -LiteralPath $shim -Value $content -Encoding ASCII -NoNewline -ErrorAction SilentlyContinue
     if ($?) { $linked.Add($cmd) | Out-Null }

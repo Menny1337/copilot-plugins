@@ -36,6 +36,24 @@ If neither is connected, stop and tell the user: "The Teams MCP isn't connected 
 
 To verify availability before acting, attempt a low-cost call such as `m365-user-GetMyDetails` (returns the signed-in user) or `teams-ListChats` with no filters. A successful response confirms both servers are live.
 
+### Mid-session connection loss (expired MCP session)
+
+A start-of-session check does not stay true. In long sessions the MCP connection commonly dies part-way through, and then **every** `teams-*` / `m365-user-*` call fails with one of:
+
+- `MCP error -32001: Session not found`
+- `Transport send error: ... Session expired (HTTP 404)`
+
+This is a dead connection handle in the current session — not a signed-out account and not a stopped server. Restarting or re-authenticating the server (`agency mcp teams`) succeeds on its own yet does **not** revive the calls in this session, so telling the user to "start the Teams MCP" is misleading advice here.
+
+Handle it like this:
+
+1. Retry the failed call **once**. If it fails the same way, treat the connection as down and stop calling `teams-*` / `m365-user-*` — repeating the call (or moving on to a different Teams tool) only produces the same error.
+2. Tell the user what actually happened and what unblocks it: "The Teams MCP session expired — reconnect it (or start a fresh Copilot session), then tell me to try again." Reconnect-then-retry is the recovery that works in practice.
+3. When the user says it is reconnected, retry the original call — no need to redo already-successful lookups.
+4. Be explicit that the Teams path failed for a connection reason. Do not report the data as nonexistent, and do not quietly switch to the browser or another backend without saying why.
+
+A `-32001: Request timed out` is a different failure — the server is alive but the request was too broad. Narrow it (drop `fetchAllPages: true`, add filters, shorten a natural-language search) before retrying.
+
 ---
 
 ## 1. Tool Map

@@ -144,7 +144,7 @@ live() {
 
 if [ ! -f "$JSONL" ]; then
   echo "No sync activity yet — $JSONL not found."
-  echo "(The hook is opt-in: set adoSessionSync.enabled=true or ADO_SESSION_SYNC=1.)"
+  echo "(The hook is opt-in: set adoSessionSync.enabled=true or ADO_SESSION_SYNC=1 for the ADO backend; taskSessionSync.enabled=true or COPILOT_PLUGIN_GITHUB_SESSION_SYNC=1 for the GitHub backend.)"
   if [ "$follow" = 1 ] && command -v jq >/dev/null 2>&1; then
     live "true"
   fi

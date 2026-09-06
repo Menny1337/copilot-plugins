@@ -21,32 +21,18 @@ set -u
 # Plugin-relative paths to the executable command script(s) this plugin exposes on PATH.
 COMMANDS="
 skills/assistant-capture/scripts/assistant-store.mjs
+skills/assistant-capture/scripts/github-state-transition.mjs
 skills/assistant-query/scripts/ado-query.mjs
+skills/assistant-query/scripts/github-query.mjs
 skills/ado-session-sync/scripts/sync-status.sh
 skills/ado-session-sync/scripts/sync-ui.mjs
 skills/ado-session-sync/scripts/ado-auth.sh
 "
 
-# --- run-once-per-session guard -------------------------------------------------------
-# This hook can fire more than once per session (installed copy plus a --plugin-dir copy).
-# De-dupe on the sessionId from the sessionStart stdin payload via an atomic mkdir lock.
-# Best-effort: with no clean sessionId, run normally.
-__sid=""
-if [ ! -t 0 ]; then
-  __payload="$(cat 2>/dev/null || true)"
-  __sid="$(printf '%s' "$__payload" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p' | head -1)"
-fi
-case "$__sid" in
-  ''|*[!A-Za-z0-9._-]*) __sid="" ;;
-esac
-if [ -n "$__sid" ]; then
-  mkdir "${TMPDIR:-/tmp}/link-commands.$__sid" 2>/dev/null || exit 0
-fi
-
 [ -n "${HOME:-}" ] || exit 0
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)" || exit 0
-PLUGIN_DIR="$(cd "$HOOK_DIR/.." 2>/dev/null && pwd)" || exit 0
-PLUGIN_NAME="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PLUGIN_DIR/plugin.json" 2>/dev/null | head -1)"
+INVOKED_PLUGIN_DIR="$(cd "$HOOK_DIR/.." 2>/dev/null && pwd -P)" || exit 0
+PLUGIN_NAME="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$INVOKED_PLUGIN_DIR/plugin.json" 2>/dev/null | head -1)"
 DEST_DIR="$HOME/.local/bin"
 
 mkdir -p "$DEST_DIR" 2>/dev/null || exit 0
@@ -76,33 +62,65 @@ __canonical_root() {
 COPILOT_HOME_DIR="$(__canonical_root "${COPILOT_HOME:-$HOME/.copilot}")"
 MAC_CACHE_DIR="$(__canonical_root "$HOME/Library/Caches/copilot")"
 XDG_CACHE_DIR="$(__canonical_root "${XDG_CACHE_HOME:-$HOME/.cache}/copilot")"
+AGENCY_SESSIONS_DIR="$(__canonical_root "$HOME/.local/agency/plugins/sessions")"
+TMP_INPUT_ROOT="${TMPDIR:-/tmp}"
+TMP_ROOT="$(__canonical_root "${TMPDIR:-/tmp}")"
 CUSTOM_CACHE_DIR=""
 [ -z "${COPILOT_CACHE_HOME:-}" ] || CUSTOM_CACHE_DIR="$(__canonical_root "$COPILOT_CACHE_HOME")"
 
+# Prefer a healthy installed copy even when an ephemeral Agency copy fires the
+# hook first. The hook is idempotent, so every loaded copy may run; ranking
+# below prevents a later ephemeral invocation from downgrading stable links.
+PLUGIN_DIR="$INVOKED_PLUGIN_DIR"
+INVOKED_IS_EPHEMERAL=0
+case "$INVOKED_PLUGIN_DIR" in
+  "$AGENCY_SESSIONS_DIR"/agency-plugin-*|"$TMP_INPUT_ROOT"/agency-plugin-*|"$TMP_ROOT"/agency-plugin-*) INVOKED_IS_EPHEMERAL=1 ;;
+esac
+if [ "$INVOKED_IS_EPHEMERAL" = 1 ] && [ -n "$PLUGIN_NAME" ]; then
+  for __candidate in "$COPILOT_HOME_DIR/installed-plugins/"*/"$PLUGIN_NAME"; do
+    [ -d "$__candidate" ] || continue
+    __candidate="$(__canonical_root "$__candidate")"
+    __candidate_name="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$__candidate/plugin.json" 2>/dev/null | head -1)"
+    [ "$__candidate_name" = "$PLUGIN_NAME" ] || continue
+    PLUGIN_DIR="$__candidate"
+    break
+  done
+fi
+
 __linked=""
 
-__owns_target() {
+__target_rank() {
   __target="$1"
   __rel="$2"
   __target_parent="$(dirname "$__target" 2>/dev/null || true)"
   if [ -d "$__target_parent" ]; then
     __target="$(cd "$__target_parent" 2>/dev/null && pwd -P)/$(basename "$__target")"
   fi
+  [ -n "$PLUGIN_NAME" ] || { printf '0'; return; }
   case "$__target" in
-    "$PLUGIN_DIR/$__rel") return 0 ;;
-  esac
-  [ -n "$PLUGIN_NAME" ] || return 1
-  case "$__target" in
-    "$COPILOT_HOME_DIR/installed-plugins/"*/"$PLUGIN_NAME/$__rel") return 0 ;;
-    "$MAC_CACHE_DIR/marketplaces/"*/plugins/"$PLUGIN_NAME/$__rel") return 0 ;;
-    "$XDG_CACHE_DIR/marketplaces/"*/plugins/"$PLUGIN_NAME/$__rel") return 0 ;;
+    "$COPILOT_HOME_DIR/installed-plugins/"*/"$PLUGIN_NAME/$__rel") printf '40'; return ;;
+    "$MAC_CACHE_DIR/marketplaces/"*/plugins/"$PLUGIN_NAME/$__rel") printf '30'; return ;;
+    "$XDG_CACHE_DIR/marketplaces/"*/plugins/"$PLUGIN_NAME/$__rel") printf '30'; return ;;
   esac
   if [ -n "$CUSTOM_CACHE_DIR" ]; then
     case "$__target" in
-      "$CUSTOM_CACHE_DIR/marketplaces/"*/plugins/"$PLUGIN_NAME/$__rel") return 0 ;;
+      "$CUSTOM_CACHE_DIR/marketplaces/"*/plugins/"$PLUGIN_NAME/$__rel") printf '30'; return ;;
     esac
   fi
-  return 1
+  case "$__target" in
+    "$AGENCY_SESSIONS_DIR"/agency-plugin-*/"$PLUGIN_NAME/$__rel") printf '10'; return ;;
+    "$TMP_INPUT_ROOT"/agency-plugin-*/"$PLUGIN_NAME/$__rel") printf '10'; return ;;
+    "$TMP_ROOT"/agency-plugin-*/"$PLUGIN_NAME/$__rel") printf '10'; return ;;
+    "$INVOKED_PLUGIN_DIR/$__rel")
+      if [ "$INVOKED_IS_EPHEMERAL" = 1 ]; then printf '10'; else printf '50'; fi
+      return ;;
+    "$PLUGIN_DIR/$__rel") printf '30'; return ;;
+  esac
+  printf '0'
+}
+
+__owns_target() {
+  [ "$(__target_rank "$1" "$2")" -gt 0 ] 2>/dev/null
 }
 
 # --- link each declared command directly to its skill-bundled script ------------------
@@ -116,13 +134,15 @@ while IFS= read -r rel; do
   cmd="$(__cmd_name "$base")"
   [ -n "$cmd" ] || continue
   dest="$DEST_DIR/$cmd"
+  source_rank="$(__target_rank "$real" "$rel")"
 
   if [ -L "$dest" ]; then
     cur="$(readlink "$dest" 2>/dev/null || true)"
     # Update only links into this plugin (including an older installed/cache copy).
     # A foreign link with the same command basename is never sufficient ownership.
     if __owns_target "${cur:-}" "$rel"; then
-      if [ "$cur" != "$real" ]; then
+      current_rank="$(__target_rank "${cur:-}" "$rel")"
+      if [ "$cur" != "$real" ] && [ "$source_rank" -ge "$current_rank" ] 2>/dev/null; then
         ln -sf "$real" "$dest" 2>/dev/null && __linked="$__linked $cmd"
       fi
     fi

@@ -20,7 +20,7 @@
 set -u
 
 # Force-disable, checked before ANYTHING else touches disk (payload/lock/watermark).
-if [ "${ADO_SESSION_SYNC:-}" = "0" ]; then
+if [ "${ADO_SESSION_SYNC:-}" = "0" ] || [ "${COPILOT_PLUGIN_GITHUB_SESSION_SYNC:-}" = "0" ] || [ "${COPILOT_PLUGIN_TASK_SESSION_SYNC:-}" = "0" ]; then
   exit 0
 fi
 
@@ -40,12 +40,16 @@ if [ -n "$sid" ]; then
 fi
 
 # Opt-in: stay silent unless the feature is enabled (env=0 already exited above).
+# Backend-neutral: fires for taskBackend="ado" (legacy adoSessionSync.enabled) OR
+# taskBackend="github" (taskSessionSync.enabled) — both write to this same log dir.
 enabled=0
-if [ "${ADO_SESSION_SYNC:-}" = "1" ]; then
+if [ "${ADO_SESSION_SYNC:-}" = "1" ] || [ "${COPILOT_PLUGIN_GITHUB_SESSION_SYNC:-}" = "1" ] || [ "${COPILOT_PLUGIN_TASK_SESSION_SYNC:-}" = "1" ]; then
   enabled=1
 elif [ -f "$CONFIG" ] && command -v jq >/dev/null 2>&1; then
-  if [ "$(jq -r '.adoSessionSync.enabled // false' "$CONFIG" 2>/dev/null)" = "true" ] \
-     && [ "$(jq -r '.taskBackend // ""' "$CONFIG" 2>/dev/null)" = "ado" ]; then
+  tb="$(jq -r '.taskBackend // ""' "$CONFIG" 2>/dev/null)"
+  if [ "$tb" = "ado" ] && [ "$(jq -r '.adoSessionSync.enabled // false' "$CONFIG" 2>/dev/null)" = "true" ]; then
+    enabled=1
+  elif [ "$tb" = "github" ] && [ "$(jq -r '.taskSessionSync.enabled // false' "$CONFIG" 2>/dev/null)" = "true" ]; then
     enabled=1
   fi
 fi

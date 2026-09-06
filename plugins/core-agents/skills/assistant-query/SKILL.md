@@ -217,6 +217,39 @@ Keep the same presentation format as §2 ("Present Task Lists" — group by Prio
 
 ---
 
+## 2.6 List Tasks — GitHub Backend (when `taskBackend = "github"`)
+
+When `~/.copilot/assistant/config.json` exists with `taskBackend: "github"`, **§2 List
+Tasks is overridden by this section** (mirroring §2.5 for ADO). All task listings come
+from the GitHub Issues + Projects v2 board configured under `config.github` instead of
+`tasks.md` or ADO.
+
+Read config first (see `assistant-capture` §3.6.0). The lanes are run with the
+**`github-query`** command (see §8b for the full lane catalog) — identical lane names to
+§2.5's ADO mapping, just a different command:
+
+| User asks for | Run |
+|---|---|
+| All active tasks / "show my tasks" | `github-query all-open` |
+| Top / highest-priority N items | `github-query all-open --output json`, then rank using the §2.5 "Rank a Short Top-N List" procedure (identical procedure — swap `ado-query` for `github-query` and `details --id <ID>` takes an issue number) |
+| "What am I working on" / "my active" | `github-query active` |
+| Filter by P1 | `github-query priority --priority 1` |
+| Overdue / due today / due this week | `github-query due --window overdue` / `due --window today` / `due --window week` |
+| Blocked items / "what's blocked" | `github-query blocked` |
+| Needs my attention / "needs me" | `github-query needs-me` |
+| Up Next queue / "my queue" / "what's next" | `github-query up-next` |
+| Backlog / "what could I pick up" | `github-query backlog` |
+| Recently completed / "what did I just finish" | `github-query done-recent` |
+| Done in the last day | `github-query done-24h` |
+| Archive contents (explicit ask only) | `github-query archive` |
+| Stale (untouched 7 days) | `github-query stale` |
+
+> **Default exclusion:** unless the user explicitly asks for archive contents, **never include `Lane = Archive`** (or a `Lane = Done` item closed more than the relevant window ago) in any listing. Archive is opt-in only — same rule as §2.5/§8a.
+
+Keep the same presentation format as §2, but render IDs as issue links: `**[#<number>](https://github.com/<config.github.owner>/<config.github.repo>/issues/<number>)** — Title`.
+
+---
+
 ## 3. Check Reminders
 
 ### Due Reminders Scan
@@ -304,7 +337,7 @@ file=~/.copilot/assistant/briefings/daily/${today}-daily.md
 4. **Due this week** — Tasks due within next 7 days, excluding today
 5. **Due reminders** — Date-based reminders matching today + recurring patterns matching today (see §3)
 6. **Team-board ADO items (only when a `teamBoard` is configured).** When `~/.copilot/assistant/config.json` has a `teamBoard` block, run the configured team sprint lanes and embed results using the **§4b Team Board Section Layout** (three lanes: Started → Committed → Proposed; hide-empty rule). Sourced from `ado-query team-started` / `team-committed` / `team-proposed`. **Omit this section entirely when no `teamBoard` block is configured** (see §8) — unlike the personal board (6b), the team board is optional. When `teamBoard` is configured but `az` is not, write `_ADO not configured — run \`az login\`_` rather than silently skipping.
-6b. **Personal board (when `taskBackend = "ado"`) — MANDATORY column-oriented layout.** Render the personal board as a separate section using the layout defined in **§4a Personal Board Section Layout**. Sourced from §8a queries (which use `System.BoardColumn` — authoritative). Items with `State = 'Closed'` (Archive) and `State = 'Resolved'` older than 24h are **never** included. When `taskBackend != "ado"`, skip this step.
+6b. **Personal board (when `taskBackend = "ado"` or `taskBackend = "github"`) — MANDATORY column-oriented layout.** Render the personal board as a separate section using the layout defined in **§4a Personal Board Section Layout**. Sourced from `ado-query` (§8a, `System.BoardColumn` — authoritative) when `taskBackend = "ado"`, or `github-query` (§8b, the `Lane` Projects v2 field — authoritative) when `taskBackend = "github"` — same lane names either way (`needs-me`, `active`, `up-next`, `blocked`, `backlog`, `done-24h`), so §4a's layout table does not change per backend, only which command runs it. Archived/closed items are **never** included (ADO: `State = 'Closed'`, or `State = 'Resolved'` older than 24h; GitHub: `Lane = Archive`, or `Lane = Done` with the issue closed more than 24h ago). When `taskBackend` is neither `"ado"` nor `"github"`, skip this step.
 7. **Calendar — MANDATORY.** Always pull today's events via `calendar-ListCalendarView` (start = today 00:00 IST, end = today 23:59 IST). Render as a small table with `Time (IST) | Subject | Notes`. Flag conflicts (overlapping busy meetings) and OOO attendees. Bold any meeting the user organized. If the calendar tool is unavailable, write `_Calendar tool unavailable_` rather than skipping.
 7b. **Active pull requests (§9).** List the user's open PRs across the configured orgs (see §9) and render the **🔀 Active Pull Requests** section here — after the ADO work-item sections, before Recent Notes. **Hide the section if the user has zero open PRs.** Add the open-PR count to the chat summary. This is a standing section: the user should not have to ask for it each day.
 8. **Recent notes** — Notes created in the last 2 days (use filename date prefix)
@@ -317,20 +350,20 @@ Use the template as a starting point. Replace each `{...}` placeholder. For "non
 
 ---
 
-## 4a. Personal Board Section Layout (when `taskBackend = "ado"`)
+## 4a. Personal Board Section Layout (when `taskBackend = "ado"` or `"github"`)
 
-Applies to step 6b above. The personal-board portion of the daily briefing is rendered as **column-oriented lanes in this exact order**, mirroring the kanban columns. Each lane sources from the `ado-query` lane in the Source column.
+Applies to step 6b above. The personal-board portion of the daily briefing is rendered as **column-oriented lanes in this exact order**, mirroring the kanban columns. Each lane sources from the matching lane of whichever query command §8/§8a/§8b resolves for the active `taskBackend` — `ado-query` for `"ado"`, `github-query` for `"github"`. Lane names are identical across both commands, so only the "Source query" column's command name changes per backend (`ado-query <lane>` ↔ `github-query <lane>`); the layout, headings, and hide-empty rules below never change per backend.
 
-| Order | Lane | Heading | Source query | Render rule |
+| Order | Lane | Heading | Source query (`<query-cmd>` = `ado-query` or `github-query`) | Render rule |
 |---|---|---|---|---|
-| 1 | Needs Me | `### 🟠 Needs Me` | `ado-query needs-me` | **Hide if 0** |
-| 2 | Active | `### 🔥 Active` | `ado-query active` | **Hide if 0** |
-| 3 | Up Next | `### ⏭️ Up Next` | `ado-query up-next` | **Hide if 0**; show **all** items (no cap) |
-| 4 | Blocked | `### ⏸️ Blocked` | `ado-query blocked` | **Hide if 0** |
-| 5 | Backlog | `### 🆕 Backlog` | `ado-query backlog` | **Always render** the count line (even when 0 — that's its own signal); top-5 expansion conditional (see below) |
-| 6 | Done last 24h | `### ✅ Done in the last 24h` | `ado-query done-24h` | **Hide if 0** |
+| 1 | Needs Me | `### 🟠 Needs Me` | `<query-cmd> needs-me` | **Hide if 0** |
+| 2 | Active | `### 🔥 Active` | `<query-cmd> active` | **Hide if 0** |
+| 3 | Up Next | `### ⏭️ Up Next` | `<query-cmd> up-next` | **Hide if 0**; show **all** items (no cap) |
+| 4 | Blocked | `### ⏸️ Blocked` | `<query-cmd> blocked` | **Hide if 0** |
+| 5 | Backlog | `### 🆕 Backlog` | `<query-cmd> backlog` | **Always render** the count line (even when 0 — that's its own signal); top-5 expansion conditional (see below) |
+| 6 | Done last 24h | `### ✅ Done in the last 24h` | `<query-cmd> done-24h` | **Hide if 0** |
 
-**Never include** in any lane: `State = 'Closed'` (Archive) or `State = 'Resolved'` older than 24h. Archive is opt-in only.
+**Never include** in any lane: ADO `State = 'Closed'` (Archive) / GitHub `Lane = Archive`, or ADO `State = 'Resolved'` / GitHub `Lane = Done` older than 24h. Archive is opt-in only.
 
 ### Hide-empty rule
 
@@ -397,6 +430,8 @@ az boards query --org "<config.org>" --project "<config.project>" --wiql "
 Build an id→title map and render `· workstream: <Feature title>` when resolved. If a Story has no parent, omit the label. If the lookup cannot run or an ID is missing from the result, render `· workstream: #<parent-id>`; never invent a title.
 
 For the Needs Me lane, append the most recent comment snippet if available (the agent's "surfacing for review" note from `assistant-capture` §3.5.7) — helps the user remember why it's in the queue.
+
+> **GitHub mode (`taskBackend = "github"`):** link to the issue instead of an ADO work-item URL — `**[#<number>](<config.github.boardUrl-derived issue URL, e.g. https://github.com/<owner>/<repo>/issues/<number>>)**` — and skip the batched parent-id lookup above entirely: `github-query` already returns a resolved `workstream` string per item (the `Workstream` Projects v2 field, §3.6.1), so render `· workstream: <item.workstream>` directly when non-empty, with no separate query.
 
 ---
 
@@ -577,7 +612,10 @@ Surface stale items during daily briefing or weekly review, not on every interac
 
 ## 8. Azure DevOps Work Items
 
-Query and display ADO work items assigned to the user.
+Query and display ADO work items assigned to the user. This section (and §8a) applies
+to the **team board always**, and to the **personal board only when
+`taskBackend = "ado"`** — when `taskBackend = "github"`, the personal board is §8b
+instead (same lane names, `github-query` command).
 
 ### Running these queries: the `ado-query` command
 
@@ -831,10 +869,13 @@ ado-query recently-changed
 
 ### Pending Inbox Sync
 
-When operating in ADO mode, on session start, scan `<config.fallbackInbox>` for entries with `ado_status: pending`:
+When operating in ADO mode, on session start, scan `<config.fallbackInbox>` for entries with `ado_status: pending`. Resolve the configured path — default only when the key is absent, never silently ignore an explicit override:
 
 ```bash
-grep -B1 -A8 "^- ado_status: pending$" ~/.copilot/assistant/inbox.md
+config=$(cat ~/.copilot/assistant/config.json)
+INBOX=$(echo "$config" | python3 -c "import sys,json; print(json.load(sys.stdin).get('fallbackInbox') or '~/.copilot/assistant/inbox.md')")
+INBOX="${INBOX/#\~/$HOME}"   # expand a leading ~ (python's json.load never does this)
+grep -B1 -A8 "^- ado_status: pending$" "$INBOX"
 ```
 
 For each pending entry, query ADO for any WI whose Description contains its `clientCaptureId`. This is a one-off existence probe (no `ado-query` lane); run it raw:
@@ -897,6 +938,155 @@ The Weekly Briefing (§5) step 6b uses the same six-lane layout as the daily, wi
 2. **Throughput line:** under the Done lane, append `📈 Done last 7d: {N} — avg {N/7:.1f} per day`. This gives the user a velocity signal week-over-week.
 
 WIP targets, overflow warnings, hide-empty rule, and the Closed-exclusion rule are unchanged from the daily briefing.
+
+---
+
+## 8b. Personal Board — GitHub (when `taskBackend = "github"`)
+
+Mirror of §8a but pointed at a GitHub Issues + Projects v2 board (`config.github` block
+from `~/.copilot/assistant/config.json`; see `assistant-capture` §3.6.0). When
+`taskBackend != "github"`, **skip this entire section** — use §8a instead. Every lane
+below runs through **`github-query`**, the GraphQL twin of `ado-query`: a config-driven
+Projects v2 query builder + `gh api graphql` runner that exhausts cursor pagination and
+parses every typed field value (text/number/date/single-select/iteration) safely, so a
+misconfigured or renamed project field degrades to an empty value for that field
+instead of crashing the lane.
+
+- **Install:** automatic, same `sessionStart` hook as `ado-query` — see §8 "Running
+  these queries".
+- **Catalog:** `github-query --list` prints every lane with its description.
+- **See the query:** append `--print-query` (alias `--dry-run`) to any lane to print the
+  exact GraphQL query **without running it**.
+- **Options:** `--priority N`, `--changed-since-days N` (done-recent window),
+  `--window all|overdue|today|week` (due lane), `--output table|json`.
+
+**Lane names are identical to the ADO personal-board lanes in §8a** (`all-open`,
+`active`, `needs-me`, `up-next`, `blocked`, `backlog`, `done-24h`, `done-recent`,
+`stale`, `due`, `priority`, `archive`) — this is what lets §4a/§5's briefing layout stay
+backend-agnostic; only the command name changes (`ado-query <lane>` ↔
+`github-query <lane>`).
+
+### Authoritative lane source: the `Lane` Projects v2 field
+
+**Column-classifying queries below use the `Lane` single-select field — not labels.**
+This is the field that drives the Projects v2 board view, mirroring §8a's rule that
+`System.BoardColumn` (not tags) is authoritative for ADO. `Lane = Done` / `Lane = Archive`
+correspond to a **closed** issue; every other lane value corresponds to an **open** issue
+— see `assistant-capture` §3.6.5 for the full mapping.
+
+### Default exclusion rule
+
+Same as §8a: **every lane in this section excludes closed issues with `Lane = Archive`**
+(and `Lane = Done` items older than the relevant window) unless the user explicitly asks
+for archive contents. The only lane that returns `Lane = Archive` items is `archive`
+itself, on explicit request.
+
+### All Open Personal Items
+
+```bash
+github-query all-open
+```
+
+### My Open by Priority (P1 / P2 / P3)
+
+```bash
+github-query priority --priority 1   # --priority 2 / 3 for P2 / P3
+```
+
+### Due Date Windows
+
+```bash
+github-query due --window overdue   # past due, still open
+github-query due --window today     # due today
+github-query due --window week      # due in the next 7 days
+github-query due --window all       # any open item carrying a due date (default)
+```
+
+### Blocked / Needs Me / Up Next / Active / Backlog
+
+Same WIP semantics as §8a (Blocked/Active target 3, Needs Me/Up Next target 5, Backlog
+uncapped):
+
+```bash
+github-query blocked
+github-query needs-me
+github-query up-next
+github-query active
+github-query backlog
+```
+
+### Done — last 24h / recent completions
+
+```bash
+github-query done-24h                               # last 24h — daily momentum recap
+github-query done-recent                             # default: last 14 days
+github-query done-recent --changed-since-days 7       # weekly briefing window
+```
+
+### Archive Items
+
+```bash
+github-query archive
+```
+
+### Stale Items (untouched 7 days)
+
+```bash
+github-query stale
+```
+
+### Work Item Details
+
+```bash
+github-query details --id <issue-number>
+```
+
+### Pending Inbox Sync
+
+When operating in GitHub mode, on session start, scan `<config.fallbackInbox>` for
+entries with `status: pending` (and legacy `ado_status: pending` entries left over from
+before a cutover — see `references/task-backend-contract.md` §Configuration
+versioning). Resolve the configured path the same way as ADO mode above — default
+only when `fallbackInbox` is absent from config, never hardcode past an explicit
+override:
+
+```bash
+config=$(cat ~/.copilot/assistant/config.json)
+INBOX=$(echo "$config" | python3 -c "import sys,json; print(json.load(sys.stdin).get('fallbackInbox') or '~/.copilot/assistant/inbox.md')")
+INBOX="${INBOX/#\~/$HOME}"
+grep -B1 -A8 "^- status: pending$" "$INBOX"
+```
+
+For each pending entry, search for an issue whose body contains its `clientCaptureId`
+(§3.6.9). If no match → create the issue with the entry's data, embedding
+`clientCaptureId` in the body; mark the inbox entry `status: synced`. If match → mark
+`status: synced` (already created earlier).
+
+### Daily Briefing Integration (GitHub mode)
+
+When `taskBackend = "github"`, the Daily Briefing (§4) "Tasks" section is sourced from
+`github-query` lanes instead of `tasks.md`, using the exact same step numbering and §4a
+layout as ADO mode — only the underlying command differs (see §4 step 6b and §4a).
+
+### Personal Board Lane → Query Map (GitHub; used by §4a)
+
+| Briefing lane | `github-query` lane | Render rule |
+|---|---|---|
+| 🟠 Needs Me | `needs-me` (`Lane = 'Needs Me'`) | Hide if 0; WIP target 5 |
+| 🔥 Active | `active` (`Lane = 'Active'`) | Hide if 0; WIP target 3 |
+| ⏭️ Up Next | `up-next` (`Lane = 'Up Next'`) | Hide if 0; show all; WIP target 5 |
+| ⏸️ Blocked | `blocked` (`Lane = 'Blocked'`) | Hide if 0; WIP target 3 |
+| 🆕 Backlog | `backlog` (`Lane = 'Backlog'`) | Always render count; expand top 5 only when Active+UpNext ≤ 6 |
+| ✅ Done last 24h | `done-24h` | Hide if 0. Weekly briefing uses `done-recent --changed-since-days 7` + throughput stat |
+
+**Never** render `Lane = Archive` (closed) in the briefing under any lane. Archive is
+opt-in only — identical rule to §8a's ADO `State = 'Closed'` exclusion.
+
+### Weekly Briefing Integration (GitHub mode)
+
+Identical to §8a's "Weekly Briefing Integration (ADO mode)": step 6b uses
+`github-query done-recent --changed-since-days 7` instead of `done-24h`, plus the same
+`📈 Done last 7d: {N} — avg {N/7:.1f} per day` throughput line.
 
 ---
 

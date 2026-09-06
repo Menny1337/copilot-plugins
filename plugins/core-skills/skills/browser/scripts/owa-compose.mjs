@@ -21,12 +21,10 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveToken, explain } from './bridge-token.mjs';
+import { playwrightInvocation } from './browser-window.mjs';
 
-const DEFAULT_SESSION = 'msedge';
 const DEFAULT_CMD_TIMEOUT_MS = 45_000;
 let CMD_TIMEOUT_MS = DEFAULT_CMD_TIMEOUT_MS;
-const ATTACH_TIMEOUT_MS = 25_000;
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 20_000;
 const RECIPIENT_SETTLE_MS = 1_500;
@@ -38,7 +36,7 @@ const OWA_MAIL_URL = 'https://outlook.office.com/mail/';
 // process plumbing
 // ---------------------------------------------------------------------------
 
-let SESSION = DEFAULT_SESSION;
+let SESSION = null;
 let JSON_OUT = false;
 
 // Progress goes to stderr so stdout stays a single parseable JSON document.
@@ -60,7 +58,8 @@ function done(payload) {
 
 // Run playwright-cli with an argv array. No shell => no quoting hazard.
 function pw(args, { timeout = CMD_TIMEOUT_MS, env } = {}) {
-  const res = spawnSync('playwright-cli', [`--s=${SESSION}`, ...args], {
+  const invocation = playwrightInvocation();
+  const res = spawnSync(invocation.command, [...invocation.prefix, `--s=${SESSION}`, ...args], {
     encoding: 'utf8',
     timeout,
     shell: false,
@@ -198,54 +197,19 @@ function fn(body) {
 // preflight
 // ---------------------------------------------------------------------------
 
-function tokenHint(browser, res) {
-  const lines = [];
-  if (res && res.reason) lines.push(explain(browser, res));
-  else {
-    lines.push(`The Playwright Bridge token for "${browser}" did not work.`);
-    lines.push('');
-    lines.push('`playwright-cli attach --extension` has NO timeout: a wrong token hangs');
-    lines.push('forever instead of erroring, so this script bounds it.');
+function ensureSession() {
+  const result = pw(['tab-list'], { timeout: 10_000 });
+  if (result.timedOut) {
+    return { ok: false, error: 'session-timeout', message: `Playwright session "${SESSION}" did not respond` };
   }
-  lines.push('');
-  lines.push('Inspect every profile and its real token (instant, reads the profile on disk):');
-  lines.push('  node scripts/bridge-token.mjs list');
-  lines.push(`  node scripts/bridge-token.mjs sync --session ${browser}`);
-  return lines.join('\n');
-}
-
-function attach({ browser = SESSION } = {}) {
-  // Already attached? A cheap eval succeeds without re-attaching.
-  // playwright-cli exits 0 and prints its "not open" guidance as the *value*,
-  // so the probe only counts when the result really is a URL.
-  const probe = pwEval('() => location.href', { timeout: 10_000 });
-  if (probe.ok && typeof probe.value === 'string' && /^https?:\/\//.test(probe.value.trim())) {
-    return { ok: true, alreadyAttached: true, url: probe.value.trim() };
+  if (result.code !== 0) {
+    return {
+      ok: false,
+      error: 'session-unavailable',
+      message: `Playwright session "${SESSION}" is not running. Start it with browser-window.mjs first.`,
+    };
   }
-
-  // The extension stores the token it expects in the profile on disk, so a bad
-  // or cross-profile token is caught here in milliseconds instead of hanging.
-  const res = resolveToken(browser);
-  if (!res.ok) {
-    return { ok: false, error: res.reason, message: tokenHint(browser, res) };
-  }
-  const token = res.token;
-
-  log(`attaching to "${browser}" (token from ${res.source})`);
-  const r = pw(['attach', `--extension=${browser}`], {
-    timeout: ATTACH_TIMEOUT_MS,
-    env: { PLAYWRIGHT_MCP_EXTENSION_TOKEN: token },
-  });
-
-  if (r.timedOut) {
-    // Should be unreachable now that the token is read from the profile itself,
-    // but a hang here still must not be mistaken for slow progress.
-    return { ok: false, error: 'attach-timeout', message: tokenHint(browser) };
-  }
-  if (r.code !== 0) {
-    return { ok: false, error: 'attach-failed', message: (r.stderr || r.stdout).trim().slice(0, 400) };
-  }
-  return { ok: true, alreadyAttached: false, tokenSource: res.source, profile: res.profile?.name || null };
+  return { ok: true };
 }
 
 // Dismiss teaching callouts / banners that would otherwise brick every later
@@ -293,8 +257,8 @@ function ensureOwa({ navigate = true } = {}) {
 }
 
 function preflight({ navigate = true } = {}) {
-  const a = attach();
-  if (!a.ok) fail(a.error, a.message);
+  const session = ensureSession();
+  if (!session.ok) fail(session.error, session.message);
   const o = ensureOwa({ navigate });
   if (!o.ok) {
     if (o.error === 'modal-state') {
@@ -784,7 +748,6 @@ Usage:
   owa-compose.mjs <command> [options]
 
 Commands:
-  attach                     Attach to the browser, failing fast on a stale token
   probe                      Dump the live compose DOM contract (run when a selector misses)
   draft   --spec <file>      Open a compose, fill it, verify it, leave it saved as a draft
   reply   --spec <file> --mode reply|reply-all|forward
@@ -800,7 +763,7 @@ Commands:
                              Requires --confirm either way.
 
 Options:
-  --session <name>   playwright-cli session / token name (default: ${DEFAULT_SESSION})
+  --session <name>   helper-owned playwright-cli session (required)
   --timeout <ms>     per playwright-cli call timeout (default: ${DEFAULT_CMD_TIMEOUT_MS})
   --json             suppress the stderr progress log, leaving stdout pure JSON
   -h, --help
@@ -820,15 +783,11 @@ Notes:
   - Escape is NEVER sent: in a compose, Escape is Discard and destroys the draft.
   - Output is JSON on stdout; a non-zero exit means a real, described failure.
 
-Profiles and tokens:
-  Each browser profile runs its own copy of the Playwright Bridge extension and
-  therefore has its OWN token. --session picks the profile:
-      --session msedge              -> the default profile
-      --session msedge-woodgrove    -> the profile named "Woodgrove"
-  The token is read from the profile on disk, so a stale token file cannot make
-  attach hang and no consent-dialog recapture is needed. Inspect or repair with:
-      node scripts/bridge-token.mjs list
-      node scripts/bridge-token.mjs sync-all
+Session lifecycle:
+  Start a dedicated browser window first:
+      node scripts/browser-window.mjs start
+  Pass the returned session to every OWA command. This driver never attaches to
+  whichever browser window happens to be active.
 `;
 
 function parseArgs(argv) {
@@ -878,7 +837,8 @@ function main() {
   }
   if (args.json) JSON_OUT = true;
   const session = strArg(args, 'session');
-  if (session) SESSION = session;
+  if (!session) fail('session-required', '--session is required; start a dedicated browser window first');
+  SESSION = session;
   const timeout = intArg(args, 'timeout', { min: 1_000 });
   if (timeout != null) CMD_TIMEOUT_MS = timeout;
 
@@ -886,12 +846,6 @@ function main() {
   if (major < 18) fail('node-version', `Node 18+ required (running ${process.versions.node})`);
 
   switch (cmd) {
-    case 'attach': {
-      const a = attach();
-      if (!a.ok) fail(a.error, a.message);
-      done({ action: 'attach', ...a });
-      break;
-    }
     case 'probe':
       cmdProbe();
       break;

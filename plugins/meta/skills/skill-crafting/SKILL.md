@@ -94,12 +94,12 @@ allowed-tools: Read Grep
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | **Yes** | Max 64 chars; CLI-enforced pattern is `^[a-zA-Z0-9][a-zA-Z0-9._\- ]*$`. Kebab-case matching the folder name is the **convention** (and what this repo's validator enforces) — the CLI itself accepts mismatches and underscores. |
-| `description` | string | **Yes** | 1–1024 characters. No angle brackets (`<>`). Describes purpose and trigger conditions. |
+| `name` | string | **Yes** | Portable authoring target: 1–64 lowercase alphanumeric characters or hyphens; no leading, trailing, or consecutive hyphen; must match the folder name. This marketplace uses ASCII kebab-case. |
+| `description` | string | **Yes** | 1–1024 characters. Describes purpose and trigger conditions. |
 | `license` | string | No | SPDX identifier or reference to a bundled license file. |
 | `compatibility` | string | No | Host, package, operating-system, or network requirements. Max 500 characters. |
 | `metadata` | map | No | String key/value metadata for supporting clients; **unsupported in this scalar-only marketplace** until its parser accepts nested maps. |
-| `allowed-tools` | space-separated string | No | Tools auto-approved while the skill is active. It is not a YAML array. See the security warning below. |
+| `allowed-tools` | space-separated string | No | Experimental portable field for tools auto-approved while the skill is active. See the security warning below. |
 | `user-invocable` | boolean | No | Defaults to `true`. Set `false` to hide the skill from slash-command invocation, leaving it model-only. |
 | `disable-model-invocation` | boolean | No | Defaults to `false`. Set `true` so the model cannot auto-invoke it and the user must call it explicitly. Fully honored since CLI 1.0.74. |
 | `argument-hint` | string | No | Freeform hint describing expected arguments, shown during slash-command completion. Copilot CLI 1.0.64+. Only meaningful when the skill is user-invocable. |
@@ -109,12 +109,25 @@ allowed-tools: Read Grep
 > `shell` or `bash`: doing so lets a malicious skill — or a prompt injection reaching one —
 > run arbitrary terminal commands with no prompt. Omit them unless you have read the skill and
 > every script it references, and you trust its source.
+>
+> **Use the portable scalar form.** The 1.0.83-5 CLI bundle contains an internal built-in
+> skill with `allowed-tools` expressed as a YAML array, so the runtime accepts that shape in
+> at least one internal path. The Agent Skills specification and GitHub's authored examples
+> define a space-separated scalar, which is the interoperable form and the only form accepted
+> by this marketplace's scalar-only parser.
 
 > **Host differences:** `argument-hint` is supported on Copilot **skills**, but ignored on
 > Copilot **agents** (it is VS Code-only there) — an easy trap. Claude Code additionally
 > exposes `context`, `agent`, `hooks`, and `model` on skills; verify the target host before
 > using those. The Claude Code `hooks` frontmatter field is unrelated to Copilot's
 > `hooks.json` lifecycle system.
+>
+> **Runtime tolerance is broader than the portable target.** The repository's
+> probe-backed contract recorded on July 25, 2026 for CLI 1.0.75 found that the
+> runtime accepted uppercase letters, underscores, dots, spaces, and a
+> frontmatter/folder mismatch. That behavior was not re-probed for 1.0.83-5.
+> Author new skills to the portable rule above, but do not reject a third-party
+> skill solely for using a runtime-tolerated name.
 >
 > **This marketplace is scalar-only:** its generators accept only single-line top-level
 > scalar values. Do not add nested `metadata` maps or YAML arrays here until the repository
@@ -248,6 +261,7 @@ Quick quality checklist before installing or using a skill:
 
    ```bash
    copilot skill add <FILE | URL | DIRECTORY>          # add a skill
+   copilot skill add --project <FILE | URL>            # copy into .github/skills/
    copilot skill list [--json]                         # confirm it loaded, with source
    copilot skill remove <NAME | DIRECTORY>             # remove it again
 
@@ -260,7 +274,8 @@ Quick quality checklist before installing or using a skill:
    only to file or URL installs. In session, `/skills` (alias `/skill`) offers `list`, `info`,
    `add`, `remove`, and `reload` — `/skills reload` picks up a skill added mid-session without
    restarting. Plugin skills must be managed through their plugin; `/skills info` shows which
-   plugin a skill came from.
+   plugin a skill came from. The direct command uses `--project`; the cross-kind
+   `copilot plugins install --skill` form uses `--scope project`.
 
    For a skill authored inside this marketplace, no install step is needed: add the directory
    under your plugin's `skills/<skill-name>/` and list the plugin in `marketplace.json`.
@@ -399,8 +414,8 @@ Optional but recommended:
 ## Step 6: Verify
 
 **Frontmatter validation:**
-- [ ] `name` is kebab-case (convention), max 64 characters, and matches the folder name
-- [ ] `description` is 1–1024 characters (angle brackets are accepted by the CLI)
+- [ ] For a skill being authored or made portable, `name` is 1–64 lowercase letters/digits/hyphens, has no edge or doubled hyphen, and matches the folder name; when auditing third-party runtime compatibility, record broader CLI-tolerated names separately instead of treating this authoring target as a universal rejection rule
+- [ ] `description` is 1–1024 characters
 - [ ] `description` is third-person, states what and when, and includes distinct trigger keywords
 - [ ] `allowed-tools`, if present, is a space-separated scalar rather than a YAML array, and does not pre-approve `shell` or `bash`
 - [ ] `argument-hint`, if present, is on a user-invocable skill (it is inert otherwise)
