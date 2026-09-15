@@ -7,7 +7,7 @@
 # ado-session-sync skill so every gate decision, launch, child exit, and outcome
 # lands in one audit trail.
 #
-# Verbosity: adoSessionSync.logLevel in ~/.copilot/assistant/config.json
+# Verbosity: the selected backend's sync block logLevel in the selected config
 #   (or env COPILOT_PLUGIN_ADO_SYNC_LOGLEVEL) = off | result | debug. Default "result".
 #   High-frequency gate skips (opt-in-disabled, recursion-guard) are debug-only.
 #
@@ -33,7 +33,12 @@
 set -u
 
 LOG_DIR="$HOME/.copilot/logs/ado-session-sync"
-CONFIG="$HOME/.copilot/assistant/config.json"
+. "$(dirname "${BASH_SOURCE[0]}")/../../../shared/assistant-config.sh" || exit 0
+CONFIG="$(plugins_config_path)" || exit 0
+backend="$(plugins_config_backend "$CONFIG")" || exit 0
+sync_block="adoSessionSync"
+[ "$backend" = "github" ] && sync_block="taskSessionSync"
+CONFIG_FIELD="$(dirname "${BASH_SOURCE[0]}")/../../../hooks/scripts/config-field.mjs"
 
 event=""; parent=""; child=""; cwd=""; childlog=""; reason=""
 item=""; action=""; note=""; detail=""; stage=""; exitc=""; duration=""; maybe_prune=0
@@ -60,8 +65,12 @@ done
 
 # Resolve verbosity (env override wins, then config, then default).
 level="${COPILOT_PLUGIN_ADO_SYNC_LOGLEVEL:-}"
-if [ -z "$level" ] && [ -f "$CONFIG" ] && command -v jq >/dev/null 2>&1; then
-  level="$(jq -r '.adoSessionSync.logLevel // "result"' "$CONFIG" 2>/dev/null)"
+if [ -z "$level" ] && [ -f "$CONFIG" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    level="$(jq -r --arg block "$sync_block" '.[$block].logLevel // "result"' "$CONFIG" 2>/dev/null)"
+  elif command -v node >/dev/null 2>&1; then
+    level="$(node "$CONFIG_FIELD" log-level "$CONFIG" --backend "$backend")"
+  fi
 fi
 case "$level" in off|result|debug) ;; *) level="result" ;; esac
 [ "$level" = "off" ] && exit 0
@@ -126,8 +135,13 @@ printf '%s\n' "$h" >> "$LOG_DIR/runs.log" 2>/dev/null
 # Opportunistic, throttled retention (once per day).
 if [ "$maybe_prune" = "1" ]; then
   retdays=30
-  if [ -f "$CONFIG" ] && command -v jq >/dev/null 2>&1; then
-    v="$(jq -r '.adoSessionSync.retentionDays // empty' "$CONFIG" 2>/dev/null)"
+  if [ -f "$CONFIG" ]; then
+    v=""
+    if command -v jq >/dev/null 2>&1; then
+      v="$(jq -r --arg block "$sync_block" '.[$block].retentionDays // empty' "$CONFIG" 2>/dev/null)"
+    elif command -v node >/dev/null 2>&1; then
+      v="$(node "$CONFIG_FIELD" retention-days "$CONFIG" --backend "$backend")"
+    fi
     is_int "$v" && retdays="$v"
   fi
   if [ "$retdays" -gt 0 ] 2>/dev/null; then

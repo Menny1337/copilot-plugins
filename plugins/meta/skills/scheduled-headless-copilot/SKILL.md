@@ -1,6 +1,6 @@
 ---
 name: scheduled-headless-copilot
-description: "Schedules unattended Copilot CLI tasks via launchd, cron, systemd, or Windows Task Scheduler. Use to run copilot -p periodically when the terminal or session is closed."
+description: "Manages unattended Copilot CLI and executable tasks via Copilot Loops on macOS or OS schedulers. Use for persistent schedules, monitoring, and troubleshooting, not session-bound /every tasks."
 argument-hint: "<task to run on a schedule>"
 user-invocable: true
 compatibility: "Requires GitHub Copilot CLI and launchd, cron, systemd, or Windows Task Scheduler."
@@ -16,6 +16,12 @@ driving a headless `copilot -p` run from an OS-level scheduler.
 > you quit. To run *when Copilot is off*, you need an OS scheduler (launchd / cron / systemd /
 > Task Scheduler) that launches Copilot headlessly. This skill is the reusable pattern;
 > `scheduled-skill-review` is one concrete, shipped implementation of it.
+>
+> On macOS, **Copilot Loops** is the managed app for this workflow. Use it when the user wants
+> a menu-bar status surface, visual builders, launchd scheduling, live runs, history, Keychain
+> secrets, or direct executable automations. Read
+> [`references/copilot-loops-app.md`](./references/copilot-loops-app.md) before installing or
+> operating it.
 
 ## When to Use
 
@@ -24,6 +30,8 @@ driving a headless `copilot -p` run from an OS-level scheduler.
 - Wire a **launchd / cron / systemd timer / Task Scheduler** job that invokes Copilot.
 - Run periodic unattended agent work — triage, audits, reports, digests, maintenance.
 - Promote a working one-off `copilot -p` command into a durable, scheduled job.
+- Create or operate **Copilot Loops** automations on macOS, including direct script or
+  executable tasks.
 
 ## When to Skip
 
@@ -57,6 +65,18 @@ it is the exact thing you test by hand before trusting the clock.
 
 ## Procedure
 
+### Step 0 — Choose the managed app or manual workflow
+
+- **Copilot Loops on macOS:** use the native manager for visual creation, schedules, run
+  controls, history, notifications, approval review, Keychain-backed secrets, and the local
+  identity profile required to preserve an existing installation. Follow
+  [`references/copilot-loops-app.md`](./references/copilot-loops-app.md).
+- **Portable or hand-built task:** continue with the procedure below for launchd, cron,
+  systemd, or Windows Task Scheduler.
+
+Do not make Copilot Loops adopt existing LaunchAgents or manual tasks. Its managed runtime and
+the portable templates are intentionally separate.
+
 ### Step 1 — Define the task as one self-contained prompt
 
 A scheduled run has no human to answer questions, so the prompt must stand alone:
@@ -68,6 +88,11 @@ A scheduled run has no human to answer questions, so the prompt must stand alone
 - **Push complexity into a skill or agent.** For anything non-trivial, encode the *how* in a
   skill or a custom `--agent`, so the prompt is a thin "run the X procedure on Y" trigger. This
   keeps the scheduled command stable and reviewable.
+- **Define the schedule's lifetime budget, not only each run's timeout.** For monitor/poll jobs,
+  state the success condition that disables the schedule, the blocker condition that escalates
+  instead of polling forever, and a maximum attempts, elapsed-time, or consecutive-failure
+  budget. A runner timeout bounds one invocation; it does not prevent an unattended schedule
+  from consuming time and credits indefinitely across repeated fires.
 - **Add a self-marker** if the task inspects session history, so future runs can exclude their
   own sessions (e.g. embed a token like `MY_TASK_RUN` in the prompt and filter on it — this is
   how `scheduled-skill-review` avoids reviewing itself).

@@ -1,16 +1,16 @@
 ---
 name: grok-search
-description: "Ask Grok a question through the user's own logged-in browser at zero API cost, and get the answer plus cited X post links. Use for real-time X/Twitter questions and Grok-powered web search: latest tweet, what did someone post on X, search X/Twitter, live tweet sentiment, breaking news with sources, or any current-events query that benefits from Grok's live retrieval. Keywords: Grok, X, Twitter, latest tweet, what did X post, real-time tweets, X sentiment, tweet with citations, live web search, current events, xAI. Not for static general-knowledge questions, headless scraping pipelines, or when no logged-in browser is available."
+description: "Searches live X/Twitter posts and sentiment through Grok. For other web research, use only when the user or workflow selects Grok; general news or citation requests alone do not qualify."
 argument-hint: "<question to ask Grok>"
 user-invocable: true
 ---
 
 # Grok Search (X + Web)
 
-Drives **Grok** through the user's own logged-in session via `playwright-cli` and
-returns the answer plus any cited X post links — **no API key, no per-token cost**.
-Because it reuses the real login, it gives the same real-time X search Grok offers
-in the app (latest tweets, live sentiment, breaking news with sources).
+Queries **Grok** for live X activity or web questions when the user or workflow
+selects Grok. It uses the user's logged-in session via `playwright-cli` and
+returns the answer plus any cited X post links. General news or citation requests
+alone do not select this workflow.
 
 By default it runs **headless (windowless)** after an explicit one-time
 `--setup-auth` export. Later runs work in a dedicated background session **without
@@ -24,10 +24,9 @@ file, no deps beyond `playwright-cli`).
 
 - A question about **live X/Twitter activity**: "what's the latest tweet from @NASA",
   "what did @Polymarket post on X", "X sentiment on the Fed decision today".
-- **Real-time / current-events web search** that benefits from Grok's live retrieval:
-  "latest AI news with sources", "what's happening with X right now".
-- The user wants an answer **with citations** (Grok returns `/status/` post links).
-- Zero-cost Grok access is preferred over a paid API.
+- Web research when the user or invoking workflow selects **Grok**:
+  "ask Grok for the latest AI news with sources".
+- The user requests Grok's answer or cited X post links.
 
 ## When to Skip
 
@@ -38,6 +37,9 @@ file, no deps beyond `playwright-cli`).
 - **Bulk scraping or automated pipelines** — this is interactive, one-query-at-a-time.
 - **General browser automation** (clicking, forms, screenshots, scraping a page) —
   this skill only asks Grok; use a general browser-automation tool instead.
+- A request for **current information or citations alone** does not select Grok.
+  Use the available search/fetch tools unless X activity or a Grok-specific
+  request makes this workflow relevant.
 
 ## Invocation
 

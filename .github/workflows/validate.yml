@@ -15,6 +15,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+      - name: Test Copilot Loops contracts
+        run: node --test plugins/meta/skills/scheduled-headless-copilot/scripts/loops/tests/contracts.test.mjs
       - name: Validate marketplace structure
         run: node scripts/validate.mjs
       - name: Verify CATALOG.md is up to date
@@ -27,3 +29,26 @@ jobs:
           node scripts/version.mjs check \
             --base "${{ github.event.pull_request.base.sha }}" \
             --head "${{ github.event.pull_request.head.sha }}"
+
+  copilot-loops-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify lifecycle script syntax
+        run: bash -n plugins/meta/skills/scheduled-headless-copilot/scripts/loops-{build,install,uninstall}.sh
+      - name: Run Swift contract harness
+        working-directory: plugins/meta/skills/scheduled-headless-copilot/scripts/loops-app
+        run: swift run CopilotLoopsContractTests
+      - name: Build release app bundle
+        run: |
+          bash plugins/meta/skills/scheduled-headless-copilot/scripts/loops-build.sh
+          APP=plugins/meta/skills/scheduled-headless-copilot/scripts/loops-app/.build/app/CopilotLoops.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          test -x "$APP/Contents/MacOS/CopilotLoops"
+          test -x "$APP/Contents/Helpers/CopilotLoopsSecrets"
+          test -f "$APP/Contents/Resources/AppIcon.icns"
+      - name: Test Copilot Loops runtime and packaging
+        run: node --test plugins/meta/skills/scheduled-headless-copilot/scripts/loops/tests/*.test.mjs

@@ -274,17 +274,17 @@ az devops invoke \
 **This is the #1 trap.** When you see a wiki page URL in the browser like:
 
 ```
-https://dev.azure.com/<org>/<project>/_wiki/wikis/<wiki>/USX-Case-Management/Overview
+https://dev.azure.com/<org>/<project>/_wiki/wikis/<wiki>/Sample-Project/Overview
 ```
 
-The hyphens in `USX-Case-Management` are **URL-encoded spaces**. The actual API path uses spaces:
+The hyphens in `Sample-Project` are **URL-encoded spaces**. The actual API path uses spaces:
 
 ```bash
 # ❌ WRONG — will 404
-az devops wiki page show --wiki 'MyWiki' --path '/USX-Case-Management/Overview' --include-content
+az devops wiki page show --wiki 'MyWiki' --path '/Sample-Project/Overview' --include-content
 
 # ✅ CORRECT — spaces in the path
-az devops wiki page show --wiki 'MyWiki' --path '/USX Case Management/Overview' --include-content
+az devops wiki page show --wiki 'MyWiki' --path '/Sample Project/Overview' --include-content
 ```
 
 **Rule:** Always convert hyphens in URL paths back to spaces for CLI/API calls. If a page title genuinely contains a hyphen, it will be double-encoded in the URL (as `%2D`).

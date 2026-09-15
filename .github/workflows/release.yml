@@ -33,6 +33,14 @@ jobs:
         with:
           node-version: '24'
 
+      # Owner-specific policy is kept outside CI. This does not approve publication.
+      - name: Run structural checks and generic privacy scan before releases
+        run: |
+          node scripts/validate.mjs
+          node scripts/catalog.mjs --check
+          node scripts/plugin-readme.mjs --check
+          node scripts/public-readiness.mjs --tracked
+
       - name: Create missing tags and releases
         env:
           GH_TOKEN: ${{ github.token }}

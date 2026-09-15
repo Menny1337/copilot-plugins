@@ -128,7 +128,7 @@ az ad sp create-for-rbac \
 ```bash
 # List users (supports --filter OData expressions)
 az ad user list --output table
-az ad user list --filter "startswith(displayName,'the user')"
+az ad user list --filter "startswith(displayName,'Alex')"
 
 # Show a specific user
 az ad user show --id <user-principal-name-or-object-id>

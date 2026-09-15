@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>@APP_LABEL@</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@APP_BINARY@</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>@HOME@</string>
+		<key>PATH</key>
+		<string>@PATH@</string>
+		<key>COPILOT_LOOPS_HOME</key>
+		<string>@STATE_ROOT@</string>
+		<key>COPILOT_LOOPS_RUNTIME</key>
+		<string>@RUNTIME_ROOT@</string>
+		<key>COPILOT_LOOPS_SECRETS_HELPER</key>
+		<string>@SECRETS_HELPER@</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>@STATE_ROOT@/logs/app.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>@STATE_ROOT@/logs/app.err.log</string>
+</dict>
+</plist>

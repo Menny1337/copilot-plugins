@@ -1,6 +1,6 @@
 ---
 name: nano-banana-cli
-description: "Run the `nano-banana` CLI (command: `nano-banana`) for Gemini image generation/editing, transparent assets, presentation visuals, UI mockups, and reference-image edits. Use when constructing nano-banana commands, checking configuration, or generating images. nano-banana uses unique short flags (-a, -s, -o, -d, -r, -t) that differ from standard CLI conventions — always invoke this skill for correct syntax. Triggers: nano banana, generate image, edit image, transparent, hero image, mascot, sprite, mockup, Gemini, illustration."
+description: "Generates and edits raster images with the Nano Banana CLI. Use when the user or workflow selects Nano Banana/Gemini for images, commands, or setup."
 user-invocable: false
 ---
 
@@ -12,8 +12,10 @@ Use the `nano-banana` CLI as the execution engine for image generation and editi
 
 ## When to Use
 
-- User explicitly mentions Nano Banana
-- User wants image generation via a local CLI rather than a hosted UI
+Use this skill when the user requests Nano Banana/Gemini, or the invoking
+workflow selects `nano-banana` for image work. The examples below describe
+supported outputs, not reasons to override another provider.
+
 - User wants to generate presentation visuals, hero images, mockups, illustrations, sprites, or marketing assets
 - User wants to edit or restyle an existing image using one or more reference images
 - User wants transparent-background assets such as logos, mascots, icons, stickers, or game/app art
@@ -21,6 +23,8 @@ Use the `nano-banana` CLI as the execution engine for image generation and editi
 
 ## When to Skip
 
+- User or workflow selects **gpt-image-2 / Azure / Foundry** — use `create-image` instead
+- User wants a working UI component rather than a raster mockup — use the UI workflow
 - User only wants prompt-writing advice and does not want images generated; give prompt help directly instead of invoking the CLI workflow
 - User wants a fully local model with no Gemini API dependency
 - User wants video generation rather than still images; use a video-oriented workflow instead
@@ -298,9 +302,9 @@ For portable, cross-project command templates, read:
 
 Use that file for presentation covers, transparent assets, UI mockups, reference-image editing, and multi-image style transfer.
 
-For the current SampleProject-specific overlays/examples, read:
+For optional service-review deck examples, read:
 
-`references/sample-project-overlays.md`
+`references/service-review-overlays.md`
 
 For reusable generic JSON scene specs and prompt profiles, use:
 
@@ -331,9 +335,8 @@ Available built-in generic profiles are documented in the recipes file and store
 
 ## Success Criteria
 
-This skill is successful when it produces one of the following:
+Match completion to the request:
 
-- A working `nano-banana` command the agent can execute immediately
-- A generated or edited image file saved to the requested location
-- A clear installation or configuration path when the CLI is unavailable
-- A repeatable command pattern that can be reused inside a build script, app backend, or presentation asset workflow
+- For command-only or scripting help, return a runnable command with the requested options; do not generate an image.
+- For generation or editing, produce the image file at the requested location, inspect it against the brief, and report its path. A command alone is not completion.
+- If the CLI, credentials, or generation are unavailable, report the blocker and what remains undone. Setup guidance is not a generated image.

@@ -54,8 +54,8 @@ enum Snapshot {
             openCycles: 2,
             openPRs: 2,
             prUrls: [
-                "https://github.com/Menny1337/copilot-plugins/pull/1",
-                "https://github.com/Menny1337/copilot-plugins/pull/2",
+                "https://github.com/example-org/example-repo/pull/1",
+                "https://github.com/example-org/example-repo/pull/2",
             ],
             dueReReviews: 1
         )

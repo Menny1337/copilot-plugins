@@ -221,8 +221,12 @@ The `COPILOT_PLUGIN_SCHEDULED_REVIEW` marker (configurable as `selfMarker`) is e
 
 ## 5. Install the launchd agent
 
-Save as `~/Library/LaunchAgents/com.example.skill-review.plist` (edit the two absolute
+For a new installation, save as `~/Library/LaunchAgents/com.copilotplugins.skill-review.plist` (edit the two absolute
 paths and the hour to match your config):
+
+If a scheduler job already exists, edit its current plist instead. The daemon
+finds older labels through their `run-batch-review.sh` argument; installing a
+second job could run the same reviews twice.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -230,7 +234,7 @@ paths and the hour to match your config):
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.example.skill-review</string>
+  <key>Label</key><string>com.copilotplugins.skill-review</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -258,10 +262,12 @@ Load / unload:
 
 ```sh
 mkdir -p "$WS/logs"
-launchctl load   ~/Library/LaunchAgents/com.example.skill-review.plist   # enable
-launchctl unload ~/Library/LaunchAgents/com.example.skill-review.plist   # HARD stop
-launchctl list | grep com.example.skill-review                           # verify loaded
+launchctl load   ~/Library/LaunchAgents/com.copilotplugins.skill-review.plist   # enable
+launchctl unload ~/Library/LaunchAgents/com.copilotplugins.skill-review.plist   # HARD stop
+launchctl list | grep com.copilotplugins.skill-review                           # verify loaded
 ```
+
+Use the installed plist's path and label for an existing job with a different name.
 
 `StartCalendarInterval` fires at the next matching wall-clock time (and once on wake
 if the machine was asleep at the scheduled moment). Set `Hour`/`Minute` to match
@@ -283,7 +289,7 @@ Saturday). For a weekday-only cadence (Mon–Fri at 18:00), replace the single d
 ```
 
 After editing, reload (`launchctl unload` then `load`) and confirm with
-`launchctl print gui/$(id -u)/com.copilotplugins.skill-review`. launchd has no native
+`launchctl print gui/$(id -u)/com.copilotplugins.skill-review` (or the installed label). launchd has no native
 "every N days" calendar match, so weekdays is the clean way to thin out a daily
 cadence. launchd remains the source of truth for *when* the job actually fires:
 `daemon-ctl.sh status` reads this plist's `StartCalendarInterval` directly (via

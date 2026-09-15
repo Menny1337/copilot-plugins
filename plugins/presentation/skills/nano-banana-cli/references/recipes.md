@@ -40,9 +40,9 @@ nano-banana "$PROMPT" -a 16:9 -s 2K -o incident-review-hero-v2
 
 ## Optional Project Overlays
 
-Project-tuned packs should stay outside the shared core. For the current SampleProject service-health deck overlays, read:
+For optional, synthetic service-review deck examples, read:
 
-`references/sample-project-overlays.md`
+`references/service-review-overlays.md`
 
 ## Presentation Assets
 

@@ -13,9 +13,10 @@
 #
 # Opt-in precedence (mirrors ado-session-sync.sh):
 #   ADO_SESSION_SYNC=0 -> force-disabled, regardless of config (always wins).
-#   ADO_SESSION_SYNC=1 -> force-enabled, regardless of config.
+#   ADO_SESSION_SYNC=1 -> bypasses opt-in only for a valid selected ADO target.
 #   otherwise              -> existing config rule: adoSessionSync.enabled == true
-#                             AND taskBackend == "ado" in ~/.copilot/assistant/config.json.
+#                             AND taskBackend == "ado" in the selected config.
+# COPILOT_PLUGIN_TASK_SESSION_SYNC has the same effect for either backend.
 
 function Emit { Write-Output '{}'; exit 0 }
 
@@ -42,24 +43,30 @@ $CWD = Field 'cwd'
 if ($SID -notmatch '^[A-Za-z0-9._-]+$') { $SID = '' }
 if (-not $CWD) { $CWD = (Get-Location).Path }
 
-$config = Join-Path $HOME '.copilot/assistant/config.json'
-
 # 2. Opt-in, with an explicit env override precedence:
 #    ADO_SESSION_SYNC=0 force-disables the hook regardless of config (checked
 #    FIRST, so it always wins even when config would enable sync).
-#    ADO_SESSION_SYNC=1 force-enables it regardless of config.
+#    ADO_SESSION_SYNC=1 bypasses opt-in only for a valid selected ADO target.
 #    Otherwise the existing config rule applies: adoSessionSync.enabled == true
 #    AND taskBackend == "ado".
-if ($env:ADO_SESSION_SYNC -eq '0') {
+if ($env:ADO_SESSION_SYNC -eq '0' -or $env:COPILOT_PLUGIN_TASK_SESSION_SYNC -eq '0') {
   DbgLog @{ event = 'skip'; parent = $SID; reason = 'env-force-disabled' }; Emit
 }
+try {
+  . (Join-Path $selfDir '../shared/assistant-config.ps1')
+  $config = Get-MnmAssistantConfigPath
+  $backend = Get-MnmAssistantBackend (Read-MnmAssistantConfig $config)
+} catch { [Console]::Error.WriteLine($_.Exception.Message); Emit }
+if ($backend -ne 'ado') { Emit }
+$env:COPILOT_PLUGIN_ASSISTANT_CONFIG = $config
+$env:COPILOT_PLUGIN_SYNC_CONFIG = $config
 $enabled = $false
-if ($env:ADO_SESSION_SYNC -eq '1') {
+if ($env:ADO_SESSION_SYNC -eq '1' -or $env:COPILOT_PLUGIN_TASK_SESSION_SYNC -eq '1') {
   $enabled = $true
 } elseif (Test-Path $config) {
   try {
     $cfg = Get-Content -Raw $config | ConvertFrom-Json
-    if ($cfg.adoSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'ado') { $enabled = $true }
+    if ($cfg.adoSessionSync.enabled -is [bool] -and $cfg.adoSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'ado') { $enabled = $true }
   } catch { $enabled = $false }
 }
 if (-not $enabled) { DbgLog @{ event = 'skip'; parent = $SID; reason = 'opt-in-disabled' }; Emit }
@@ -162,7 +169,7 @@ $prompt = "A Copilot session just yielded control back to the user. parentSessio
 # is interpolated into the command string. The child runs copilot, then logs
 # child-exit with the real exit code and duration.
 $env:ADO_SYNC_ACTIVE = '1'
-$env:COPILOT_PLUGIN_SYNC_PROMPT = $prompt
+$env:COPILOT_PLUGIN_SYNC_PROMPT = "$prompt Read only the assistant config selected by env COPILOT_PLUGIN_ASSISTANT_CONFIG (also pinned in COPILOT_PLUGIN_SYNC_CONFIG). Validate its backend and target again before any write; do not fall back to the default file or teamBoard."
 $env:COPILOT_PLUGIN_SYNC_CHILD = $CHILD
 $env:COPILOT_PLUGIN_SYNC_PARENT = $SID
 $env:COPILOT_PLUGIN_SYNC_LOG = $logFile

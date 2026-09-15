@@ -4,8 +4,9 @@ Portable, copy-paste command templates and prompt profiles for the `gpt-image`
 wrapper (gpt-image-2 on Azure AI Foundry). From the skill directory, replace
 `gpt-image` with `node scripts/gpt-image.mjs`.
 
-All commands assume the API key is resolvable (see `SKILL.md` → Prerequisites).
-The deployment is rate limited to ~4 requests/minute — space out batches.
+All commands require a configured endpoint and a resolvable API key
+(see `SKILL.md` → Prerequisites). Quotas depend on your deployment; space out
+batches according to its rate limits.
 
 ---
 

@@ -159,7 +159,7 @@ for (const file of mdFiles) {
 
   // 4. collect top-level project stems for duplicate detection (projects/<stem>.md only).
   //    Normalize aggressively so kebab/Pascal/snake variants of one name collide
-  //    (e.g. "case-management" and "SampleProject" → "sample-project").
+  //    (e.g. "sample-project" and "SampleProject" → "sampleproject").
   //    Skipped in --workspace mode (flat workspaces have no projects/ layout).
   if (!workspace && parts0[0] === 'projects' && parts0.length === 2) {
     const stem = basename(parts0[1], '.md').toLowerCase().replace(/[^a-z0-9]/g, '');

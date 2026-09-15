@@ -105,7 +105,7 @@ When you learn something worth remembering across sessions, decide the scope and
 
 | What you learned | Where to write | Example |
 |------------------|----------------|---------|
-| User preference or convention | `MEMORY.md` → Learned Patterns or Conventions | "the user prefers Geist font over Inter" |
+| User preference or convention | `MEMORY.md` → Learned Patterns or Conventions | "The user prefers concise status updates" |
 | Project-specific fact | `projects/{repo}.md` | "SampleProject uses React Query for state" |
 | Cross-project domain knowledge | `topics/{topic}.md` | "React error boundaries belong at route level" |
 | Standing rule / "always do X" (procedural) | `conventions/{rule}.md` | "ADO work-item comments must be HTML, not Markdown" |

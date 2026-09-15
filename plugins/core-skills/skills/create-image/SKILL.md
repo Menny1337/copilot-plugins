@@ -1,6 +1,6 @@
 ---
 name: create-image
-description: "Generate and edit images with OpenAI gpt-image-2 deployed on Azure AI Foundry, via the bundled `gpt-image` Node wrapper (no external CLI required). Use for presentation visuals, hero images, mascots, icons, stickers, UI mockups, marketing art, transparent assets, and reference-image edits. The wrapper calls the Azure OpenAI v1 images API with a Bearer key and writes PNG/JPEG files. Triggers: generate image, create image, edit image, gpt-image, gpt-image-2, Azure image, transparent asset, mascot, icon, sticker, mockup, hero image, illustration, Foundry image."
+description: "Generates and edits raster images with gpt-image-2 on Azure AI Foundry. Use for image generation or gpt-image command and setup help; use nano-banana-cli for Gemini."
 argument-hint: "<what to generate> [path to a reference image]"
 user-invocable: true
 ---
@@ -21,6 +21,10 @@ decoded image files to disk. Prefer running the wrapper over hand-rolling
 `curl`/`fetch` calls in prose.
 
 ## When to use
+
+Use the image provider selected by the user or invoking workflow. This skill
+does not override a request for another provider, a working UI, or editable
+vector output.
 
 - User wants to generate an image from a text prompt via gpt-image-2 / Azure / Foundry
 - User wants presentation visuals, hero images, illustrations, covers, or marketing art
@@ -59,7 +63,7 @@ decoded image files to disk. Prefer running the wrapper over hand-rolling
 4. If the user asks for the exact command without execution, return a single
    runnable `node …/gpt-image.mjs …` (or `gpt-image …`) command with every
    requested flag inline.
-5. The deployment is **rate limited (~4 requests/minute)**. Do not fire bursts of
+5. Rate limits depend on your deployment's quota. Do not fire bursts of
    generations; the wrapper already retries `429` with backoff, but space out
    multi-image batches and prefer `-n` over many separate invocations.
 6. gpt-image-2 latency is ~60–90s per request. Expect each call to take time;
@@ -107,6 +111,8 @@ The wrapper resolves the **API key** in this order (first hit wins):
 4. macOS Keychain — service `gpt-image`, account = endpoint hostname
 
 The **endpoint** must be set via `AZURE_OPENAI_IMAGE_ENDPOINT` (in the environment, local `.env`, or `~/.gpt-image/.env`) or passed via `--endpoint`. Auth is `Authorization: Bearer <key>`; the v1 API needs **no** `api-version` query parameter.
+
+There is no built-in endpoint. Configure your own deployment before running the wrapper.
 
 To store the key in the Keychain (macOS):
 
@@ -277,12 +283,14 @@ See `references/recipes.md` for ready-to-run command templates and prompt profil
 
 ## Failure Handling
 
-- **`no API key found`** — enumerate the four lookup locations above and stop
+- **`Missing endpoint`** — configure `AZURE_OPENAI_IMAGE_ENDPOINT` or pass
+  `--endpoint`; there is no built-in endpoint. Stop until it is configured.
+- **`Missing key`** — enumerate the four lookup locations above and stop
   until the user provides a key. Do not claim success.
 - **HTTP 401/403** — the key or endpoint is wrong; re-check `AZURE_OPENAI_IMAGE_KEY`
   and the endpoint host.
-- **HTTP 429 (rate limit)** — the deployment allows ~4 requests/minute. The
-  wrapper retries with backoff; if it still fails, wait and reduce batch size or
+- **HTTP 429 (rate limit)** — check your deployment's quota. The wrapper
+  retries with backoff; if it still fails, wait and reduce batch size or
   use `-n` on a single call instead of many invocations.
 - **Timeout** — generation is slow (~60–90s at `high`, longer under 429 backoff);
   the wrapper already uses a long timeout and retries. Do not abort manually. For
@@ -307,9 +315,8 @@ See `references/recipes.md` for ready-to-run command templates and prompt profil
 
 ## Success Criteria
 
-This skill succeeds when it produces one of:
+Match completion to the request:
 
-- A working `gpt-image` command the agent can execute immediately
-- A generated or edited image file saved to the requested location, with its path reported
-- A clear credential/configuration path when the key is unavailable
-- A repeatable command pattern usable in a build script or asset workflow
+- For command-only or scripting help, return a runnable command with the requested options; do not generate an image.
+- For generation or editing, produce the image file at the requested location, inspect it against the brief, and report its path. A command alone is not completion.
+- If access, configuration, or generation fails, report the blocker and what remains undone. Setup guidance is not a generated image.

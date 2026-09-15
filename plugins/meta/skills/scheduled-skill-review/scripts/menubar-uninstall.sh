@@ -9,6 +9,10 @@ INSTALLED_APP="${HOME}/Applications/${PRODUCT_NAME}.app"
 RUN_NOW_WRAPPER="${WS}/RunSkillReviewNow.command"
 MENUBAR_CONFIG="${WS}/menubar.json"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/menubar-launch-agent.sh"
+remove_menubar_launch_agents "${INSTALLED_APP}/Contents/MacOS/${PRODUCT_NAME}"
+
 launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
 rm -f "${PLIST_PATH}"
 rm -rf "${INSTALLED_APP}"

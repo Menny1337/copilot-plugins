@@ -34,14 +34,10 @@
 # untouched (neither created nor advanced) that run, while the malformed event(s)
 # are still surfaced per the fail-open policy above.
 #
-# Opt-in, with an explicit env override precedence (mirrors ado-session-sync.ps1/.sh):
-#   ADO_SESSION_SYNC=0 -> force-DISABLED, regardless of config. Checked FIRST, before
-#                             reading the sessionStart payload or creating the per-session
-#                             advisory lock, so a force-disabled session touches NEITHER
-#                             the lock dir NOR seen.watermark/suggested-repos state.
-#   ADO_SESSION_SYNC=1 -> force-ENABLED, regardless of config.
-#   otherwise              -> existing config rule: adoSessionSync.enabled -eq $true AND
-#                             taskBackend -eq 'ado' in ~/.copilot/assistant/config.json.
+# Any ADO_SESSION_SYNC, COPILOT_PLUGIN_GITHUB_SESSION_SYNC or COPILOT_PLUGIN_TASK_SESSION_SYNC value
+# of 0 disables before payload, lock or watermark access. A value of 1 overrides
+# opt-in only for a valid selected remote backend. Otherwise the selected
+# backend's sync block must have enabled=true. Local Markdown remains inert.
 
 # Force-disable, checked before ANYTHING else touches disk (payload/lock/watermark).
 if ($env:ADO_SESSION_SYNC -eq '0' -or $env:COPILOT_PLUGIN_GITHUB_SESSION_SYNC -eq '0' -or $env:COPILOT_PLUGIN_TASK_SESSION_SYNC -eq '0') { exit 0 }
@@ -50,17 +46,13 @@ try {
   $logDir = Join-Path $HOME '.copilot/logs/ado-session-sync'
   $jsonl  = Join-Path $logDir 'runs.jsonl'
   $wm     = Join-Path $logDir 'seen.watermark'
-  $config = Join-Path $HOME '.copilot/assistant/config.json'
-
-  # Run-once-per-session lock.
-  $payload = ''
-  try { if ([Console]::IsInputRedirected) { $payload = [Console]::In.ReadToEnd() } } catch { $payload = '' }
-  $sid = ''
-  if ($payload -match '"sessionId"\s*:\s*"([A-Za-z0-9._-]+)"') { $sid = $Matches[1] }
-  if ($sid) {
-    $lock = Join-Path ([System.IO.Path]::GetTempPath()) "ado-advisory.$sid"
-    try { New-Item -ItemType Directory -Path $lock -ErrorAction Stop | Out-Null } catch { exit 0 }
-  }
+  try {
+    . (Join-Path $PSScriptRoot '../shared/assistant-config.ps1')
+    $config = Get-MnmAssistantConfigPath
+    $cfg = Read-MnmAssistantConfig $config
+    $backend = Get-MnmAssistantBackend $cfg
+  } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 0 }
+  if ($backend -eq 'markdown') { exit 0 }
 
   # Opt-in (env=0 already exited above). Backend-neutral: ado (legacy) OR github.
   $enabled = $false
@@ -69,12 +61,21 @@ try {
   } elseif (Test-Path $config) {
     try {
       $cfg = Get-Content -Raw $config | ConvertFrom-Json
-      if ($cfg.adoSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'ado') { $enabled = $true }
-      elseif ($cfg.taskSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'github') { $enabled = $true }
+      if ($cfg.adoSessionSync.enabled -is [bool] -and $cfg.adoSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'ado') { $enabled = $true }
+      elseif ($cfg.taskSessionSync.enabled -is [bool] -and $cfg.taskSessionSync.enabled -eq $true -and $cfg.taskBackend -eq 'github') { $enabled = $true }
     } catch { }
   }
   if (-not $enabled) { exit 0 }
   if (-not (Test-Path $jsonl)) { exit 0 }
+
+  $payload = ''
+  try { if ([Console]::IsInputRedirected) { $payload = [Console]::In.ReadToEnd() } } catch { $payload = '' }
+  $sid = ''
+  if ($payload -match '"sessionId"\s*:\s*"([A-Za-z0-9._-]+)"') { $sid = $Matches[1] }
+  if ($sid) {
+    $lock = Join-Path ([System.IO.Path]::GetTempPath()) "ado-advisory.$sid"
+    try { New-Item -ItemType Directory -Path $lock -ErrorAction Stop | Out-Null } catch { exit 0 }
+  }
 
   # --- Deterministic timestamp normalization -------------------------------------
   # PowerShell's ConvertFrom-Json silently coerces ISO-8601-looking JSON string
@@ -224,7 +225,8 @@ try {
   $suggLine = ''
   try {
     $syncRepos = @()
-    if (Test-Path $config) { try { $c2 = Get-Content -Raw $config | ConvertFrom-Json; if ($c2.adoSessionSync.syncRepos) { $syncRepos = @($c2.adoSessionSync.syncRepos) } } catch { } }
+    $syncBlock = if ($backend -eq 'github') { 'taskSessionSync' } else { 'adoSessionSync' }
+    if ($cfg.$syncBlock.syncRepos) { $syncRepos = @($cfg.$syncBlock.syncRepos) }
     function Expand-Tilde2([string]$p) { if ($p -eq '~') { return $HOME } elseif ($p -like '~/*' -or $p -like '~\*') { return (Join-Path $HOME $p.Substring(2)) } else { return $p } }
     function In-Repos([string]$c) {
       foreach ($pfx in $syncRepos) { $pp = (Expand-Tilde2 ([string]$pfx)).TrimEnd('/', '\'); if ($c -eq $pp -or $c.StartsWith($pp + '/') -or $c.StartsWith($pp + '\')) { return $true } }
@@ -245,7 +247,7 @@ try {
       $already = (Test-Path $sugg) -and ((Get-Content $sugg) -contains $cand)
       if (-not $already) {
         Add-Content -Path $sugg -Value $cand -ErrorAction SilentlyContinue
-        $suggLine = " Tip: '$cand' is syncing but not in adoSessionSync.syncRepos — add it to always-sync (``sync-status --repos``)."
+        $suggLine = " Tip: '$cand' is syncing but not in $syncBlock.syncRepos — add it to always-sync (``sync-status --repos``)."
       }
     }
   } catch { }

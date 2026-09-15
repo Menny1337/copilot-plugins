@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // github-issue-create-doc.test.mjs — regression coverage for the "Add a Task"
-// `gh issue create` invocation documented in assistant-capture/SKILL.md §3.6.2
-// (finding 3). Extracts the ACTUAL fenced bash step from SKILL.md (not a
+// `gh issue create` invocation documented in references/github-tasks.md §3.6.2
+// (finding 3). Extracts the ACTUAL fenced bash step from that reference (not a
 // reimplementation), fills its `<placeholder>` tokens with concrete test
 // values, and executes it against a fake `gh` that rejects any invocation
 // carrying `--query`/`-o` (flags `gh issue create` does not support) — the
@@ -26,15 +26,15 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SKILL_MD = join(HERE, '..', '..', 'SKILL.md');
+const TASK_REFERENCE = join(HERE, '..', '..', 'references', 'github-tasks.md');
 
 /** Pull the ```bash fenced block that contains the `gh issue create` step, within the
  * "### 3.6.2 Add a Task" section (that section has an earlier dedupe-search bash block first). */
 function extractAddTaskSnippet() {
-  const text = readFileSync(SKILL_MD, 'utf8');
+  const text = readFileSync(TASK_REFERENCE, 'utf8');
   const heading = '### 3.6.2 Add a Task';
   const idx = text.indexOf(heading);
-  assert.ok(idx !== -1, 'expected to find "### 3.6.2 Add a Task" in SKILL.md');
+  assert.ok(idx !== -1, 'expected to find "### 3.6.2 Add a Task" in github-tasks.md');
   const after = text.slice(idx);
   const createIdx = after.indexOf('gh issue create');
   assert.ok(createIdx !== -1, 'expected a gh issue create invocation in this section');
@@ -81,7 +81,7 @@ exit 0
   chmodSync(p, 0o755);
 }
 
-describe('assistant-capture SKILL.md §3.6.2 "Add a Task" — gh issue create (finding 3 regression)', () => {
+describe('assistant-capture github-tasks.md §3.6.2 "Add a Task" — gh issue create (finding 3 regression)', () => {
   const { fullText, snippet } = extractAddTaskSnippet();
   const step1Raw = step1Of(snippet);
   // Strip full-line `#` comments before checking real command content — the

@@ -52,10 +52,20 @@ The uninstaller boots out the menu-bar LaunchAgent before removing `~/Applicatio
 
 The app autostarts through the LaunchAgent label `com.copilotplugins.skill-review.menubar`, installed at `~/Library/LaunchAgents/com.copilotplugins.skill-review.menubar.plist`.
 
+The installer and uninstaller also remove older menu-bar LaunchAgents whose
+arguments point to this installed app. They read each label from its plist and
+leave other applications' jobs untouched. Reinstallation uses the new bundle
+identifier; macOS permissions associated with an older identifier may need
+approval again.
+
 This is separate from the scheduler job `com.copilotplugins.skill-review`:
 
 - `com.copilotplugins.skill-review` launches the review daemon on its schedule.
 - `com.copilotplugins.skill-review.menubar` launches only the menu-bar UI at login and relaunches it after crashes.
+
+Existing scheduler labels need no migration. The daemon still discovers their
+plists by the `run-batch-review.sh` argument. Do not install a second scheduler
+job alongside an existing one.
 
 The menu-bar LaunchAgent sets `SKILL_REVIEW_SCRIPT_DIR` and a PATH that includes Homebrew, Command Line Tools, and system locations so the app can run `daemon-ctl.sh`, `node`, and `gh` outside an interactive shell.
 

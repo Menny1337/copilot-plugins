@@ -30,7 +30,14 @@ set -u
 LOG_DIR="${COPILOT_PLUGIN_ADO_SYNC_LOGDIR:-$HOME/.copilot/logs/ado-session-sync}"
 JSONL="$LOG_DIR/runs.jsonl"
 HUMAN="$LOG_DIR/runs.log"
-CONFIG="$HOME/.copilot/assistant/config.json"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  link="$(readlink "$SOURCE")" || exit 1
+  case "$link" in /*) SOURCE="$link" ;; *) SOURCE="$(dirname "$SOURCE")/$link" ;; esac
+done
+. "$(dirname "$SOURCE")/../../../shared/assistant-config.sh" || exit 1
+CONFIG="$(plugins_config_path)" || exit 1
+plugins_config_backend "$CONFIG" object >/dev/null || exit 1
 
 session=""; since=""; tailn=20; reconcile=0; errors_only=0; want_json=0; follow=0; repos_view=0
 pretty_opt=""; force_nocolor=0
@@ -213,7 +220,7 @@ fi
 # repo-not-eligible children saved by the syncRepos gate, with allowlist suggestions.
 if [ "$repos_view" = 1 ]; then
   syncrepos_json='[]'
-  [ -f "$CONFIG" ] && syncrepos_json="$(jq -c '.adoSessionSync.syncRepos // []' "$CONFIG" 2>/dev/null || echo '[]')"
+  [ -f "$CONFIG" ] && syncrepos_json="$(jq -c 'if .taskBackend == "github" then .taskSessionSync.syncRepos // [] else .adoSessionSync.syncRepos // [] end' "$CONFIG" 2>/dev/null || echo '[]')"
   if [ "$pretty" = 1 ]; then divider "Repos · launches / outcomes / saved children"
   else echo "Repos (launches / outcomes / saved children):"; fi
   sel | jq -rs "${PR_ARGS[@]}" --argjson repos "$syncrepos_json" --arg home "$HOME" '

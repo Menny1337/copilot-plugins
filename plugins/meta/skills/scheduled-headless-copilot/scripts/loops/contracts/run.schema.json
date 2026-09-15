@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mnm:copilot-loops:run-schema:v1",
+  "title": "Copilot Loops run record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "loopId",
+    "sessionId",
+    "trigger",
+    "status",
+    "scheduledFor",
+    "startedAt",
+    "endedAt",
+    "exitCode",
+    "signal",
+    "retryOf",
+    "attempts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "loopId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "trigger": { "enum": ["schedule", "manual", "retry"] },
+    "status": {
+      "enum": [
+        "starting",
+        "running",
+        "stopping",
+        "succeeded",
+        "failed",
+        "timedOut",
+        "cancelled",
+        "skippedOverlap",
+        "skippedMissed",
+        "skippedPaused",
+        "approvalBlocked",
+        "launchFailed"
+      ]
+    },
+    "scheduledFor": { "type": ["string", "null"], "format": "date-time" },
+    "startedAt": { "type": ["string", "null"], "format": "date-time" },
+    "endedAt": { "type": ["string", "null"], "format": "date-time" },
+    "exitCode": { "type": ["integer", "null"] },
+    "signal": { "type": ["string", "null"] },
+    "retryOf": { "type": ["string", "null"] },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["number", "startedAt", "endedAt", "exitCode", "signal"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "endedAt": { "type": ["string", "null"], "format": "date-time" },
+          "exitCode": { "type": ["integer", "null"] },
+          "signal": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

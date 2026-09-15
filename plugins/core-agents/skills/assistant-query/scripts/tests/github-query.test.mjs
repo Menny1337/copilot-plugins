@@ -649,7 +649,7 @@ JSON
       writeConfig(home, { taskBackend: 'markdown' });
       const r = run(['active'], { home, bin });
       assert.equal(r.status, 3);
-      assert.match(r.stderr, /no "github" block/);
+      assert.match(r.stderr, /configure github.owner, github.repo and github.projectNumber/);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -810,7 +810,7 @@ describe('mixed GitHub-personal + ADO-team board routing', () => {
       writeConfig(home, {
         taskBackend: 'github',
         github: { owner: 'acme', repo: 'personal-work', projectNumber: 1 },
-        teamBoard: { org: 'https://dev.azure.com/microsoft', project: 'OS', team: 'Platform', areaPath: 'OS\\Platform' },
+        teamBoard: { org: 'https://dev.azure.com/example-team', project: 'ExampleProject', team: 'Platform', areaPath: 'ExampleProject\\Platform' },
       });
       // ado-query --print-wiql never calls `az`, so no fake az binary is required.
       const adoR = spawnSync('node', [ADO_SCRIPT, 'team-started', '--print-wiql'], {
@@ -819,7 +819,7 @@ describe('mixed GitHub-personal + ADO-team board routing', () => {
       });
       assert.equal(adoR.status, 0, adoR.stderr);
       assert.match(adoR.stdout, /team-started/);
-      assert.match(adoR.stdout, /microsoft/);
+      assert.match(adoR.stdout, /example-team/);
 
       const ghR = run(['active', '--print-query'], { home, bin });
       assert.equal(ghR.status, 0, ghR.stderr);

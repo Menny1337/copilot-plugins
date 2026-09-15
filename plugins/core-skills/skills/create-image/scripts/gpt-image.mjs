@@ -10,8 +10,8 @@
 //   2. .env in the current working directory
 //   3. ~/.gpt-image/.env
 //   4. macOS Keychain (service "gpt-image", account = endpoint hostname)
-// Endpoint default is the gpt-image-2 deployment; override with
-//   $AZURE_OPENAI_IMAGE_ENDPOINT or --endpoint.
+// Endpoint is required: --endpoint, $AZURE_OPENAI_IMAGE_ENDPOINT, ./.env, or
+//   ~/.gpt-image/.env, in that order. There is no built-in endpoint.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,7 +22,7 @@ const DEFAULT_DEPLOYMENT = "gpt-image-2";
 const KEY_ENV = "AZURE_OPENAI_IMAGE_KEY";
 const ENDPOINT_ENV = "AZURE_OPENAI_IMAGE_ENDPOINT";
 const REQUEST_TIMEOUT_MS = 240_000; // gpt-image-2 latency is ~60-90s; be generous
-const MAX_RETRIES = 6; // 429-aware: deployment is rate limited (~4 req/min)
+const MAX_RETRIES = 6; // Retry 429 responses within a bounded attempt budget.
 
 // gpt-image-2 has no native alpha/transparent output (the API returns HTTP 400
 // "Transparent background is not supported for this model" — confirmed in the
@@ -112,7 +112,7 @@ Options:
   -r <path>        Reference image to edit (repeatable; routes to images/edits).
                    PNG/JPG/WebP only. Render SVG to PNG first (e.g. rsvg-convert).
   --moderation <v> Moderation level: auto|low (default: model default).
-  --endpoint <url> Override endpoint (default: $${ENDPOINT_ENV} or built-in).
+  --endpoint <url> Set endpoint (otherwise use $${ENDPOINT_ENV} from env/.env).
   --deployment <n> Override deployment/model name (default: ${DEFAULT_DEPLOYMENT}).
   --model <name>   Alias for --deployment.
   --dry-run        Print the resolved request without calling the API.
@@ -123,6 +123,8 @@ aspect ratio <= 3:1, total pixels between 655,360 and 8,294,400. >2560x1440 is
 experimental. Output is always base64 PNG/JPEG (no URL).
 
 Credentials: key from $${KEY_ENV}, ./.env, ~/.gpt-image/.env, or macOS Keychain.
+Endpoint: --endpoint, $${ENDPOINT_ENV}, ./.env, then ~/.gpt-image/.env.
+There is no built-in endpoint.
 `;
 
 function fail(msg, code = 1) {

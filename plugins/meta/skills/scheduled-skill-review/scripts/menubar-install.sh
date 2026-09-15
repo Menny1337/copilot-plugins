@@ -9,6 +9,7 @@ LAUNCH_PATH="${BASE_PATH}${PATH:+:${PATH}}"
 export PATH="${LAUNCH_PATH}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/menubar-launch-agent.sh"
 APP_BUNDLE="$("${SCRIPT_DIR}/menubar-build.sh")"
 INSTALL_APP_DIR="${HOME}/Applications"
 INSTALLED_APP="${INSTALL_APP_DIR}/${PRODUCT_NAME}.app"
@@ -23,6 +24,7 @@ xml_escape() {
 }
 
 mkdir -p "${INSTALL_APP_DIR}" "${LAUNCH_AGENTS_DIR}" "${WS}/logs"
+remove_menubar_launch_agents "${APP_BINARY}"
 rm -rf "${INSTALLED_APP}"
 cp -R "${APP_BUNDLE}" "${INSTALLED_APP}"
 

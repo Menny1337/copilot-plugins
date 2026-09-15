@@ -10,12 +10,9 @@
 #
 # Gating, in order:
 #   1. Recursion guard  — ADO_SYNC_ACTIVE set ⇒ we're already inside a sync.
-#   2. Opt-in           — ADO_SESSION_SYNC=0 force-DISABLES the hook regardless
-#                         of config (highest precedence — always wins, even over an
-#                         enabled config); ADO_SESSION_SYNC=1 force-ENABLES it
-#                         regardless of config; otherwise config adoSessionSync.enabled
-#                         (and taskBackend=ado) in ~/.copilot/assistant/config.json
-#                         applies as before.
+#   2. Config/opt-in    — ADO_SESSION_SYNC=0 or COPILOT_PLUGIN_TASK_SESSION_SYNC=0 disables.
+#                         A value of 1 overrides opt-in only for a valid selected
+#                         ADO target; otherwise adoSessionSync.enabled applies.
 #   3. Session scope    — only top-level user sessions (UUID session ids) drive a
 #                         sync. Sub-agent (tool-call id, e.g. toolu_*) and sidekick
 #                         (sidekick-* agent id) stops also fire agentStop, but the
@@ -64,30 +61,33 @@ CWD="$(field cwd)"
 case "$SID" in ''|*[!A-Za-z0-9._-]*) SID="" ;; esac
 [ -z "$CWD" ] && CWD="$(pwd)"
 
-CONFIG="$HOME/.copilot/assistant/config.json"
-
 # 2. Opt-in, with an explicit env override precedence:
 #      ADO_SESSION_SYNC=0 -> force-disabled, regardless of config (checked FIRST,
 #                                so it always wins even when config would enable sync).
-#      ADO_SESSION_SYNC=1 -> force-enabled, regardless of config.
+#      ADO_SESSION_SYNC=1 -> bypasses opt-in only for a valid selected ADO target.
 #      otherwise              -> existing config rule: adoSessionSync.enabled == true
-#                                AND taskBackend == "ado" in ~/.copilot/assistant/config.json.
-if [ "${ADO_SESSION_SYNC:-}" = "0" ]; then
+#                                AND taskBackend == "ado" in the selected config.
+if [ "${ADO_SESSION_SYNC:-}" = "0" ] || [ "${COPILOT_PLUGIN_TASK_SESSION_SYNC:-}" = "0" ]; then
   dbg_log --event skip --parent "$SID" --reason env-force-disabled
   emit
 fi
+. "$SELF_DIR/../shared/assistant-config.sh" || emit
+CONFIG="$(plugins_config_path)" || emit
+backend="$(plugins_config_backend "$CONFIG")" || emit
+[ "$backend" = "ado" ] || emit
+export COPILOT_PLUGIN_ASSISTANT_CONFIG="$CONFIG"
+export COPILOT_PLUGIN_SYNC_CONFIG="$CONFIG"
 enabled=0
-if [ "${ADO_SESSION_SYNC:-}" = "1" ]; then
+if [ "${ADO_SESSION_SYNC:-}" = "1" ] || [ "${COPILOT_PLUGIN_TASK_SESSION_SYNC:-}" = "1" ]; then
   enabled=1
 elif [ -f "$CONFIG" ]; then
   if command -v jq >/dev/null 2>&1; then
-    if [ "$(jq -r '.adoSessionSync.enabled // false' "$CONFIG" 2>/dev/null)" = "true" ] \
+    if [ "$(jq -r     '.adoSessionSync.enabled == true' "$CONFIG" 2>/dev/null)" = "true" ] \
        && [ "$(jq -r '.taskBackend // ""' "$CONFIG" 2>/dev/null)" = "ado" ]; then
       enabled=1
     fi
   else
-    if grep -q '"enabled"[[:space:]]*:[[:space:]]*true' "$CONFIG" 2>/dev/null \
-       && grep -q '"taskBackend"[[:space:]]*:[[:space:]]*"ado"' "$CONFIG" 2>/dev/null; then
+    if [ "$(node "$SELF_DIR/scripts/config-field.mjs" enabled "$CONFIG" --backend ado 2>/dev/null)" = "true" ]; then
       enabled=1
     fi
   fi
@@ -127,8 +127,10 @@ esac
 debounce_min=10
 if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG" ]; then
   v="$(jq -r '.adoSessionSync.debounceMinutes // empty' "$CONFIG" 2>/dev/null)"
-  case "$v" in ''|*[!0-9]*) ;; *) debounce_min="$v" ;; esac
+else
+  v="$(node "$SELF_DIR/scripts/config-field.mjs" debounce-minutes "$CONFIG" --backend ado 2>/dev/null)"
 fi
+case "$v" in ''|*[!0-9]*) ;; *) debounce_min="$v" ;; esac
 state_dir="${TMPDIR:-/tmp}/ado-session-sync"
 mkdir -p "$state_dir" 2>/dev/null || true
 stamp="$state_dir/$SID.last"
@@ -158,8 +160,12 @@ printf '%s' "$now" > "$stamp" 2>/dev/null || true
 #    Bare "#NN" is intentionally NOT a fast-path signal (it is usually a GitHub PR/
 #    issue ref); the allowlist therefore stays the effective control, and the child
 #    still honors bare #NN via the full Step-4 when an allowlisted session does run.
-if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG" ] \
-   && [ "$(jq -r '(.adoSessionSync.syncRepos // []) | length' "$CONFIG" 2>/dev/null || echo 0)" -gt 0 ] 2>/dev/null; then
+if command -v jq >/dev/null 2>&1; then
+  repos_count="$(jq -r '(.adoSessionSync.syncRepos // []) | length' "$CONFIG" 2>/dev/null)"
+else
+  repos_count="$(node "$SELF_DIR/scripts/config-field.mjs" sync-repos-count "$CONFIG" --backend ado 2>/dev/null)"
+fi
+if [ "$repos_count" -gt 0 ] 2>/dev/null; then
   eligible=0
   exp_tilde() { case "$1" in "~") printf '%s' "$HOME" ;; "~/"*) printf '%s' "$HOME${1#\~}" ;; *) printf '%s' "$1" ;; esac; }
   ccwd="$(exp_tilde "$CWD")"; ccwd="${ccwd%/}"
@@ -168,7 +174,11 @@ if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG" ] \
     pfx="$(exp_tilde "$pfx")"; pfx="${pfx%/}"
     case "$ccwd" in "$pfx"|"$pfx"/*) eligible=1; break ;; esac
   done <<EOF
-$(jq -r '.adoSessionSync.syncRepos[]? // empty' "$CONFIG" 2>/dev/null)
+$(if command -v jq >/dev/null 2>&1; then
+    jq -r '.adoSessionSync.syncRepos[]? // empty' "$CONFIG" 2>/dev/null
+  else
+    node "$SELF_DIR/scripts/config-field.mjs" sync-repos-list "$CONFIG" --backend ado 2>/dev/null
+  fi)
 EOF
   if [ "$eligible" != 1 ]; then
     # Strong, precise work-item signals qualify a non-allowlisted repo.
@@ -224,14 +234,16 @@ state_base="${COPILOT_HOME:-$HOME/.copilot}/session-state"
 state_dest="$HOME/.copilot/ado-sync-sessions"
 if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG" ]; then
   sd="$(jq -r 'if (.adoSessionSync|type=="object") and (.adoSessionSync|has("sessionStateDir")) then (.adoSessionSync.sessionStateDir // "") else "__unset__" end' "$CONFIG" 2>/dev/null)"
-  case "$sd" in
-    __unset__) ;;
-    "")     state_dest="" ;;
-    "~")    state_dest="$HOME" ;;
-    "~/"*)  state_dest="$HOME${sd#\~}" ;;
-    *)      state_dest="$sd" ;;
-  esac
+else
+  sd="$(node "$SELF_DIR/scripts/config-field.mjs" session-state-dir "$CONFIG" --backend ado 2>/dev/null)"
 fi
+case "$sd" in
+  __unset__) ;;
+  "")     state_dest="" ;;
+  "~")    state_dest="$HOME" ;;
+  "~/"*)  state_dest="$HOME${sd#\~}" ;;
+  *)      state_dest="$sd" ;;
+esac
 export COPILOT_PLUGIN_SYNC_STATE_SRC="$state_base/$CHILD"
 export COPILOT_PLUGIN_SYNC_STATE_DEST="$state_dest"
 # Deregister the child from the central session store (session-store.db) after its
@@ -252,6 +264,7 @@ AUTH_HELPER="$SELF_DIR/../skills/ado-session-sync/scripts/ado-auth.sh"
 [ -f "$AUTH_HELPER" ] && . "$AUTH_HELPER" >/dev/null 2>&1 || true
 
 export COPILOT_PLUGIN_SYNC_PROMPT="A Copilot session just yielded control back to the user. parentSession=$SID syncSession=$CHILD transcriptPath=$TP cwd=$CWD. Invoke the ado-session-sync skill and follow its procedure to update the related Azure DevOps work item: post a concise progress comment and add a session:<id> tag for rediscovery, then record the outcome via the skill's logger. If you cannot confidently identify a single related work item, skip without updating anything (and still record the skip). FALLBACK (only if the ado-session-sync skill is NOT loadable in this runtime): perform the same procedure from context and record exactly ONE terminal event via the logger at the path in env COPILOT_PLUGIN_SYNC_LOGGER, or if that is unavailable by appending one JSON line to ~/.copilot/logs/ado-session-sync/runs.jsonl using logger-compatible field names ts,parent,child (not timestamp,parentSession,syncSession). Use ONLY this closed vocabulary: event=result with action in {commented+tagged,tagged-only,state-nudged,skipped}; a skipped result also needs reason in {no-work,ambiguous,closed-item,duplicate}; if you TRIED to write to ADO but it was denied or failed (e.g. 'Permission denied and could not request permission from user'), log event=error stage=update reason=write-blocked, NOT a skipped result. Keep the note to 2-5 sentences, terse, no secrets."
+export COPILOT_PLUGIN_SYNC_PROMPT="$COPILOT_PLUGIN_SYNC_PROMPT Read only the assistant config selected by env COPILOT_PLUGIN_ASSISTANT_CONFIG (also pinned in COPILOT_PLUGIN_SYNC_CONFIG). Validate its backend and target again before any write; do not fall back to the default file or teamBoard."
 
 # The runner references only env vars (inherited by the child), so nothing
 # dynamic is interpolated into the command line. It records child-exit with the

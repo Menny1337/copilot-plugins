@@ -18,13 +18,13 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { readAssistantConfig } from '../../../shared/assistant-config.mjs';
 
 const args = process.argv.slice(2);
 const noOpen = args.includes('--no-open');
 const outIdx = args.indexOf('--out');
 const logDir = process.env.COPILOT_PLUGIN_ADO_SYNC_LOGDIR || join(homedir(), '.copilot', 'logs', 'ado-session-sync');
 const jsonl = join(logDir, 'runs.jsonl');
-const configPath = join(homedir(), '.copilot', 'assistant', 'config.json');
 const outFile = outIdx !== -1 && args[outIdx + 1]
   ? args[outIdx + 1]
   : join(tmpdir(), 'ado-session-sync-dashboard.html');
@@ -51,10 +51,13 @@ function normalizeEvent(e) {
 
 let org = '', project = '';
 try {
-  const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
+  const { cfg } = readAssistantConfig(undefined, { optional: true });
   org = (cfg.ado && cfg.ado.org) || '';
   project = (cfg.ado && cfg.ado.project) || '';
-} catch { /* config optional */ }
+} catch (error) {
+  console.error(error.message);
+  process.exit(2);
+}
 
 const events = readJsonl(jsonl).map(normalizeEvent);
 const payload = {

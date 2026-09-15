@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "path": "plugins/meta/skills/scheduled-headless-copilot/scripts/loops-app/packaging/appicon-1024.png",
+      "sha256": "115b96d1f783bce8c61d1ceeda4e04efdc95cc8c5633e6014e5a8628e0e5a268",
+      "reason": "Privacy review: generic infinity app icon without personal text. PNG checksums, C2PA claims, protected certificate headers and timestamp metadata were inspected; they contain public-vendor provenance and asset-specific identifiers. Content credentials are retained."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-headless-copilot/ux-design/copilot-loops-overview-dark.png",
+      "sha256": "097a7d610b4ccd68ddeb333a87ea9ca46e9dc71238bce17c524aeb831dc9225c",
+      "reason": "Privacy review: dark UI mockup with fictional acme repository and home-path examples. PNG checksums and decoded C2PA claims, signing certificates and timestamp metadata contain public-vendor provenance rather than private account details. Content credentials are retained."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-headless-copilot/ux-design/copilot-loops-overview-light.png",
+      "sha256": "7e69701a23179eb881adfcac17e9a2e530fe1b5d8cc4064498726f7110b00ce1",
+      "reason": "Privacy review: light UI mockup with fictional acme repository and home-path examples. PNG checksums, C2PA claims, protected certificate headers and timestamp metadata contain public-vendor provenance rather than private account details. Content credentials are retained."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/icons/failed.png",
+      "sha256": "0fb60f382c05e93ead0bb223a4654a301121a149712ca6032126f1e5dc4d1597",
+      "reason": "Privacy review: reusable failure-state glyph; metadata contains color, density and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/icons/idle.png",
+      "sha256": "8e39cc2eff532aa6ab62596279d9e092797c0a27a737675a3b48c08bf1664497",
+      "reason": "Privacy review: reusable idle-state glyph; metadata contains color, density and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/icons/paused.png",
+      "sha256": "395b0eb426fc3d121029fabd8edb154dd4849e62d669a5e825d16e1037d97cd9",
+      "reason": "Privacy review: reusable paused-state glyph; metadata contains color, density and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/icons/prs.png",
+      "sha256": "f2fb37bdb1177eade03cd8d98175f6d4ecdfa97a62d483739c9117f85216419e",
+      "reason": "Privacy review: reusable pull-request-state glyph; metadata contains color, density and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/icons/reviewing.png",
+      "sha256": "0a4ac03ff8cac6bd9e19fdb8cfc6dfc316aa1f6efb739fdc2e87b976e633f9e1",
+      "reason": "Privacy review: reusable reviewing-state glyph; metadata contains color, density and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/icons/running.png",
+      "sha256": "298caab97bb61bd9a059cb244e0f28f7e5df73632641932101821980a598510b",
+      "reason": "Privacy review: reusable running-state glyph; metadata contains color, density and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/scripts/menubar-app/packaging/appicon-1024.png",
+      "sha256": "4f357d1f60f5b2cc2c971dbba85c82696b0fe6adc8470d5886c20d3abdcc8567",
+      "reason": "Privacy review: reusable flask/checkmark app icon with no personal text; metadata contains color, background and timestamps, with no personal identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/ux-design/icons-skill-eval.png",
+      "sha256": "fab528b210ca904181004d34fe87c96278027a121205719bd888678e1696f38d",
+      "reason": "Privacy review: reusable six-state icon sheet; decoded content credentials contain public-vendor provenance and asset-specific IDs, not private account or session details. Attribution retained."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/ux-design/settings-window-rendered-light.png",
+      "sha256": "6713aa893c33b197b7979aecb2611a870faa3f6aeb88ffc5cec6dbbedb111757",
+      "reason": "Privacy review: light settings preview with synthetic user paths and approved repository branding; EXIF/XMP and decoded color profiles contain screenshot/rendering data, not private identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/ux-design/settings-window-rendered.png",
+      "sha256": "2c18e42587a080a895a0d73027878f49ec86eae61f874cb674c37b9df614eee2",
+      "reason": "Privacy review: dark settings preview with synthetic user paths and approved repository branding; EXIF/XMP and decoded color profiles contain screenshot/rendering data, not private identifiers."
+    },
+    {
+      "path": "plugins/meta/skills/scheduled-skill-review/ux-design/settings-window.png",
+      "sha256": "b902cf772e0c03fe3b46be4038bfa19198c6cf2aea0152ebbab5ac708e142343",
+      "reason": "Privacy review: generic settings mockup with synthetic user/account values; decoded content credentials contain public-vendor generation provenance and asset-specific IDs, not private account or session details. Attribution retained."
+    }
+  ]
+}

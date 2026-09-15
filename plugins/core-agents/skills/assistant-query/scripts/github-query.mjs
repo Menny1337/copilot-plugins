@@ -13,7 +13,7 @@
  *
  * CONFIG (read at runtime — never hardcoded)
  *   Source order: --config <path>  >  $COPILOT_PLUGIN_ASSISTANT_CONFIG  >
- *                 ~/.copilot/assistant/config.json
+ *                 $COPILOT_PLUGIN_ADO_CONFIG (legacy) > ~/.copilot/assistant/config.json
  *   Personal board (github mode) -> config.github { owner, ownerType, repo,
  *     projectNumber, fields{ lane, priority, kind, dueDate, adoId, workstream, mode },
  *     boardUrl }.
@@ -60,9 +60,8 @@
  * Pure Node, zero deps — mirrors ado-query.mjs and the repo's other *.mjs scripts.
  */
 
-import { readFileSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { readAssistantConfig, validateBoard } from '../../../shared/assistant-config.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { selectGithubCliEnv } from '../../../shared/github-cli-auth.mjs';
@@ -466,35 +465,19 @@ function parseArgs(argv) {
   return o;
 }
 
-function expandHome(p) {
-  return p.startsWith('~') ? join(homedir(), p.slice(1)) : p;
-}
-
 function loadConfig(explicit) {
-  const path = expandHome(explicit || process.env.COPILOT_PLUGIN_ASSISTANT_CONFIG
-    || join(homedir(), '.copilot', 'assistant', 'config.json'));
-  let raw;
   try {
-    raw = readFileSync(path, 'utf8');
-  } catch {
-    die(2, `config not found: ${path}\n  set --config or $COPILOT_PLUGIN_ASSISTANT_CONFIG, or create the file.`);
-  }
-  try {
-    return { cfg: JSON.parse(raw), path };
+    return readAssistantConfig(explicit);
   } catch (e) {
-    return die(2, `config is not valid JSON (${path}): ${e.message}`);
+    return die(2, e.message);
   }
 }
 
 function resolveGithubContext(cfg) {
+  try { validateBoard(cfg, 'github'); }
+  catch (e) { die(3, e.message); }
   const g = cfg.github;
-  if (!g || !g.owner || !g.repo || g.projectNumber === undefined || g.projectNumber === null || g.projectNumber === '') {
-    die(3, 'no "github" block (owner/repo/projectNumber) configured in config.json.');
-  }
   const projectNumber = Number(g.projectNumber);
-  if (!Number.isSafeInteger(projectNumber) || projectNumber <= 0) {
-    die(3, `config.github.projectNumber must be a positive integer (got ${JSON.stringify(g.projectNumber)}).`);
-  }
   return {
     owner: g.owner,
     ownerType: g.ownerType === 'org' ? 'org' : 'user',

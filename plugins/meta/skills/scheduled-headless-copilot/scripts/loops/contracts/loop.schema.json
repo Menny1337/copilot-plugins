@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mnm:copilot-loops:loop-schema:v1",
+  "title": "Copilot Loops managed loop",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "kind",
+    "lifecycle",
+    "schedule",
+    "execution",
+    "permissions",
+    "environment",
+    "timeoutSeconds",
+    "retry",
+    "overlapPolicy",
+    "notifications",
+    "retention",
+    "approval",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "kind": { "enum": ["copilot", "script"] },
+    "lifecycle": {
+      "enum": ["draft", "needsReview", "ready", "enabled", "paused", "archived"]
+    },
+    "schedule": { "$ref": "#/$defs/schedule" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "allowAll",
+        "allowTools",
+        "denyTools",
+        "allowUrls",
+        "denyUrls"
+      ],
+      "properties": {
+        "profile": { "enum": ["fullAutonomy", "custom"] },
+        "allowAll": {
+          "type": "boolean",
+          "description": "Full tool autonomy switch. The runtime maps true to --allow-all-tools; paths and URLs remain separately scoped."
+        },
+        "allowTools": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "denyTools": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "allowUrls": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "denyUrls": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "profile": { "const": "fullAutonomy" } } },
+          "then": { "properties": { "allowAll": { "const": true } } }
+        },
+        {
+          "if": { "properties": { "profile": { "const": "custom" } } },
+          "then": { "properties": { "allowAll": { "const": false } } }
+        }
+      ]
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plain", "secretNames"],
+      "properties": {
+        "plain": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+        },
+        "secretNames": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "timeoutSeconds": { "type": "integer", "minimum": 0, "maximum": 604800 },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxRetries", "backoffSeconds"],
+      "properties": {
+        "maxRetries": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "backoffSeconds": { "type": "integer", "minimum": 0, "maximum": 86400 }
+      }
+    },
+    "overlapPolicy": { "const": "skip" },
+    "notifications": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["onFailure", "onSuccess"],
+      "properties": {
+        "onFailure": { "type": "boolean" },
+        "onSuccess": { "type": "boolean" }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["days", "maxRuns"],
+      "properties": {
+        "days": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "maxRuns": { "type": "integer", "minimum": 1, "maximum": 10000 }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fingerprint", "approvedAt"],
+      "properties": {
+        "fingerprint": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "approvedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lifecycle": { "enum": ["ready", "enabled", "paused"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "approval": {
+            "properties": {
+              "fingerprint": { "type": "string" },
+              "approvedAt": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": { "enum": ["draft", "needsReview"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "approval": {
+            "properties": {
+              "fingerprint": { "type": "null" },
+              "approvedAt": { "type": "null" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "schedule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "manual" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "scheduledAt", "graceSeconds"],
+          "properties": {
+            "kind": { "const": "once" },
+            "scheduledAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "T[0-9]{2}:[0-9]{2}:00(?:\\.0+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+            },
+            "graceSeconds": { "type": "integer", "minimum": 0, "maximum": 3600 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "hour", "minute", "weekdays", "graceSeconds"],
+          "properties": {
+            "kind": { "const": "calendar" },
+            "hour": { "type": "integer", "minimum": 0, "maximum": 23 },
+            "minute": { "type": "integer", "minimum": 0, "maximum": 59 },
+            "weekdays": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 6 },
+              "uniqueItems": true
+            },
+            "graceSeconds": { "type": "integer", "minimum": 0, "maximum": 3600 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "seconds", "graceSeconds"],
+          "properties": {
+            "kind": { "const": "interval" },
+            "seconds": { "type": "integer", "minimum": 60, "maximum": 31536000 },
+            "graceSeconds": { "type": "integer", "minimum": 0, "maximum": 3600 }
+          }
+        }
+      ]
+    },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "prompt",
+            "model",
+            "workingDirectory",
+            "extraPaths",
+            "localPluginDirectories"
+          ],
+          "properties": {
+            "type": { "const": "copilot" },
+            "prompt": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 },
+            "workingDirectory": { "type": "string", "minLength": 1, "pattern": "^/" },
+            "extraPaths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "pattern": "^/" },
+              "uniqueItems": true
+            },
+            "localPluginDirectories": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "pattern": "^/" },
+              "uniqueItems": true
+            },
+            "installedPlugin": { "type": ["string", "null"], "minLength": 1 },
+            "agent": { "type": ["string", "null"], "minLength": 1 },
+            "skill": { "type": ["string", "null"], "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "arguments", "workingDirectory", "contentHash"],
+          "properties": {
+            "type": { "const": "scriptFile" },
+            "path": { "type": "string", "minLength": 1, "pattern": "^/" },
+            "arguments": { "type": "array", "items": { "type": "string" } },
+            "workingDirectory": { "type": "string", "minLength": 1, "pattern": "^/" },
+            "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "arguments", "workingDirectory", "executableHash"],
+          "properties": {
+            "type": { "const": "executable" },
+            "path": { "type": "string", "minLength": 1, "pattern": "^/" },
+            "arguments": { "type": "array", "items": { "type": "string" } },
+            "workingDirectory": { "type": "string", "minLength": 1, "pattern": "^/" },
+            "executableHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+          }
+        }
+      ]
+    }
+  }
+}

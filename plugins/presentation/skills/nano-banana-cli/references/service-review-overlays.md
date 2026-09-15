@@ -1,8 +1,8 @@
-# Nano Banana SampleProject Overlays
+# Nano Banana service-review overlays
 
-Optional, project-tuned prompt packs for the current SampleProject FE weekly service-health / engineering improvement deck workflow.
+Optional prompt examples for a fictional team's weekly service-health and engineering-improvement deck.
 
-These overlays are intentionally kept separate from the shared `nano-banana-cli` core so the user-level skill stays portable across repos. Use them when you are explicitly working on the SampleProject deck flow; otherwise prefer the generic recipes and built-in profiles in `recipes.md` and `prompt-profiles.json`.
+Use these examples for service-review decks. For other presentation work, prefer the generic recipes and built-in profiles in `recipes.md` and `prompt-profiles.json`.
 
 ## Weekly cover hero
 
@@ -10,10 +10,10 @@ These overlays are intentionally kept separate from the shared `nano-banana-cli`
 PROMPT=$(cat <<'EOF'
 {
   "task": "presentation_hero",
-  "goal": "Create a full-bleed cover visual for the weekly SampleProject FE service-health review deck.",
+  "goal": "Create a full-bleed cover visual for a sample team's weekly service-health review deck.",
   "subject": {
-    "primary": "modern enterprise case management operations environment",
-    "details": "calm but high-urgency atmosphere, premium internal enterprise-style presentation visual"
+    "primary": "modern enterprise service operations environment",
+    "details": "calm but high-urgency atmosphere, polished enterprise presentation visual"
   },
   "scene": {
     "environment": "control room and analyst workspace hybrid, subtle signals of incident response without chaos",
@@ -38,7 +38,7 @@ PROMPT=$(cat <<'EOF'
 EOF
 )
 
-nano-banana "$PROMPT" -a 16:9 -s 2K -o sample-project-livesite-cover
+nano-banana "$PROMPT" -a 16:9 -s 2K -o service-review-cover
 ```
 
 ## Team appreciation slide visual
@@ -73,16 +73,16 @@ PROMPT=$(cat <<'EOF'
 EOF
 )
 
-nano-banana "$PROMPT" -a 16:9 -s 2K -o sample-project-team-thanks
+nano-banana "$PROMPT" -a 16:9 -s 2K -o service-review-team-thanks
 ```
 
-## Builder mindset section divider
+## Engineering improvement section divider
 
 ```bash
 PROMPT=$(cat <<'EOF'
 {
   "task": "presentation_divider",
-  "goal": "Create a section visual for the engineering improvement slide that contrasts resilient systems with reactive firefighting.",
+  "goal": "Create a section visual for an engineering improvement slide that contrasts resilient systems with reactive firefighting.",
   "subject": {
     "primary": "resilient architecture metaphor",
     "details": "systems, paved paths, safeguards, and layered protection rather than literal firefighters"
@@ -108,7 +108,7 @@ PROMPT=$(cat <<'EOF'
 EOF
 )
 
-nano-banana "$PROMPT" -a 16:9 -s 2K -o sample-project-builder-mindset
+nano-banana "$PROMPT" -a 16:9 -s 2K -o service-review-engineering-improvement
 ```
 
 ## Systemic incident pattern visual
@@ -143,7 +143,7 @@ PROMPT=$(cat <<'EOF'
 EOF
 )
 
-nano-banana "$PROMPT" -a 16:9 -s 2K -o sample-project-systemic-patterns
+nano-banana "$PROMPT" -a 16:9 -s 2K -o service-review-systemic-patterns
 ```
 
 ## Paved paths / resilient architecture closer
@@ -178,5 +178,5 @@ PROMPT=$(cat <<'EOF'
 EOF
 )
 
-nano-banana "$PROMPT" -a 16:9 -s 2K -o sample-project-paved-paths
+nano-banana "$PROMPT" -a 16:9 -s 2K -o service-review-paved-paths
 ```

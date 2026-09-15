@@ -7,15 +7,10 @@
 # when the feature is disabled, when there's nothing new, or on the very first run
 # (it just establishes a baseline). Best-effort: never blocks startup, always exits 0.
 #
-# Opt-in, with an explicit env override precedence (mirrors ado-session-sync.sh):
-#   ADO_SESSION_SYNC=0 -> force-DISABLED, regardless of config. Checked FIRST,
-#                             before reading the sessionStart payload or creating the
-#                             per-session advisory lock, so a force-disabled session
-#                             touches NEITHER the lock dir NOR seen.watermark/suggested-
-#                             repos state — not just "stays silent" but genuinely inert.
-#   ADO_SESSION_SYNC=1 -> force-ENABLED, regardless of config.
-#   otherwise              -> existing config rule: adoSessionSync.enabled == true AND
-#                             taskBackend == "ado" in ~/.copilot/assistant/config.json.
+# Any ADO_SESSION_SYNC, COPILOT_PLUGIN_GITHUB_SESSION_SYNC or COPILOT_PLUGIN_TASK_SESSION_SYNC value
+# of 0 disables before payload, lock or watermark access. A value of 1 overrides
+# opt-in only for a valid selected remote backend. Otherwise the selected
+# backend's sync block must have enabled=true. Local Markdown remains inert.
 
 set -u
 
@@ -27,17 +22,11 @@ fi
 LOG_DIR="$HOME/.copilot/logs/ado-session-sync"
 JSONL="$LOG_DIR/runs.jsonl"
 WM="$LOG_DIR/seen.watermark"
-CONFIG="$HOME/.copilot/assistant/config.json"
-
-# Read sessionStart payload for a run-once-per-session lock (this hook may fire
-# from several plugin copies in one session).
-payload=""
-[ ! -t 0 ] && payload="$(cat 2>/dev/null || true)"
-sid="$(printf '%s' "$payload" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p' | head -1)"
-case "$sid" in ''|*[!A-Za-z0-9._-]*) sid="" ;; esac
-if [ -n "$sid" ]; then
-  mkdir "${TMPDIR:-/tmp}/ado-advisory.$sid" 2>/dev/null || exit 0
-fi
+SELF_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+. "$SELF_DIR/../shared/assistant-config.sh" || exit 0
+CONFIG="$(plugins_config_path)" || exit 0
+tb="$(plugins_config_backend "$CONFIG")" || exit 0
+[ "$tb" = "markdown" ] && exit 0
 
 # Opt-in: stay silent unless the feature is enabled (env=0 already exited above).
 # Backend-neutral: fires for taskBackend="ado" (legacy adoSessionSync.enabled) OR
@@ -46,18 +35,25 @@ enabled=0
 if [ "${ADO_SESSION_SYNC:-}" = "1" ] || [ "${COPILOT_PLUGIN_GITHUB_SESSION_SYNC:-}" = "1" ] || [ "${COPILOT_PLUGIN_TASK_SESSION_SYNC:-}" = "1" ]; then
   enabled=1
 elif [ -f "$CONFIG" ] && command -v jq >/dev/null 2>&1; then
-  tb="$(jq -r '.taskBackend // ""' "$CONFIG" 2>/dev/null)"
-  if [ "$tb" = "ado" ] && [ "$(jq -r '.adoSessionSync.enabled // false' "$CONFIG" 2>/dev/null)" = "true" ]; then
+  if [ "$tb" = "ado" ] && [ "$(jq -r   '.adoSessionSync.enabled == true' "$CONFIG" 2>/dev/null)" = "true" ]; then
     enabled=1
-  elif [ "$tb" = "github" ] && [ "$(jq -r '.taskSessionSync.enabled // false' "$CONFIG" 2>/dev/null)" = "true" ]; then
+  elif [ "$tb" = "github" ] && [ "$(jq -r   '.taskSessionSync.enabled == true' "$CONFIG" 2>/dev/null)" = "true" ]; then
     enabled=1
   fi
 fi
 [ "$enabled" = "1" ] || exit 0
 
-
 command -v jq >/dev/null 2>&1 || exit 0
 [ -f "$JSONL" ] || exit 0
+
+# Disabled or invalid configuration must not consume a session's advisory lock.
+payload=""
+[ ! -t 0 ] && payload="$(cat 2>/dev/null || true)"
+sid="$(printf '%s' "$payload" | sed -n 's/.*"sessionId":"\([^"]*\)".*/\1/p' | head -1)"
+case "$sid" in ''|*[!A-Za-z0-9._-]*) sid="" ;; esac
+if [ -n "$sid" ]; then
+  mkdir "${TMPDIR:-/tmp}/ado-advisory.$sid" 2>/dev/null || exit 0
+fi
 
 norm='.ts = (.ts // .timestamp // "") | .parent = (.parent // .parentSession // "") | .child = (.child // .syncSession // "")'
 latest_ts="$(jq -r "$norm | .ts" "$JSONL" 2>/dev/null | tail -1)"
@@ -103,7 +99,9 @@ fi
 # syncRepos are never nudged; de-duped via a suggested-repos watermark.
 sugg_line=""
 SUGG="$LOG_DIR/suggested-repos"
-syncrepos_json="$(jq -c '.adoSessionSync.syncRepos // []' "$CONFIG" 2>/dev/null || echo '[]')"
+sync_block="adoSessionSync"
+[ "$tb" = "github" ] && sync_block="taskSessionSync"
+syncrepos_json="$(jq -c --arg block "$sync_block" '.[$block].syncRepos // []' "$CONFIG" 2>/dev/null || echo '[]')"
 suggest_repo="$(jq -rs --argjson repos "$syncrepos_json" --arg home "$HOME" '
   def expand($p): if $p=="~" then $home elif ($p|startswith("~/")) then $home + ($p|ltrimstr("~")) else $p end;
   def under($c;$p): ($p|rtrimstr("/")) as $pp | ($c==$pp or ($c|startswith($pp+"/")));
@@ -120,7 +118,7 @@ if [ -n "$suggest_repo" ] && [ -f "$SUGG" ] && grep -qxF "$suggest_repo" "$SUGG"
 fi
 if [ -n "$suggest_repo" ]; then
   printf '%s\n' "$suggest_repo" >> "$SUGG" 2>/dev/null || true
-  sugg_line=" Tip: '$suggest_repo' is syncing but not in adoSessionSync.syncRepos — add it to always-sync (\`sync-status --repos\`)."
+  sugg_line=" Tip: '$suggest_repo' is syncing but not in $sync_block.syncRepos — add it to always-sync (\`sync-status --repos\`)."
 fi
 
 msg="ⓘ ado-session-sync: since you last looked, ${parts}.${sugg_line} Run \`sync-status --errors\` for detail."

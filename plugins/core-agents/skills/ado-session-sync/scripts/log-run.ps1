@@ -2,7 +2,7 @@
 #
 # Mirrors log-run.sh: appends one JSON line to
 # ~/.copilot/logs/ado-session-sync/runs.jsonl and a human line to runs.log.
-# Verbosity via adoSessionSync.logLevel (or env COPILOT_PLUGIN_ADO_SYNC_LOGLEVEL) =
+# Verbosity via the selected backend's sync block (or env COPILOT_PLUGIN_ADO_SYNC_LOGLEVEL) =
 # off | result | debug (default result). Fail-open: always exits 0.
 #
 # Usage: log-run.ps1 -event <launch|skip|child-exit|result|error> [ -parent .. ]
@@ -28,17 +28,21 @@ try {
   if (-not $event) { exit 0 }
 
   $logDir = Join-Path $HOME '.copilot/logs/ado-session-sync'
-  $config = Join-Path $HOME '.copilot/assistant/config.json'
+  try {
+    . (Join-Path $PSScriptRoot '../../../shared/assistant-config.ps1')
+    $config = Get-MnmAssistantConfigPath
+    $cfg = Read-MnmAssistantConfig $config
+    $backend = Get-MnmAssistantBackend $cfg
+  } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 0 }
+  $syncBlock = if ($backend -eq 'github') { 'taskSessionSync' } else { 'adoSessionSync' }
 
   # Verbosity.
   $level = $env:COPILOT_PLUGIN_ADO_SYNC_LOGLEVEL
   $retdays = 30
-  if (-not $level -and (Test-Path $config)) {
-    try {
-      $cfg = Get-Content -Raw $config | ConvertFrom-Json
-      if ($cfg.adoSessionSync.logLevel) { $level = [string]$cfg.adoSessionSync.logLevel }
-      if ($cfg.adoSessionSync.retentionDays -is [int]) { $retdays = [int]$cfg.adoSessionSync.retentionDays }
-    } catch { }
+  if (-not $level -and $cfg.$syncBlock.logLevel) { $level = [string]$cfg.$syncBlock.logLevel }
+  $retention = $cfg.$syncBlock.retentionDays
+  if (($retention -is [int] -or $retention -is [long]) -and $retention -ge 0 -and $retention -le [int]::MaxValue) {
+    $retdays = [int]$retention
   }
   if ($level -notin @('off','result','debug')) { $level = 'result' }
   if ($level -eq 'off') { exit 0 }

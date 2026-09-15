@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "nightly-dependency-report",
+  "name": "Nightly dependency report",
+  "kind": "copilot",
+  "lifecycle": "draft",
+  "schedule": {
+    "kind": "calendar",
+    "hour": 1,
+    "minute": 0,
+    "weekdays": [],
+    "graceSeconds": 300
+  },
+  "execution": {
+    "type": "copilot",
+    "prompt": "Review dependency manifests and write a concise markdown report.",
+    "model": "gpt-5.6-sol",
+    "workingDirectory": "/tmp/acme-web-app",
+    "extraPaths": [],
+    "localPluginDirectories": [],
+    "installedPlugin": "core-agents",
+    "agent": "core-agents:researcher",
+    "skill": "research-methodology"
+  },
+  "permissions": {
+    "profile": "fullAutonomy",
+    "allowAll": true,
+    "allowTools": [],
+    "denyTools": [],
+    "allowUrls": [],
+    "denyUrls": []
+  },
+  "environment": {
+    "plain": {
+      "REPORT_FORMAT": "markdown"
+    },
+    "secretNames": [
+      "REPORT_TOKEN"
+    ]
+  },
+  "timeoutSeconds": 1800,
+  "retry": {
+    "maxRetries": 0,
+    "backoffSeconds": 60
+  },
+  "overlapPolicy": "skip",
+  "notifications": {
+    "onFailure": true,
+    "onSuccess": false
+  },
+  "retention": {
+    "days": 30,
+    "maxRuns": 100
+  },
+  "approval": {
+    "fingerprint": null,
+    "approvedAt": null
+  },
+  "createdAt": "2026-07-24T15:00:00Z",
+  "updatedAt": "2026-07-24T15:00:00Z"
+}

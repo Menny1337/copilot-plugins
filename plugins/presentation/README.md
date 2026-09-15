@@ -36,7 +36,7 @@ Rendering and image workflows need extra tooling only when used:
 | Name | Description | Triggers / Keywords |
 | --- | --- | --- |
 | [`html-presentation`](skills/html-presentation/SKILL.md) 🔒 | Create beautiful browser-runnable HTML presentations using reveal.js. Single self-contained HTML file with slides, transitions, speaker notes, and responsive design. | — |
-| [`nano-banana-cli`](skills/nano-banana-cli/SKILL.md) 📜 📚 🔒 | Run the `nano-banana` CLI (command: `nano-banana`) for Gemini image generation/editing, transparent assets, presentation visuals, UI mockups, and reference-image edits. | nano banana, generate image, edit image, transparent, hero image, mascot, sprite, mockup, Gemini, illustration |
+| [`nano-banana-cli`](skills/nano-banana-cli/SKILL.md) 📜 📚 🔒 | Generates and edits raster images with the Nano Banana CLI. Use when the user or workflow selects Nano Banana/Gemini for images, commands, or setup. | — |
 | [`pptx-creation`](skills/pptx-creation/SKILL.md) 📜 📚 🔒 | Create and rebuild professional PowerPoint presentations (.pptx) from content, outlines, or approved slide plans. | — |
 | [`presentation-critique`](skills/presentation-critique/SKILL.md) 🔒 | Structured evaluation procedure for PowerPoint presentations against professional standards. Scores narrative structure, writing quality, content density, visual design, speaker notes, and overall… | critique presentation, review slides, presentation feedback, deck review, slide quality |
 | [`presentation-workflow`](skills/presentation-workflow/SKILL.md) 🔒 | End-to-end orchestration procedure for creating presentations. Covers intent capture, outline planning, image generation delegation, slide building, multi-model parallel critique, finding… | — |

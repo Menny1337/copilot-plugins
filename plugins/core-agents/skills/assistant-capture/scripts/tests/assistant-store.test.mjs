@@ -245,7 +245,7 @@ test('task lifecycle: add -> update -> complete -> reopen round-trips correctly'
   const store = makeStore();
   try {
     cli(['--store', store, 'init']);
-    cli(['--store', store, 'task', 'add', '--title', 'Ship the release', '--priority', 'P1', '--due', '2026-08-01', '--context', '@work', '--project', '+SamplePlatform']);
+    cli(['--store', store, 'task', 'add', '--title', 'Ship the release', '--priority', 'P1', '--due', '2026-08-01', '--context', '@work', '--project', '+ExampleProject']);
     const upd = cli(['--store', store, 'task', 'update', '--match', 'Ship the release', '--priority', 'P2']);
     assert.equal(upd.json.result.task.priority, 2);
     assert.equal(upd.json.result.task.due, '2026-08-01', 'unspecified fields are preserved on update');
@@ -265,13 +265,13 @@ test('task lifecycle: add -> update -> complete -> reopen round-trips correctly'
 });
 
 test('parseTaskLine / buildTaskLine round-trip for all optional fields', () => {
-  const line = '- [ ] **(P1)** Ship the release — due 2026-08-01 @work +SamplePlatform ← notes/meeting/2026-08-01-standup.md';
+  const line = '- [ ] **(P1)** Ship the release — due 2026-08-01 @work +ExampleProject ← notes/meeting/2026-08-01-standup.md';
   const parsed = parseTaskLine(line);
   assert.equal(parsed.priority, 1);
   assert.equal(parsed.title, 'Ship the release');
   assert.equal(parsed.due, '2026-08-01');
   assert.equal(parsed.context, '@work');
-  assert.equal(parsed.project, '+SamplePlatform');
+  assert.equal(parsed.project, '+ExampleProject');
   assert.equal(parsed.source, 'notes/meeting/2026-08-01-standup.md');
   assert.equal(buildTaskLine(parsed), line);
 });
@@ -379,13 +379,13 @@ test('reminder lifecycle: set then dismiss updates status in place', () => {
   const store = makeStore();
   try {
     cli(['--store', store, 'init']);
-    cli(['--store', store, 'reminder', 'set', '--text', 'Follow up with Alex', '--due', '2026-08-05', '--context', '@work']);
+    cli(['--store', store, 'reminder', 'set', '--text', 'Follow up with the user', '--due', '2026-08-05', '--context', '@work']);
     let content = readFileSync(join(store, 'reminders.md'), 'utf8');
-    assert.match(content, /\| 2026-08-05 \| Follow up with Alex \| @work \| pending \|/);
-    const dismiss = cli(['--store', store, 'reminder', 'dismiss', '--match', 'Alex']);
+    assert.match(content, /\| 2026-08-05 \| Follow up with the user \| @work \| pending \|/);
+    const dismiss = cli(['--store', store, 'reminder', 'dismiss', '--match', 'the user']);
     assert.equal(dismiss.json.result.reminder.status, 'dismissed');
     content = readFileSync(join(store, 'reminders.md'), 'utf8');
-    assert.match(content, /\| 2026-08-05 \| Follow up with Alex \| @work \| dismissed \|/);
+    assert.match(content, /\| 2026-08-05 \| Follow up with the user \| @work \| dismissed \|/);
   } finally {
     rmSync(store, { recursive: true, force: true });
   }

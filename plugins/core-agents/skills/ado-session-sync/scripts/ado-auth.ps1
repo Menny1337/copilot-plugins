@@ -30,7 +30,15 @@ param([string]$Command = '')
 
 # Well-known Azure DevOps Entra application/resource ID (stable across all tenants/orgs).
 $script:AdoResource    = '499b84ac-1321-427f-aa17-267ca6975798'
-$script:AdoConfig      = if ($env:COPILOT_PLUGIN_ADO_CONFIG) { $env:COPILOT_PLUGIN_ADO_CONFIG } else { Join-Path $HOME '.copilot/assistant/config.json' }
+. (Join-Path $PSScriptRoot '../../../shared/assistant-config.ps1')
+try {
+  $script:AdoConfig = Get-MnmAssistantConfigPath
+  $null = Read-MnmAssistantConfig $script:AdoConfig
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  if (-not $Command) { return }
+  exit 1
+}
 $script:AdoDefaultFile = if ($env:COPILOT_PLUGIN_ADO_PAT_FILE) { $env:COPILOT_PLUGIN_ADO_PAT_FILE } else { Join-Path $HOME '.copilot/assistant/.ado-pat' }
 $script:AdoTenantCache = if ($env:COPILOT_PLUGIN_ADO_TENANT_CACHE) { $env:COPILOT_PLUGIN_ADO_TENANT_CACHE } else { Join-Path $HOME '.copilot/assistant/.ado-tenant' }
 

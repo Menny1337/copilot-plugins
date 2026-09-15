@@ -2,7 +2,7 @@
 
 Archetype templates for scaffolding a new agent. Pick the closest pattern, then adapt the
 body sections to the agent's role. For which body sections each pattern needs, see the
-applicability table in `SKILL.md` (Step 3).
+[section applicability table](authoring.md#section-applicability).
 
 ## Specialist agent
 

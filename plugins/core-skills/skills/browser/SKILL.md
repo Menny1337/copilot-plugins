@@ -1,6 +1,6 @@
 ---
 name: browser
-description: "Drives interactive websites in a dedicated signed-in browser window, isolated from the user's other windows. Use to navigate pages, click, fill forms, screenshot, read content, sign in or switch accounts, inspect network activity, or manage browser storage. Asks the user only for genuinely human-only verification (MFA, CAPTCHA, passkeys). Not for static UI generation, headless scraping pipelines, or Playwright test authoring."
+description: "Automates websites in a dedicated signed-in browser window. Use for screenshots, rendered pages, forms, account flows, or browser network/storage inspection; not API-only tasks, scraping pipelines, or test authoring."
 argument-hint: "<URL, or what to do in the browser>"
 ---
 

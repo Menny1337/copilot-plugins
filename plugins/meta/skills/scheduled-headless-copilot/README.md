@@ -39,6 +39,30 @@ flowchart LR
 
 ---
 
+## Copilot Loops for macOS
+
+**Copilot Loops** is the native macOS 13+ manager for this workflow. It adds a menu-bar
+companion and full SwiftUI app for:
+
+- building headless Copilot loops with a plugin, agent, skill, and prompt
+- running executable scripts or binaries with explicit argument arrays
+- scheduling with launchd while the app is closed
+- reviewing permissions and Keychain-backed secret names before enabling
+- monitoring live output, upcoming runs, skips, failures, retries, and history
+
+Install it from this skill directory:
+
+```bash
+bash scripts/loops-install.sh
+```
+
+See [`references/copilot-loops-app.md`](./references/copilot-loops-app.md) for the complete
+setup, local identity profile, fail-closed legacy-upgrade gate, operating model, managed
+paths, security behavior, and troubleshooting guide. The manual cross-platform workflow
+below remains available and is not imported into the app.
+
+---
+
 ## How it works — three layers
 
 The scheduler **never calls `copilot` directly**. It always launches a **runner script**, which
@@ -208,14 +232,20 @@ sequenceDiagram
 
 ```text
 scheduled-headless-copilot/
-├── SKILL.md                              # agent-facing 7-step procedure + worked example
-├── README.md                             # ← you are here (human tour + diagrams)
+├── SKILL.md                              # managed-app and manual scheduling procedure
+├── README.md                             # you are here
 ├── references/
+│   ├── copilot-loops-app.md              # app setup, security, lifecycle, and troubleshooting
 │   ├── schedulers.md                     # launchd / cron / systemd / Task Scheduler registration
-│   └── headless-invocation.md            # flags, env, auth, git push, PATH, troubleshooting matrix
+│   └── headless-invocation.md            # flags, auth, PATH, and troubleshooting
+├── scripts/
+│   ├── loops-ctl.mjs                     # JSON control plane
+│   ├── loops-runner.mjs                  # managed per-loop runner
+│   ├── loops-app/                        # native SwiftUI app and Keychain helper
+│   └── loops-{build,install,uninstall}.sh
 └── templates/
-    ├── runner.sh                         # hardened bash 3.2 runner (lock · watchdog · logging)
-    └── com.example.copilot-task.plist    # macOS LaunchAgent template
+    ├── runner.sh                         # hardened manual Bash 3.2 runner
+    └── com.example.copilot-task.plist    # manual macOS LaunchAgent template
 ```
 
 ---

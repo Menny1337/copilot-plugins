@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "subscriptionId": "<subscription-guid>",
+  "resourceGroup": "<existing-resource-group>",
+  "appName": "<existing-approved-app>",
+  "expected": {
+    "hostname": "<app>.azurewebsites.net",
+    "tenantId": "<tenant-guid>",
+    "clientId": "<registration-client-guid>",
+    "managedIdentityClientId": "<managed-identity-client-guid>",
+    "allowedGroupIds": ["<approved-group-guid>"],
+    "issuer": "https://login.microsoftonline.com/<tenant-guid>/v2.0",
+    "audiences": ["<registration-client-guid>"],
+    "excludedPaths": [],
+    "loginParameters": ["scope=openid profile offline_access https://graph.microsoft.com/User.Read"],
+    "authSha256": "<SHA-256-of-canonical-authsettingsV2-properties>",
+    "readers": [
+      {
+        "ipAddress": "CorpNetPublic",
+        "tag": "ServiceTag",
+        "action": "Allow",
+        "priority": 100,
+        "name": "<existing-corporate-rule-name>"
+      },
+      {
+        "ipAddress": "Any",
+        "action": "Deny",
+        "priority": 2147483647,
+        "name": "<existing-deny-rule-name>"
+      }
+    ],
+    "readersDefault": "Deny",
+    "scm": {
+      "scmIpSecurityRestrictions": [
+        {
+          "ipAddress": "Any",
+          "action": "Deny",
+          "priority": 2147483647,
+          "name": "<existing-deny-rule-name>"
+        }
+      ],
+      "scmIpSecurityRestrictionsDefaultAction": "Deny",
+      "scmIpSecurityRestrictionsUseMain": false
+    }
+  }
+}

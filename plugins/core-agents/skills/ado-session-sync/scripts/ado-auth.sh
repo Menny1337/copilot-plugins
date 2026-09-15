@@ -36,7 +36,16 @@
 # Well-known Azure DevOps Entra application/resource ID (stable across all tenants/orgs).
 _ADO_RESOURCE="499b84ac-1321-427f-aa17-267ca6975798"
 
-_ADO_AUTH_CONFIG="${COPILOT_PLUGIN_ADO_CONFIG:-$HOME/.copilot/assistant/config.json}"
+_ADO_AUTH_SOURCE="${BASH_SOURCE[0]:-$0}"
+while [ -L "$_ADO_AUTH_SOURCE" ]; do
+  _ado_link="$(readlink "$_ADO_AUTH_SOURCE")" || { return 1 2>/dev/null || exit 1; }
+  case "$_ado_link" in /*) _ADO_AUTH_SOURCE="$_ado_link" ;; *) _ADO_AUTH_SOURCE="$(dirname "$_ADO_AUTH_SOURCE")/$_ado_link" ;; esac
+done
+. "$(dirname "$_ADO_AUTH_SOURCE")/../../../shared/assistant-config.sh" || { return 1 2>/dev/null || exit 1; }
+_ADO_AUTH_CONFIG="$(plugins_config_path)"
+if ! plugins_config_backend "$_ADO_AUTH_CONFIG" object >/dev/null; then
+  return 1 2>/dev/null || exit 1
+fi
 _ADO_AUTH_DEFAULT_FILE="${COPILOT_PLUGIN_ADO_PAT_FILE:-$HOME/.copilot/assistant/.ado-pat}"
 _ADO_TENANT_CACHE="${COPILOT_PLUGIN_ADO_TENANT_CACHE:-$HOME/.copilot/assistant/.ado-tenant}"
 

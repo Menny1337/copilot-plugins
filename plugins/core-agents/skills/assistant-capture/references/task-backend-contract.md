@@ -1,31 +1,53 @@
 # TaskBackend contract
 
-`~/.copilot/assistant/config.json` selects **one personal-board task backend** via
-`taskBackend`. `assistant-capture` (writes) and `assistant-query` (reads) both branch on
+The [selected assistant config](configuration.md) (default
+`~/.copilot/assistant/config.json`) selects **one personal-board task backend** via
+`taskBackend`. `assistant-capture` (writes) and `assistant-query` (queries, briefings and inbox reconciliation) both branch on
 this single value for every operation that touches the personal board — notes,
-reminders, and action-item extraction are backend-independent and unaffected.
+reminders, and action-item parsing are backend-independent. Accepted action items
+write tasks through the selected backend.
 
 This document is the single source of truth for what "a backend" must implement. It
 exists so a new backend (or a change to an existing one) can be reviewed against one
 checklist instead of being inferred from scattered examples across two skills.
 
+## Contents
+
+- [Supported values and defaults](#supported-values-and-defaults)
+- [The contract](#the-contract)
+- [Lane catalog](#lane-catalog-shared-names-backend-specific-source-field)
+- [Configuration versioning](#configuration-versioning)
+
 ## Supported values and defaults
 
 | `taskBackend` | Personal-board store | Query command | Capture section | Query section |
 |---|---|---|---|---|
-| `"markdown"` (default; also used when the key/file is absent) | `~/.copilot/assistant/tasks.md` | n/a (`assistant-store` gateway reads the file directly) | §3 | §2 |
-| `"ado"` | Azure DevOps work items (`config.ado` block) | `ado-query` (WIQL builder + `az boards query`) | §3.5 | §8a |
-| `"github"` | GitHub Issues + a Projects v2 board (`config.github` block) | `github-query` (GraphQL builder + `gh api graphql`) | §3.6 | §8c |
+| `"markdown"` (default; also used when the key/file is absent) | `~/.copilot/assistant/tasks.md` | n/a (`assistant-store` gateway reads the file directly) | [§3](markdown-tasks.md) | [§2](../../assistant-query/references/markdown-tasks.md) |
+| `"ado"` | Azure DevOps work items (`config.ado` block) | `ado-query` (WIQL builder + `az boards query`) | [§3.5](ado-tasks.md) | [§8a](../../assistant-query/references/ado-tasks.md) |
+| `"github"` | GitHub Issues + a Projects v2 board (`config.github` block) | `github-query` (GraphQL builder + `gh api graphql`) | [§3.6](github-tasks.md) | [§8b](../../assistant-query/references/github-tasks.md) |
 
 `taskBackend` is versioned implicitly by the config shape it requires — see
-**Configuration versioning** below. An unrecognized value, or a value whose required
-block is missing/invalid, MUST fall back to `"markdown"` behavior rather than error, so
-a typo in config never blocks task capture.
+**Configuration versioning** below. An absent default config file or selector defaults to
+`"markdown"`; an explicit `"markdown"` selects the local store.
+
+Before invoking any personal-board task helper, the skill must reject an explicit unrecognized
+selector: report the unsupported value and stop the task operation without reading
+or writing any task backend. Report malformed config or a missing/invalid required
+remote-backend block and stop that task operation too. Do not silently substitute
+markdown. Briefings can still persist independent sections, with task data marked
+unavailable. Notes and reminders remain local and do not need task configuration.
+
+These are skill-level routing guards. Hooks also validate the selected personal
+backend before launching. Direct query commands validate their requested board independently.
+Do not rely on a helper's fallback or config parsing to authorize a different store.
 
 `config.teamBoard` is a **separate, read-only, backend-independent** board (the
 corporate/team sprint board). It is never selected by `taskBackend` and always reads
 through `ado-query` regardless of which personal backend is active — see
-`assistant-query` §8/§4b.
+[team queries (§8)](../../assistant-query/references/ado-queries.md) /
+[team layout (§4b)](../../assistant-query/references/team-board-layout.md).
+Validate that target independently; a personal-backend error does not disable a
+valid team query or an explicitly requested non-personal ADO work-item operation.
 
 ## The contract
 
@@ -75,7 +97,7 @@ section) MUST define, for its store:
    backend-default/insertion order.
 10. **Idempotency** — creating "the same" item twice (retry after a network error, a
     bulk import re-run, a delta-reconciliation pass) must not create a duplicate.
-    Backends achieve this differently (ADO: fuzzy-title search, §3.5.2; GitHub: an
+    Backends achieve this differently (ADO: [fuzzy-title search, §3.5.2](ado-tasks.md#352-add-a-task); GitHub: an
     explicit idempotency marker in the issue body plus an unconditional remote existence
     check before create, never a local-cache-only check) but the guarantee is the same:
     **search before create.**
@@ -123,7 +145,7 @@ shape is inferred from which top-level keys are present (`ado`, `teamBoard`,
   blocks: `ado`, `teamBoard`, `adoSessionSync`, `fallbackInbox`. All existing v1 configs
   continue to work with **zero changes** — nothing in this contract removes or renames a
   v1 key.
-- **v2:** adds `taskBackend: "github"`, a `github` block (see `assistant-capture` §3.6.0
+- **v2:** adds `taskBackend: "github"`, a `github` block (see [GitHub configuration (§3.6.0)](github-configuration.md)
   for its shape), and a new `taskSessionSync` block read by the `github-session-sync`
   launcher (debounce/allowlist/session-state/log-level knobs, same shape as
   `adoSessionSync`). The ADO launcher (`ado-session-sync.sh`/`.ps1`) is **untouched** and

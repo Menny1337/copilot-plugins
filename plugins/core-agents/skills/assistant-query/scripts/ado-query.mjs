@@ -13,7 +13,7 @@
  *
  * CONFIG (read at runtime — never hardcoded)
  *   Source order: --config <path>  >  $COPILOT_PLUGIN_ASSISTANT_CONFIG  >
- *                 ~/.copilot/assistant/config.json
+ *                 $COPILOT_PLUGIN_ADO_CONFIG (legacy) > ~/.copilot/assistant/config.json
  *   Personal board  -> config.ado        { org, project }
  *   Team board      -> config.teamBoard   { org, project, team, areaPath }
  *   A leading "~" in --config is expanded to the home directory.
@@ -53,9 +53,7 @@
  * Pure Node, zero deps — mirrors the repo's other *.mjs scripts.
  */
 
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { readAssistantConfig, validateBoard } from '../../../shared/assistant-config.mjs';
 import { spawnSync } from 'node:child_process';
 
 // --- WIQL fragments shared across lanes -----------------------------------
@@ -240,39 +238,23 @@ function parseArgs(argv) {
   return o;
 }
 
-function expandHome(p) {
-  return p.startsWith('~') ? join(homedir(), p.slice(1)) : p;
-}
-
 function loadConfig(explicit) {
-  const path = expandHome(explicit || process.env.COPILOT_PLUGIN_ASSISTANT_CONFIG ||
-    join(homedir(), '.copilot', 'assistant', 'config.json'));
-  let raw;
   try {
-    raw = readFileSync(path, 'utf8');
-  } catch {
-    die(2, `config not found: ${path}\n  set --config or $COPILOT_PLUGIN_ASSISTANT_CONFIG, or create the file.`);
-  }
-  try {
-    return { cfg: JSON.parse(raw), path };
+    return readAssistantConfig(explicit);
   } catch (e) {
-    return die(2, `config is not valid JSON (${path}): ${e.message}`);
+    return die(2, e.message);
   }
 }
 
 // Resolve { org, project, team?, areaPath? } for the chosen board.
 function resolveBoard(cfg, board) {
+  try { validateBoard(cfg, board === 'team' ? 'teamBoard' : 'ado'); }
+  catch (e) { die(3, e.message); }
   if (board === 'team') {
     const t = cfg.teamBoard;
-    if (!t || !t.org || !t.project) {
-      die(3, 'no teamBoard configured in config.json — skip the team-board section.');
-    }
     return { org: t.org, project: t.project, team: t.team, areaPath: t.areaPath };
   }
   const a = cfg.ado;
-  if (!a || !a.org || !a.project) {
-    die(3, 'no "ado" block (org/project) configured in config.json.');
-  }
   return { org: a.org, project: a.project, team: a.team, areaPath: a.defaultAreaPath };
 }
 

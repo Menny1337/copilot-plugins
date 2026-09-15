@@ -45,7 +45,7 @@ user did), not `syncSession` (this background run).
 > prompt exactly as the session id. Do **not** truncate it, abbreviate it, or substitute any
 > other identifier (a tool-call id like `toolu_…`, the `syncSession`, a commit sha, etc.). Before
 > you tag or log, sanity-check it: a session id is a full UUID — `8-4-4-4-12` hex, e.g.
-> `123e4567-e89b-42d3-a456-426614174000`. If the value you are about to use is **not** a full
+> `11111111-2222-4333-8444-555555555555`. If the value you are about to use is **not** a full
 > UUID (it's shortened, or starts with `toolu_`), you have the wrong id — re-read `parentSession`
 > from the prompt. Never write a `session:` tag or a logger `--parent` from anything but the exact
 > `parentSession` UUID. Wrong or truncated ids pollute the board with bogus `session:` tags **and**
@@ -68,11 +68,15 @@ current repo as `cwd`.
 > set. That variable is therefore *expected* to be set while you run — do **not** treat it as a
 > reason to stop. Proceed with the sync normally.
 
-1. **Backend + opt-in.** Read `~/.copilot/assistant/config.json`. Env `ADO_SESSION_SYNC=0`
+1. **Backend + opt-in.** Resolve the [selected assistant config](../assistant-capture/references/configuration.md).
+   A hook child uses the inherited absolute `COPILOT_PLUGIN_ASSISTANT_CONFIG`, also pinned in
+   `COPILOT_PLUGIN_SYNC_CONFIG`; use it for every helper and subprocess, not the default file.
+   Report missing explicit files, malformed config and invalid targets; do not
+   substitute another board. Env `ADO_SESSION_SYNC=0` or `COPILOT_PLUGIN_TASK_SESSION_SYNC=0`
    force-disables sync regardless of config — treat that the same as an explicit skip, even on
    an explicit user request. Otherwise proceed only when both:
    - `taskBackend == "ado"`, and
-   - sync is enabled: `adoSessionSync.enabled == true` **or** env `ADO_SESSION_SYNC=1`.
+   - sync is enabled:    `adoSessionSync.enabled == true` **or** env `ADO_SESSION_SYNC=1` / `COPILOT_PLUGIN_TASK_SESSION_SYNC=1`.
    Otherwise exit quietly (no output, no error).
 2. **Read ADO settings** from the same config: `ado.org`, `ado.project`, `ado.assignedTo`,
    `ado.fieldMap`, plus optional auth knobs `ado.tenantId` (pin the org's Entra tenant) and
@@ -136,9 +140,9 @@ From `transcriptPath` (and git), produce a **2–5 sentence** factual progress n
 Evaluate signals **in this order** and take the first confident match:
 
 1. **Explicit id in the session** — a work-item reference in the transcript or user prompts:
-   `#152`, `AB#152`, `work item 152`, an ADO `_workitems/edit/152` URL. Highest priority.
-2. **Git branch / commit trailers** — branch names like `feature/152-...`, `152-...`, or
-   commit messages/trailers referencing `AB#152` / `#152` in `cwd`.
+   `#906`, `AB#906`, `work item 906`, an ADO `_workitems/edit/906` URL. Highest priority.
+2. **Git branch / commit trailers** — branch names like `feature/906-...`, `906-...`, or
+   commit messages/trailers referencing `AB#906` / `#906` in `cwd`.
 3. **Existing session link (re-sync)** — a work item already tagged `session:<sessionId>`:
    ```bash
    az boards query --org "<org>" --project "<project>" \
@@ -307,7 +311,7 @@ fail-open and honors `adoSessionSync.logLevel`; just call it and continue.
 - Removing/replacing a tag set needs the REST `op:replace` path (see the `az` skill's
   `devops-boards.md`); normal syncs only **add** the session tag, so the simple `--fields`
   form is correct here.
-- Org/project/assignee come from `~/.copilot/assistant/config.json`; do not hardcode them.
+- Org/project/assignee come from the selected assistant config; do not hardcode them.
 - **ADO auth is a short-lived AAD token, decoupled from the active `az` subscription** (see
   Step 3). `scripts/ado-auth.sh` auto-detects the org's Entra tenant, pins a logged-in
   subscription in it, and mints an AAD token via `az account get-access-token`, exported as
@@ -386,4 +390,4 @@ client-side filtering (by session, event type, date, full-text, errors-only), an
 expandable rows that reveal the untruncated progress note, a clickable link to the
 ADO work item, and a link to that session's full run log (`<parentSession>.log`).
 Read-only and fail-soft (empty trail → empty dashboard). Honors
-`COPILOT_PLUGIN_ADO_SYNC_LOGDIR`; ADO org/project come from `~/.copilot/assistant/config.json`.
+`COPILOT_PLUGIN_ADO_SYNC_LOGDIR`; ADO org/project come from the selected assistant config.

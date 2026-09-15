@@ -1,6 +1,6 @@
 ---
 name: m365-messaging
-description: "Read and send Microsoft Teams messages via the Teams MCP server (chats, channels, presence, mentions, search). Use for catch-up on chats, replying to people, posting to a channel, checking if someone is online before pinging, or searching past Teams conversations. Triggers: check Teams, any new messages, unread, DMs, message Sarah, ping the team, post to channel, what did X say, mentions, who messaged me, Teams catch up, is X online, send Teams message, notes to self, reply on Teams, send Teams file, m365 user lookup."
+description: "Read and send Microsoft Teams messages via the Teams MCP server (chats, channels, presence, mentions, search). Use for catch-up on chats, replying to people, posting to a channel, checking if someone is online before pinging, or searching past Teams conversations. Triggers: check Teams, any new messages, unread, DMs, message a teammate, ping the team, post to channel, what did X say, mentions, who messaged me, Teams catch up, is X online, send Teams message, notes to self, reply on Teams, send Teams file, m365 user lookup."
 argument-hint: "<person or channel, and the message to send>"
 ---
 
@@ -81,7 +81,7 @@ Use these exact namespaced tool names — they are what the MCP server exposes.
 | `teams-ListChatMembers` | Members of a chat |
 | `teams-ListChatMessages` | Messages in a chat (most-recent-first, paged via `nextLink`) |
 | `teams-GetChatMessage` | A single message by ID |
-| `teams-SearchTeamsMessages` | **Natural-language** search across chats + channels — use for fuzzy / "what did Sarah say about X" |
+| `teams-SearchTeamsMessages` | **Natural-language** search across chats + channels — use for fuzzy / "what did that person say about X" |
 | `teams-SearchTeamMessagesQueryParameters` | **KQL** search (`from:`, `sent>=`, AND/OR, quoted phrases) — use when keywords/sender/date are exact |
 
 ### Teams chats — write (`teams-*`)
@@ -135,14 +135,14 @@ Use these exact namespaced tool names — they are what the MCP server exposes.
 
    ```
    📬 3 unread Teams chats
-   • Sarah Chen — "can you review the perf PR?" (2 unread)
-   • #FE-Infra (group) — "anyone seen the build failure?" (5 unread)
-   • Miki Lavi — "let's sync at 3" (1 unread)
+   • <Person A> — "can you review the perf PR?" (2 unread)
+   • #example-team (group) — "anyone seen the build failure?" (5 unread)
+   • <Person B> — "let's sync at 3" (1 unread)
    ```
 
 6. If zero unread, say so plainly: "✅ No unread Teams chats."
 
-### B. "Message <Person>" / "DM Sarah about X"
+### B. "Message <Person>" / "DM <Person> about X"
 
 1. Resolve the person:
    - If the user gave a UPN/email, use it directly.
@@ -151,7 +151,7 @@ Use these exact namespaced tool names — they are what the MCP server exposes.
 2. (Optional, recommended for non-urgent pings) Call `teams-GetUserPresence` with the resolved UPN. If availability is `DoNotDisturb` or activity is `InAMeeting` / `Presenting`, surface that and ask: "They're in a meeting — send anyway, queue, or skip?"
 3. Compose the message. For plain text, content type stays `text`. For mentions / cards / HTML, call `teams-GetRichMessageFormats` first.
 4. Send via `teams-SendMessageToUser` with `userIdOrUpn` = resolved UPN and `content` = message body.
-5. Confirm: "✉️ Sent to Sarah Chen — '<first 60 chars>...'".
+5. Confirm: "✉️ Sent to <resolved display name> — '<first 60 chars>...'".
 
 ### C. "Reply in the chat with <Person/Group>"
 
@@ -175,7 +175,7 @@ Single call: `teams-SendMessageToSelf` with `content`. No chat lookup needed. Us
 Pick the right tool based on the user's query shape:
 
 - **Exact terms / sender / date filters** → `teams-SearchTeamMessagesQueryParameters` with KQL:
-  - `from:sarah@contoso.com AND budget`
+  - `from:user@example.com AND budget`
   - `"deploy plan" sent>=2026-05-01`
   - Max 25 results per page; use `from:` parameter for paging offset.
 - **Vague / topical** → `teams-SearchTeamsMessages` (natural language). Returns a summary + `chatIds`; drill into specific threads with `teams-ListChatMessages`.

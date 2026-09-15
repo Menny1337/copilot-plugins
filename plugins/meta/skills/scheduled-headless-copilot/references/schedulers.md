@@ -15,6 +15,10 @@ script**, never `copilot` directly. Pick the section for your OS.
 
 ## macOS — launchd LaunchAgent
 
+For a managed menu-bar app, visual builders, live status, and run history, use
+[`copilot-loops-app.md`](./copilot-loops-app.md). The instructions below remain the portable
+copy-and-edit workflow and are not imported into Copilot Loops.
+
 A **LaunchAgent** runs per-user at login with no root. Save to
 `~/Library/LaunchAgents/com.example.copilot-task.plist`:
 

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "repository-maintenance",
+  "name": "Repository maintenance",
+  "kind": "script",
+  "lifecycle": "needsReview",
+  "schedule": {
+    "kind": "interval",
+    "seconds": 86400,
+    "graceSeconds": 300
+  },
+  "execution": {
+    "type": "scriptFile",
+    "path": "/tmp/repo-maintenance.sh",
+    "arguments": [
+      "--prune",
+      "--stats"
+    ],
+    "workingDirectory": "/tmp/acme",
+    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "permissions": {
+    "profile": "custom",
+    "allowAll": false,
+    "allowTools": [],
+    "denyTools": [],
+    "allowUrls": [],
+    "denyUrls": []
+  },
+  "environment": {
+    "plain": {
+      "DRY_RUN": "false"
+    },
+    "secretNames": []
+  },
+  "timeoutSeconds": 3600,
+  "retry": {
+    "maxRetries": 0,
+    "backoffSeconds": 60
+  },
+  "overlapPolicy": "skip",
+  "notifications": {
+    "onFailure": true,
+    "onSuccess": false
+  },
+  "retention": {
+    "days": 30,
+    "maxRuns": 100
+  },
+  "approval": {
+    "fingerprint": null,
+    "approvedAt": null
+  },
+  "createdAt": "2026-07-24T15:00:00Z",
+  "updatedAt": "2026-07-24T15:00:00Z"
+}

@@ -35,7 +35,7 @@ enum PreviewWindow {
             maxFirstRunSessions: 200,
             repoDir: "/Users/you/Repos/copilot-plugins",
             marketplaceName: "menny1337-plugins",
-            ghAccount: "the user"
+            ghAccount: "example-user"
         )
         let units = [
             ReviewUnit(name: "agent-crafting", path: "/Users/you/Repos/copilot-plugins/plugins/meta/skills/agent-crafting/SKILL.md", plugin: "meta"),

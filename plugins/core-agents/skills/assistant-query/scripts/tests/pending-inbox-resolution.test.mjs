@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // pending-inbox-resolution.test.mjs — regression coverage for the "Pending
-// Inbox Sync" bash snippets documented in assistant-query/SKILL.md (§8a ADO
-// mode and §8b GitHub mode). Extracts the ACTUAL fenced bash block from the
-// SKILL.md content (not a reimplementation) and executes it in a sandbox, so
+// Inbox Sync" bash snippets documented in references/ado-inbox-sync.md and
+// references/github-inbox-sync.md. Extracts the ACTUAL fenced bash block from
+// the selected reference (not a reimplementation) and executes it in a sandbox, so
 // a future edit that reintroduces a hardcoded ~/.copilot/assistant/inbox.md
 // path (ignoring a configured `fallbackInbox`) fails this test.
 
@@ -17,20 +17,17 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SKILL_MD = join(HERE, '..', '..', 'SKILL.md');
+const REFERENCES = join(HERE, '..', '..', 'references');
 
 /**
- * Pull the bash fenced code block that immediately follows the Nth
- * "### Pending Inbox Sync" heading in SKILL.md.
+ * Pull the bash fenced code block that immediately follows the
+ * "### Pending Inbox Sync" heading in the selected backend reference.
  */
-function extractPendingInboxSnippet(occurrence) {
-  const text = readFileSync(SKILL_MD, 'utf8');
+function extractPendingInboxSnippet(backend) {
+  const text = readFileSync(join(REFERENCES, `${backend}-inbox-sync.md`), 'utf8');
   const heading = '### Pending Inbox Sync';
-  let idx = -1;
-  for (let i = 0; i <= occurrence; i++) {
-    idx = text.indexOf(heading, idx + 1);
-    assert.ok(idx !== -1, `expected to find "${heading}" occurrence #${occurrence} in SKILL.md`);
-  }
+  const idx = text.indexOf(heading);
+  assert.ok(idx !== -1, `expected to find "${heading}" in ${backend}-inbox-sync.md`);
   const afterHeading = text.slice(idx);
   const fenceStart = afterHeading.indexOf('```bash');
   assert.ok(fenceStart !== -1, 'expected a ```bash fenced block after the heading');
@@ -55,8 +52,24 @@ function runSnippet(snippet, home) {
   return spawnSync('bash', ['-c', snippet], { encoding: 'utf8', env: { ...process.env, HOME: home } });
 }
 
+for (const backend of ['ado', 'github']) {
+  for (const statusKey of ['status', 'ado_status']) {
+    test(`${backend} inbox scan accepts ${statusKey}: pending`, () => {
+      const { root, home } = sandbox();
+      try {
+        writeConfig(home, { taskBackend: backend });
+        writeFileSync(join(home, '.copilot', 'assistant', 'inbox.md'),
+          `## synthetic capture\n- ${statusKey}: pending\n- title: "Cross-backend pending item"\n`);
+        const result = runSnippet(extractPendingInboxSnippet(backend), home);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Cross-backend pending item/);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+  }
+}
+
 describe('ADO-mode Pending Inbox Sync snippet (§8a) resolves config.fallbackInbox', () => {
-  const snippet = extractPendingInboxSnippet(0);
+  const snippet = extractPendingInboxSnippet('ado');
 
   test('the snippet does not hardcode the default path — it reads fallbackInbox from config', () => {
     // A hardcoded path would be a bare `~/.copilot/assistant/inbox.md` with no
@@ -96,7 +109,7 @@ describe('ADO-mode Pending Inbox Sync snippet (§8a) resolves config.fallbackInb
 });
 
 describe('GitHub-mode Pending Inbox Sync snippet (§8b) resolves config.fallbackInbox', () => {
-  const snippet = extractPendingInboxSnippet(1);
+  const snippet = extractPendingInboxSnippet('github');
 
   test('the snippet does not hardcode the default path — it reads fallbackInbox from config', () => {
     assert.match(snippet, /fallbackInbox/);
