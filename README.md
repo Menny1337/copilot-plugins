@@ -4,10 +4,11 @@ A public [GitHub Copilot CLI](https://github.com/github/copilot-cli) / Agency-co
 plugin marketplace: a curated set of reusable agents and skills grouped into domain plugins
 so you can load just what you need instead of polluting your global config.
 
-> This repository is **generated** from a de-personalized export of a private marketplace and is
-> de-personalized (no personal identity, branding, or local paths). Plugin content is the
-> source of truth; generated indexes (`CATALOG.md`, the catalog block below, plugin README
-> generated blocks) are produced by the scripts in `scripts/` — do not hand-edit them.
+> This repository is the canonical public source for the marketplace. Personal settings and
+> credentials belong in each feature's documented local configuration, never in source.
+> Plugin content is the source of truth; generated indexes (`CATALOG.md`, the catalog block
+> below, and plugin README generated blocks) are produced by the scripts in `scripts/` — do
+> not hand-edit them.
 
 ## Install
 

@@ -1,7 +1,8 @@
 # AGENTS.md — working on this repo
 
-This is a **generated**, public Copilot CLI / Agency plugin marketplace. It contains content
-plus four zero-dependency Node scripts and optional source-built macOS companion apps.
+This is the canonical public Copilot CLI / Agency plugin marketplace. It contains content,
+zero-dependency Node tooling, and optional source-built macOS companion apps. Personal
+settings and credentials must remain in documented local configuration outside the repository.
 
 ## CI-enforced rules
 
