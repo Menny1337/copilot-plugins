@@ -2,7 +2,7 @@
 
 # Catalog
 
-**7** plugins · **9** agents · **36** skills · **5** hooks
+**7** plugins · **9** agents · **37** skills · **5** hooks
 
 A single index of every agent, skill, and hook across all plugins in this marketplace. Source files (`SKILL.md`, `*.agent.md`, `hooks.json`) remain the only source of truth — this catalog is regenerated from their frontmatter by `scripts/catalog.mjs`.
 
@@ -19,7 +19,7 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`agent-architect-self-audit`](plugins/meta/skills/agent-architect-self-audit/SKILL.md) 📚 | skill | `meta` | Audits the Agent Architect's own instructions, skills, references, and memory, producing a prioritized update checklist. |
 | [`agent-crafting`](plugins/meta/skills/agent-crafting/SKILL.md) 📚 🔒 | skill | `meta` | Creates and troubleshoots Copilot agent definitions (.agent.md). Use for persona, frontmatter, tool access, or loading and routing changes. |
 | [`agent-skill-audit`](plugins/meta/skills/agent-skill-audit/SKILL.md) 📚 🔒 | skill | `meta` | Audits agent, skill, and hook definitions for structural quality, routing, and inventory. Use for static reviews, not architect self-audits or session-history analysis. |
-| [`agentStop: hooks/ado-session-sync.sh`](plugins/core-agents/hooks/ado-session-sync.sh) | hook | `core-agents` | On `agentStop` runs `hooks/ado-session-sync.sh` (timeout 20s). |
+| [`agentStop: hooks/task-session-sync.sh`](plugins/core-agents/hooks/task-session-sync.sh) | hook | `core-agents` | On `agentStop` runs `hooks/task-session-sync.sh` (timeout 20s). |
 | [`assistant`](plugins/core-agents/agents/assistant.agent.md) | agent | `core-agents` | Personal assistant for notes, tasks, reminders, and Microsoft Teams messaging. Takes meeting notes, captures ideas, tracks decisions, manages todo lists with priorities and due… |
 | [`assistant-capture`](plugins/core-agents/skills/assistant-capture/SKILL.md) 📜 📚 | skill | `core-agents` | Captures personal notes, tasks, and reminders. Use to save a note, manage a task or reminder, or turn meeting action items into tasks. |
 | [`assistant-query`](plugins/core-agents/skills/assistant-query/SKILL.md) 📜 📚 | skill | `core-agents` | Queries saved notes, tasks, reminders, and open pull requests, and creates daily or weekly briefings. Use to find personal context, check what is due, or get a briefing. |
@@ -27,6 +27,7 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`azure-ops`](plugins/core-agents/agents/azure-ops.agent.md) | agent | `core-agents` | Azure CLI operations expert. Manages Azure resources, DevOps (boards, repos, pipelines, wiki), identity, infrastructure, monitoring, and more via the az CLI. |
 | [`browser`](plugins/core-skills/skills/browser/SKILL.md) 📜 📚 | skill | `core-skills` | Automates websites in a dedicated signed-in browser window. Use for screenshots, rendered pages, forms, account flows, or browser network/storage inspection; not API-only tasks,… |
 | [`create-image`](plugins/core-skills/skills/create-image/SKILL.md) 📜 📚 | skill | `core-skills` | Generates and edits raster images with gpt-image-2 on Azure AI Foundry. Use for image generation or gpt-image command and setup help; use nano-banana-cli for Gemini. |
+| [`github-session-sync`](plugins/core-agents/skills/github-session-sync/SKILL.md) 📜 🔒 | skill | `core-agents` | Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced… |
 | [`grok-search`](plugins/core-skills/skills/grok-search/SKILL.md) 📜 📚 | skill | `core-skills` | Searches live X/Twitter posts and sentiment through Grok. For other web research, use only when the user or workflow selects Grok; general news or citation requests alone do not… |
 | [`hooks-crafting`](plugins/meta/skills/hooks-crafting/SKILL.md) 📚 🔒 | skill | `meta` | Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications,… |
 | [`html-presentation`](plugins/presentation/skills/html-presentation/SKILL.md) 🔒 | skill | `presentation` | Create beautiful browser-runnable HTML presentations using reveal.js. Single self-contained HTML file with slides, transitions, speaker notes, and responsive design. |
@@ -97,7 +98,7 @@ _Source: [`plugins/core-skills/`](plugins/core-skills/)_
 
 ### `core-agents`
 
-Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).
+Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO or GitHub session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).
 
 _Source: [`plugins/core-agents/`](plugins/core-agents/)_
 
@@ -116,6 +117,7 @@ _Source: [`plugins/core-agents/`](plugins/core-agents/)_
 | [`ado-session-sync`](plugins/core-agents/skills/ado-session-sync/SKILL.md) 📜 🔒 | Reviews the just-finished Copilot session and updates the related Azure DevOps work item so the ADO board stays a source of truth linking work items to the sessions that produced… | ado session sync, update work item with progress, session-to-task, sync session to ADO, stamp session id on work item, session-yield hook |
 | [`assistant-capture`](plugins/core-agents/skills/assistant-capture/SKILL.md) 📜 📚 | Captures personal notes, tasks, and reminders. Use to save a note, manage a task or reminder, or turn meeting action items into tasks. | — |
 | [`assistant-query`](plugins/core-agents/skills/assistant-query/SKILL.md) 📜 📚 | Queries saved notes, tasks, reminders, and open pull requests, and creates daily or weekly briefings. Use to find personal context, check what is due, or get a briefing. | — |
+| [`github-session-sync`](plugins/core-agents/skills/github-session-sync/SKILL.md) 📜 🔒 | Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced… | github session sync, update issue with progress, session-to-issue, sync session to github, stamp issue with session, session-yield hook |
 | [`m365-messaging`](plugins/core-agents/skills/m365-messaging/SKILL.md) | Read and send Microsoft Teams messages via the Teams MCP server (chats, channels, presence, mentions, search). | check Teams, any new messages, unread, DMs, message a teammate, ping the team, post to channel, what did X say, mentions, who messaged me, Teams catch up, is X online, send Teams message, notes to self, reply on Teams, send Teams file, m365 user lookup |
 
 **Hooks**
@@ -124,7 +126,7 @@ _Source: [`plugins/core-agents/`](plugins/core-agents/)_
 | --- | --- | --- |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
-| [`agentStop: hooks/ado-session-sync.sh`](plugins/core-agents/hooks/ado-session-sync.sh) | On `agentStop` runs `hooks/ado-session-sync.sh` (timeout 20s). | — |
+| [`agentStop: hooks/task-session-sync.sh`](plugins/core-agents/hooks/task-session-sync.sh) | On `agentStop` runs `hooks/task-session-sync.sh` (timeout 20s). | — |
 
 ### `meta`
 
@@ -258,6 +260,7 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 | [`az`](plugins/core-skills/skills/az/SKILL.md) 📚 | `core-skills` | Generate and explain Azure CLI (`az`) commands for managing Azure and Azure DevOps. Use when the user asks for Azure CLI commands or wants to manage Azure or Azure DevOps from the… | — |
 | [`browser`](plugins/core-skills/skills/browser/SKILL.md) 📜 📚 | `core-skills` | Automates websites in a dedicated signed-in browser window. Use for screenshots, rendered pages, forms, account flows, or browser network/storage inspection; not API-only tasks,… | — |
 | [`create-image`](plugins/core-skills/skills/create-image/SKILL.md) 📜 📚 | `core-skills` | Generates and edits raster images with gpt-image-2 on Azure AI Foundry. Use for image generation or gpt-image command and setup help; use nano-banana-cli for Gemini. | — |
+| [`github-session-sync`](plugins/core-agents/skills/github-session-sync/SKILL.md) 📜 🔒 | `core-agents` | Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced… | github session sync, update issue with progress, session-to-issue, sync session to github, stamp issue with session, session-yield hook |
 | [`grok-search`](plugins/core-skills/skills/grok-search/SKILL.md) 📜 📚 | `core-skills` | Searches live X/Twitter posts and sentiment through Grok. For other web research, use only when the user or workflow selects Grok; general news or citation requests alone do not… | — |
 | [`hooks-crafting`](plugins/meta/skills/hooks-crafting/SKILL.md) 📚 🔒 | `meta` | Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications,… | — |
 | [`html-presentation`](plugins/presentation/skills/html-presentation/SKILL.md) 🔒 | `presentation` | Create beautiful browser-runnable HTML presentations using reveal.js. Single self-contained HTML file with slides, transitions, speaker notes, and responsive design. | — |
@@ -290,7 +293,7 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 
 | Name | Plugin | Description | Triggers / Keywords |
 | --- | --- | --- | --- |
-| [`agentStop: hooks/ado-session-sync.sh`](plugins/core-agents/hooks/ado-session-sync.sh) | `core-agents` | On `agentStop` runs `hooks/ado-session-sync.sh` (timeout 20s). | — |
+| [`agentStop: hooks/task-session-sync.sh`](plugins/core-agents/hooks/task-session-sync.sh) | `core-agents` | On `agentStop` runs `hooks/task-session-sync.sh` (timeout 20s). | — |
 | [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | `core-agents` | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | `core-agents` | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/detect-tools.sh`](plugins/core-skills/hooks/detect-tools.sh) | `core-skills` | On `sessionStart` runs `hooks/detect-tools.sh` (timeout 15s). | — |

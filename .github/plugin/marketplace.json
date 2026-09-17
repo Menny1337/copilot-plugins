@@ -2,7 +2,7 @@
   "name": "menny1337-plugins",
   "metadata": {
     "description": "Public Copilot CLI plugin marketplace: reusable agents and skills organized by domain (core, meta, presentation, docs, ui, duty).",
-    "version": "3.4.0"
+    "version": "3.5.0"
   },
   "owner": {
     "name": "Menny1337",
@@ -44,8 +44,8 @@
     },
     {
       "name": "core-agents",
-      "description": "Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).",
-      "version": "2.5.0",
+      "description": "Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO or GitHub session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).",
+      "version": "2.6.0",
       "source": "./plugins/core-agents",
       "author": {
         "name": "Menny1337",
