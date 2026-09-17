@@ -7,10 +7,9 @@
 // a fake `copilot` shadowed onto PATH so we can prove whether a child was
 // launched without spawning a real headless agent, a fake `gh` so
 // `command -v gh` succeeds without a real network-capable binary) PLUS a
-// curated "no-jq" PATH: a one-time symlink farm cloning every /usr/bin
-// executable EXCEPT jq, combined with /bin (jq lives only in /usr/bin on this
-// platform, confirmed at farm-build time) — so `jq` is genuinely unresolvable
-// on PATH, not merely shadowed by an early non-functional stub, while every
+// curated "no-jq" PATH: a one-time symlink farm cloning standard system
+// executables EXCEPT jq and node — so `jq` is genuinely unresolvable on PATH,
+// not merely shadowed by an early non-functional stub, while every
 // other tool the script needs (sed, grep, head, dirname, nohup, uuidgen, ...)
 // stays real. A third curated PATH (no-jq AND no-node) proves the original
 // "neither available -> fail closed" safety net still holds.
@@ -35,37 +34,46 @@ const HOOKS_DIR = dirname(HERE);
 const SH_HOOK = join(HOOKS_DIR, 'github-session-sync.sh');
 
 const VALID_SID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-const REAL_USR_BIN = '/usr/bin';
-const NODE_BIN_DIR = dirname(process.execPath);
+const SYSTEM_BIN_DIRS = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'];
 
 // --- one-time "no jq" symlink farm, shared read-only across every test in
 // this file (building ~900 symlinks per test would be needlessly slow). ---
 let farmDir;
+let nodeOnlyDir;
 function noJqFarmDir() {
   if (farmDir) return farmDir;
   farmDir = mkdtempSync(join(tmpdir(), 'nojq-farm-'));
-  for (const name of readdirSync(REAL_USR_BIN)) {
-    if (name === 'jq') continue; // the one exclusion — everything else stays real
-    try {
-      symlinkSync(join(REAL_USR_BIN, name), join(farmDir, name));
-    } catch {
-      // Ignore individual broken/unreadable entries (e.g. dangling symlinks
-      // already present in /usr/bin) — irrelevant to this suite's needs.
+  for (const sourceDir of SYSTEM_BIN_DIRS) {
+    if (!existsSync(sourceDir)) continue;
+    for (const name of readdirSync(sourceDir)) {
+      if (name === 'jq' || name === 'node') continue;
+      try {
+        symlinkSync(join(sourceDir, name), join(farmDir, name));
+      } catch {
+        // Duplicate names and broken system entries are irrelevant here.
+      }
     }
   }
   return farmDir;
 }
+function nodeBinDir() {
+  if (nodeOnlyDir) return nodeOnlyDir;
+  nodeOnlyDir = mkdtempSync(join(tmpdir(), 'node-only-'));
+  symlinkSync(process.execPath, join(nodeOnlyDir, 'node'));
+  return nodeOnlyDir;
+}
 after(() => {
   if (farmDir) rmSync(farmDir, { recursive: true, force: true });
+  if (nodeOnlyDir) rmSync(nodeOnlyDir, { recursive: true, force: true });
 });
 
 /** PATH with jq unresolvable but node, sed, grep, dirname, etc. all real. */
 function noJqPath(sandboxBin) {
-  return `${sandboxBin}:${noJqFarmDir()}:/bin:${NODE_BIN_DIR}`;
+  return `${sandboxBin}:${noJqFarmDir()}:${nodeBinDir()}`;
 }
 /** PATH with NEITHER jq NOR node resolvable — the original safety-net case. */
 function noJqNoNodePath(sandboxBin) {
-  return `${sandboxBin}:${noJqFarmDir()}:/bin`;
+  return `${sandboxBin}:${noJqFarmDir()}`;
 }
 /** Normal PATH (jq present) — baseline/regression checks. */
 function normalPath(sandboxBin) {
