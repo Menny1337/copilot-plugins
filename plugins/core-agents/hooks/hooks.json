@@ -18,8 +18,8 @@
     "agentStop": [
       {
         "type": "command",
-        "bash": "./hooks/ado-session-sync.sh",
-        "powershell": ". ./hooks/ado-session-sync.ps1",
+        "bash": "./hooks/task-session-sync.sh",
+        "powershell": ". ./hooks/task-session-sync.ps1",
         "timeoutSec": 20
       }
     ]
