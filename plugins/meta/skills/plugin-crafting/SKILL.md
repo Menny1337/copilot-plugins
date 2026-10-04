@@ -183,42 +183,54 @@ relying on it.
 
 ### CLI commands (run in the terminal, not slash commands)
 
-`copilot plugin` and `copilot plugins` **overlap but are not identical**. Both accept
-`install`, `list`, `marketplace`, and `update`. `uninstall` is **singular-only**;
-`enable`, `disable`, `remove|rm`, and the cross-kind `--plugin`/`--mcp`/`--skill` flags
-are **plural-only**. Using the wrong form fails with
-`error: too many arguments for 'plugin'`.
+For CLI 1.0.85+, `copilot plugins` is a legacy alias of `copilot plugin`.
+Use the singular form for plugins and dedicated commands for other resources.
+The 1.0.85 release notes, current public documentation and shell 1.0.90-0 help
+agree on this migration. These checks establish command syntax, not installation
+or activation behavior.
 
-GitHub's public plugin page currently describes the forms as interchangeable and documents a
-`refresh` alias. Live 1.0.83-5 help differs: use the command split below and `marketplace
-update` for version-specific CLI instructions.
+At baseline 1.0.83-5 the command trees differed. Do not apply those historical
+singular/plural restrictions to newer targets. Shell 1.0.90-0 accepts
+`copilot plugin marketplace refresh --help` and displays `update` help, although
+the parent help lists only `update`. Prefer `update` in recipes.
 
 ```
-copilot plugin install SPEC          # SPEC: plugin@marketplace | OWNER/REPO[:PATH] | git-url | ./path
-copilot plugin uninstall NAME        # singular only
-copilot plugin list
-copilot plugin update NAME [--all]
-copilot plugins enable NAME          # plural only
-copilot plugins disable NAME         # plural only
-copilot plugins remove NAME          # plural only (alias: rm)
+copilot plugin install <SPEC>          # plugin@marketplace | OWNER/REPO[:PATH] | git-url | ./path
+copilot plugin uninstall <NAME>
+copilot plugin list [--json]           # JSON is a flat plugin array in 1.0.85+
+copilot plugin update <NAME>           # update one plugin
+copilot plugin update --all            # update all plugins; no name required
+copilot plugin enable <NAME>
+copilot plugin disable <NAME>
 
-copilot plugin marketplace add SOURCE      # owner/repo | owner/repo#ref | URL | local dir
+copilot plugin marketplace add <SOURCE>       # owner/repo | owner/repo#ref | URL | local dir
 copilot plugin marketplace list
-copilot plugin marketplace browse NAME
-copilot plugin marketplace update [NAME]   # omit NAME to update all (no `refresh` alias)
-copilot plugin marketplace remove NAME [--force]
+copilot plugin marketplace browse <NAME>
+copilot plugin marketplace update [<NAME>]    # omit the name to update all
+copilot plugin marketplace remove <NAME> [--force]
 
-copilot plugins install --skill <FILE|URL|DIR> [--scope user|project]
-copilot plugins enable|disable|remove NAME --plugin|--mcp|--skill
+copilot skill add <FILE | URL | DIRECTORY>
+copilot skill add --project <FILE | URL>
+copilot skill enable <NAME>
+copilot skill disable <NAME>
+copilot skill remove <NAME | DIRECTORY>
+copilot mcp --help                    # dedicated server management commands
+copilot instruction list [--json]
+copilot lsp list [--json]
 ```
 
-- `--plugin` is the default kind for `enable` / `disable` / `remove`.
+- CLI 1.0.85 removed the cross-kind `--kind`, `--scope`, `--mcp`, and `--skill`
+  flags from `copilot plugins`. Replace skill installs with `copilot skill add`
+  and resource toggles with `copilot plugin`, `copilot mcp`, or `copilot skill`.
+- `copilot plugin list --json` now emits a flat array, not `{ plugins, errors }`.
+  Check existing consumers before changing parsers. Plugin lists no longer include
+  MCP servers, skills, instruction sources or LSP servers; use their dedicated commands.
 - `marketplace remove` is refused while plugins from it are installed; `--force` uninstalls
   them too. The built-in `copilot-plugins` and `awesome-copilot` marketplaces cannot be removed.
 - A marketplace registers under its own `name` from `marketplace.json` — there is no local alias.
-- MCP servers install from a policy-configured registry, not `copilot plugins install`; use the
-  `/mcp` Online view. Use `/plugin` for installed plugin management; `/plugins` was removed in
-  1.0.81-10.
+- MCP servers install from a policy-configured registry, not `copilot plugin install`; use the
+  `/mcp` Online view or inspect `copilot mcp add --help`. Use `/plugin` for installed
+  plugin management; `/plugins` was removed in 1.0.81-10.
 - `--config-dir` is deprecated — use `COPILOT_HOME`.
 - `COPILOT_PLUGIN_DIR_ONLY` disables automatic plugin discovery, giving a deterministic set
   alongside `--plugin-dir`.

@@ -149,8 +149,11 @@ rule: do not edit the skill for an agent-layer problem.
 - **Apply only after explicit human approval.** After applying, run frontmatter
   validation (the repo validator if available, e.g. `node scripts/validate.mjs`). In
   autonomous mode, "apply" means commit on the unit's branch; the daemon merges and
-  deploys only if `node scripts/validate.mjs` and `node scripts/catalog.mjs --check`
-  pass.
+  deploys only after both `node scripts/catalog.mjs` and
+  `node scripts/plugin-readme.mjs` succeed, followed by
+  `node scripts/validate.mjs`, `node scripts/catalog.mjs --check` and
+  `node scripts/plugin-readme.mjs --check`. A generator or check failure stops
+  publication; the reviewer reports failure without committing the failed change.
 - **Mind version governance.** If the repo versions its content (e.g. per-plugin
   `plugin.json` + a marketplace manifest + per-plugin `CHANGELOG.md`, gated in CI),
   the version bump follows the content commit — do **not** hand-edit version/changelog

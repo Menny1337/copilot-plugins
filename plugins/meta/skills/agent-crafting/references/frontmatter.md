@@ -92,6 +92,17 @@ on essentially every invocation, and use the supported array form. A body
 roster with use conditions is the lighter option for related skills.
 Unknown names can be ignored by the host; check dependency resolution.
 
+CLI 1.0.86 documents `include-custom-instructions: true` for custom agents
+spawned as subagents. The default is `false`: those subagents do not receive
+repository `.github/copilot-instructions.md`, `AGENTS.md`, or `CLAUDE.md` files.
+Opt in for agents that need repository conventions, not for every specialist.
+A custom agent selected as the session agent already receives those instructions.
+
+`--no-custom-instructions` takes precedence over the opt-in. Extra instruction
+directories supplied only to the parent through `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
+are not inherited through this field. The baseline records release and public
+documentation evidence separately from untested runtime loading behavior.
+
 ## Model and invocation controls
 
 Check `model`, `model-policy`, `reasoning-effort`, `target`,

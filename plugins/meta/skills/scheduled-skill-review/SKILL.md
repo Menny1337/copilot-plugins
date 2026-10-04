@@ -54,8 +54,11 @@ isolated subprocesses and never reads raw transcripts itself.
    `scripts/run-batch-review.sh` creates a git worktree + sanitized branch and runs
    `agency copilot -p --agent meta:agent-architect -C <worktree> "run
    skill-improvement-loop on <unit> …"`. The subprocess harvests/diagnoses/patches
-   (or does post-deploy Phase E, or proposes a revert), runs `validate.mjs` +
-   `catalog.mjs`, commits, and writes a **result JSON** (`skill-review-result/1`)
+   (or does post-deploy Phase E, or proposes a revert), runs both `catalog.mjs`
+   and `plugin-readme.mjs`, then `validate.mjs` and both generators' `--check`
+   commands. It stops on a generator or check failure without committing the
+   failed change. Otherwise it commits the change and generated documentation.
+   In either case it writes a **result JSON** (`skill-review-result/1`)
    to a git-excluded file **inside its worktree** (the subprocess's permission
    boundary forbids writing above the worktree into the `runs/` tree); the
    orchestrator then copies that handoff into `runs/<id>/results/<unit>.json` and
@@ -71,12 +74,35 @@ isolated subprocesses and never reads raw transcripts itself.
    first runs `version.mjs apply` so the plugin source change is governed (bumps
    `plugin.json` + the marketplace entry, writes a populated `CHANGELOG.md` section, and
    bumps `metadata.version`; the bump level is derived from the subprocess's Conventional
-   Commit), commits that, then regenerates the catalog. Auto-merge units are merged to
-   `main` one at a time; pr-mode units get the same bump+catalog on their branch before
-   the PR is pushed (so CI's `version.mjs check` passes). `validate.mjs` +
-   `catalog.mjs --check` must pass, then push → plugin refresh. Any failure
-   resets to the configured remote/default branch and leaves the proposal branch + a
-   loud notification. `deployed_at` = the plugin-refresh completion time.
+   Commit), commits that, then regenerates the catalog and plugin READMEs.
+   Before version apply, it captures a clean HEAD and checks a read-only version
+   plan against that snapshot. Only the planned plugin version fields,
+   marketplace version fields and exact generated changelog insertion may
+   change. Both staged and working bytes must match the expected outputs before
+   a scoped version commit. Planning, apply, staging or commit failure preserves
+   the checkout and stops further integration.
+   Auto-merge units are merged to `main` one at a time; pr-mode units get the
+   same version bump and generated documentation on their branch before the
+   PR is pushed (so CI's `version.mjs check` passes). Both generators,
+   `validate.mjs`, `catalog.mjs --check` and `plugin-readme.mjs --check` must
+   pass before the daemon commits generated documentation or pushes.
+   Documentation commit failures also stop publication. Each unit requires a
+   clean default-branch checkout on entry. Before generation, staging or recovery, both
+   index and working README content outside the generated markers must match
+   the captured clean HEAD. Missing or ambiguous markers stop integration
+   without discarding content. Recovery restores only tracked generated
+   outputs after that ownership check. In auto-merge mode, verified
+   recovery returns the default branch to its pre-merge HEAD. In PR mode, it
+   preserves committed proposal changes and verifies a clean default checkout
+   before processing another unit. Unexpected edits, new files or failed
+   recovery/checkout stop further unit integration and preserve the checkout
+   for inspection. The daemon records the failure and notifies.
+   The next startup also preserves this state: sync requires a clean configured
+   default branch and verifies a fast-forward to the fetched remote commit.
+   It rejects dirty, detached, non-default, ahead or diverged checkouts rather
+   than resetting them. Resolve preserved local changes or commits manually
+   before another run.
+   `deployed_at` = the plugin-refresh completion time.
 5. **Digest + bookkeeping** — `scripts/make-digest.mjs` assembles a human-friendly
    markdown digest; cycle records + run log persist; the watermark advances over the
    scanned range only; notify on apply/revert (Teams via `m365-messaging` if

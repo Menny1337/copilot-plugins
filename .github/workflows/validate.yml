@@ -19,6 +19,8 @@ jobs:
         run: node --test plugins/core-agents/hooks/tests/*.test.mjs plugins/core-agents/skills/github-session-sync/scripts/tests/*.test.mjs
       - name: Test Copilot Loops contracts
         run: node --test plugins/meta/skills/scheduled-headless-copilot/scripts/loops/tests/contracts.test.mjs
+      - name: Test scheduled review documentation gates
+        run: SKILL_REVIEW_TEST_ARTIFACT_DIR="$RUNNER_TEMP/skill-review-integration-docs" node --test plugins/meta/skills/scheduled-skill-review/scripts/integration-docs.test.mjs
       - name: Validate marketplace structure
         run: node scripts/validate.mjs
       - name: Verify CATALOG.md is up to date

@@ -3,19 +3,19 @@
 #
 # Flow:
 #   0. load config; honor soft-pause; acquire scheduler lock (stale-safe); sync
-#      repoDir to the latest origin/<defaultBranch> (always review/deploy current code)
+#      repoDir by verified fast-forward; abort if inspection state prevents sync
 #   1. scan-usage.mjs        → runs/<id>/manifest.json
 #   2. lifecycle select      → work list (new candidates + due re-reviews)
 #   3. per unit (bounded concurrency): git worktree + branch, run the review
 #      subprocess via `agency copilot -p ... --agent meta:agent-architect`,
 #      which writes runs/<id>/results/<unit>.json and commits on its branch
-#   4. SERIALIZED integration: for each passing change bump versions (version.mjs
-#      apply: plugin.json + marketplace + CHANGELOG)→regen catalog→merge→push→plugin
-#      refresh (no half-deploys); regen catalog on main between merges
+#   4. SERIALIZED integration: merge auto units or prepare a PR branch, bump versions (version.mjs
+#      apply: plugin.json + marketplace + CHANGELOG), generate catalog + plugin
+#      READMEs, validate + check both outputs, then commit→push→plugin refresh
 #   5. make-digest.mjs; advance watermark; record run; notify; release lock
 #
 # Flags: --only <unit>   review just one unit (ignores threshold + pause)
-#        --dry-run        scan + select + stub results; never touch git/deploy
+#        --dry-run        fetch + scan + select + stub results; no checkout/deploy
 set -uo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -90,39 +90,54 @@ if [ -z "$REPO_DIR" ] || [ ! -d "$REPO_DIR" ]; then
 fi
 
 # 0c. Sync repoDir to the latest default branch BEFORE anything reads it (scan-usage,
-# worktree branch-cutting, integrate). The daemon's local <branch> only advances when
-# IT pushes, so any external commit to the remote leaves it behind — reviewing and
-# deploying stale code. origin/<branch> is the source of truth: fast-forward to it, or
-# hard-reset if local diverged (the integrate flow never keeps unpushed local <branch>
-# commits — it pushes or resets — so divergence means a crashed half-deploy worth
-# discarding; proposal branches survive independently and stay re-integrable).
+# worktree branch-cutting, integrate). Only a clean default checkout may advance
+# by verified fast-forward. Local unpushed/diverged commits and dirty or non-default
+# checkouts may be failed-operation inspection state; preserve them across runs.
 #
 # Self-update: this script lives inside repoDir, so the sync may replace this very file.
 # git swaps files via atomic rename (new inode) and the running bash keeps the original
 # inode open through its script fd, so the in-flight run finishes on the already-loaded
 # code; worktrees are cut from the freshly-synced <branch> (so units under review are
 # current), and the next launchd invocation picks up the updated orchestrator.
+checkout_is_clean() {
+  local status
+  status="$(git status --porcelain --untracked-files=all)" || return 1
+  [ -z "$status" ]
+}
+
+default_checkout_is_clean() {
+  local current
+  current="$(git symbolic-ref --quiet --short HEAD)" || return 1
+  [ "$current" = "$DEFAULT_BRANCH" ] && checkout_is_clean
+}
+
 sync_repo() {
   ( cd "$REPO_DIR" || return 1
+    local head remote_head
+    default_checkout_is_clean || { log "ERROR: unsafe sync checkout; preserving inspection state"; return 1; }
+    head="$(git rev-parse HEAD)" || return 1
     git fetch "$REMOTE_NAME" "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 \
-      || log "WARN: git fetch failed — proceeding with current $DEFAULT_BRANCH (deploy push may fail)"
-    git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 \
-      || { log "ERROR: cannot checkout $DEFAULT_BRANCH in repoDir"; return 1; }
-    if git merge-base --is-ancestor "$DEFAULT_BRANCH" "$REMOTE_NAME/$DEFAULT_BRANCH" 2>/dev/null; then
-      git merge --ff-only "$REMOTE_NAME/$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 || true
-    else
-      ahead="$(git rev-list "$REMOTE_NAME/$DEFAULT_BRANCH..$DEFAULT_BRANCH" --count 2>/dev/null || echo '?')"
-      log "WARN: local $DEFAULT_BRANCH diverged from $REMOTE_NAME/$DEFAULT_BRANCH ($ahead unpushed commit(s)) — hard-resetting to remote (proposal branches preserved)"
-      git reset --hard "$REMOTE_NAME/$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 \
-        || { log "ERROR: reset to $REMOTE_NAME/$DEFAULT_BRANCH failed"; return 1; }
-    fi
-    log "repo synced: $DEFAULT_BRANCH @ $(git rev-parse --short HEAD 2>/dev/null)"
+      || { log "ERROR: git fetch failed; not syncing"; return 1; }
+    default_checkout_is_clean && [ "$(git rev-parse HEAD)" = "$head" ] \
+      || { log "ERROR: checkout changed during fetch; preserving inspection state"; return 1; }
+    remote_head="$(git rev-parse --verify "$REMOTE_NAME/$DEFAULT_BRANCH^{commit}")" || return 1
+    git merge-base --is-ancestor "$head" "$remote_head" >>"$LOGDIR/daemon.log" 2>&1 \
+      || { log "ERROR: sync is not a verified fast-forward; preserving local commits for inspection"; return 1; }
+    git merge --ff-only "$remote_head" >>"$LOGDIR/daemon.log" 2>&1 \
+      || { log "ERROR: fast-forward failed; preserving checkout for inspection"; return 1; }
+    default_checkout_is_clean && [ "$(git rev-parse HEAD)" = "$remote_head" ] \
+      || { log "ERROR: sync result is unverified; preserving checkout for inspection"; return 1; }
+    log "repo synced: $DEFAULT_BRANCH @ $remote_head"
   )
 }
 if [ "$DRY_RUN" = "1" ]; then
-  ( cd "$REPO_DIR" && git fetch "$REMOTE_NAME" "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 || true
-    behind="$(git rev-list "$DEFAULT_BRANCH..$REMOTE_NAME/$DEFAULT_BRANCH" --count 2>/dev/null || echo '?')"
-    log "dry-run: $DEFAULT_BRANCH is $behind commit(s) behind $REMOTE_NAME/$DEFAULT_BRANCH (no sync performed)" )
+  ( cd "$REPO_DIR" && default_checkout_is_clean \
+      || { log "ERROR: unsafe dry-run checkout; preserving inspection state"; exit 1; }
+    git fetch "$REMOTE_NAME" "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 \
+      || { log "ERROR: dry-run fetch failed"; exit 1; }
+    behind="$(git rev-list "$DEFAULT_BRANCH..$REMOTE_NAME/$DEFAULT_BRANCH" --count)" || exit 1
+    log "dry-run: $DEFAULT_BRANCH is $behind commit(s) behind $REMOTE_NAME/$DEFAULT_BRANCH (no sync performed)" ) \
+      || exit 1
 else
   sync_repo || { log "ERROR: repo sync failed — aborting run"; exit 1; }
   # Ensure gh targets the repo-owner account before any PR/reconcile work. Pins
@@ -378,7 +393,7 @@ review_unit() {
   local ex; ex="$(git -C "$wt" rev-parse --git-path info/exclude 2>/dev/null || echo '')"
   [ -n "$ex" ] && ( cd "$wt" && printf '%s\n' "$rbase" >> "$ex" ) 2>/dev/null || true
 
-  local prompt="[$SELF_MARKER run=$RUN_ID] You are running the skill-improvement-loop on the $type \"$unit\". Mode: $mode. Working tree: $wt. Use evidence from past sessions. If mode is re-review, run Phase E against post-deploy sessions. Make at most ONE governed change to this $type only. Run 'node scripts/validate.mjs' and 'node scripts/catalog.mjs' and commit your change on the current branch with a Conventional Commit message and the Copilot co-author trailer. Use an ACCURATE Conventional Commit type — the plugin version bump is derived from it (feat → minor; fix/docs/refactor/chore/etc → patch; a '!' suffix or 'BREAKING CHANGE:' footer → major). Do NOT hand-edit plugin.json, marketplace.json, or CHANGELOG.md — the orchestrator runs 'node scripts/version.mjs apply' to bump the version and write the changelog automatically at integration, so a manual bump would only conflict. Then, AFTER committing, write your JSON result by writing to '$wt_result.tmp' and renaming it to '$wt_result' (atomic). IMPORTANT: write ONLY to that path inside your worktree — paths above the worktree (e.g. the runs/ tree) are not writable from here, so do not attempt them. JSON keys: schema='skill-review-result/1', unit, unitType, action(patched|no-change|re-review|revert|failed), rootCauseLayer, evidenceGrade, sessionsConsidered, changeSummary, diffStat, verdict, notes (all redacted, no secrets)."
+  local prompt="[$SELF_MARKER run=$RUN_ID] You are running the skill-improvement-loop on the $type \"$unit\". Mode: $mode. Working tree: $wt. Use evidence from past sessions. If mode is re-review, run Phase E against post-deploy sessions. Make at most ONE governed change to this $type only. Before committing, run 'node scripts/catalog.mjs', 'node scripts/plugin-readme.mjs', 'node scripts/validate.mjs', 'node scripts/catalog.mjs --check', and 'node scripts/plugin-readme.mjs --check' in that order. Stop on any generator or check failure: report action=failed and do not commit a change that failed validation. Otherwise commit your change and generated documentation on the current branch with a Conventional Commit message and the Copilot co-author trailer. Use an ACCURATE Conventional Commit type — the plugin version bump is derived from it (feat → minor; fix/docs/refactor/chore/etc → patch; a '!' suffix or 'BREAKING CHANGE:' footer → major). Do NOT hand-edit plugin.json, marketplace.json, or CHANGELOG.md — the orchestrator runs 'node scripts/version.mjs apply' to bump the version and write the changelog automatically at integration, so a manual bump would only conflict. Then, AFTER committing (or after reporting failure without a commit), write your JSON result by writing to '$wt_result.tmp' and renaming it to '$wt_result' (atomic). IMPORTANT: write ONLY to that path inside your worktree — paths above the worktree (e.g. the runs/ tree) are not writable from here, so do not attempt them. JSON keys: schema='skill-review-result/1', unit, unitType, action(patched|no-change|re-review|revert|failed), rootCauseLayer, evidenceGrade, sessionsConsidered, changeSummary, diffStat, verdict, notes (all redacted, no secrets)."
 
   if [ "$have_agency" = "0" ]; then
     log "review $unit: stub (agency unavailable)"
@@ -482,47 +497,332 @@ reviewed="$(printf '%s\n' "$WORK_TSV" | grep -c . || true)"
 # branch it merges or opens a PR for, or the change is rejected. `version.mjs apply`
 # runs on a clean tree (content already committed), derives the level from the
 # Conventional Commit history (always ≥ patch for a changed plugin), and writes the
-# bumps + changelog; we then commit them. MUST run BEFORE the catalog regen so the
-# generated version numbers stay consistent. Caller must already be cd'd into $REPO_DIR.
+# bumps + changelog; we then commit them before both documentation generators.
+# The catalog includes versions; plugin README generation intentionally excludes them.
+# Caller must already be cd'd into $REPO_DIR.
+# Predict exact version-owned bytes from the read-only planner and captured Git
+# blobs. Keep this contract aligned with version.mjs's JSON/changelog writers.
+version_owned_outputs() {
+  node --input-type=module - "$1" "$2" "$3" <<'NODE'
+    import { execFileSync } from "node:child_process";
+    const [head, base, plan] = process.argv.slice(2);
+    const git = args => execFileSync("git", args, { encoding: "utf8" });
+    const read = path => {
+      const bytes = execFileSync("git", ["show", head + ":" + path]);
+      const text = bytes.toString("utf8");
+      if (!Buffer.from(text).equals(bytes)) throw new Error("Non-UTF8 version snapshot: " + path);
+      return text;
+    };
+    const json = path => JSON.parse(read(path));
+    const levels = { none: 0, patch: 1, minor: 2, major: 3 };
+    function semver(text) {
+      if (!/^\d+\.\d+\.\d+$/.test(text)) throw new Error("Invalid snapshot version");
+      const parts = text.split(".").map(Number);
+      if (!parts.every(Number.isSafeInteger)) throw new Error("Unsafe snapshot version");
+      return parts;
+    }
+    function bump(text, level) {
+      const parts = semver(text), i = 3 - levels[level];
+      parts[i]++;
+      if (!Number.isSafeInteger(parts[i])) throw new Error("Unsafe bumped version");
+      for (let j = i + 1; j < 3; j++) parts[j] = 0;
+      return parts.join(".");
+    }
+    function alreadyBumped(from, current, level) {
+      const a = semver(from), b = semver(current);
+      for (let i = 0; i < 3; i++) {
+        if (a[i] !== b[i]) return b[i] > a[i] && 3 - i >= levels[level];
+      }
+      return false;
+    }
+    try {
+      const marketplacePath = ".github/plugin/marketplace.json";
+      const marketplace = json(marketplacePath), outputs = {};
+      let max = "none", count = 0;
+      const header = "# Changelog\n\nAll notable changes to this plugin are documented here.\n" +
+        "Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).\n";
+      for (const line of plan.split("\n").map(line => line.trim())) {
+        if (line.startsWith("marketplace metadata.version:")) {
+          if (!/^marketplace metadata\.version: (\(none\)|\d+\.\d+\.\d+) → needs ≥ (patch|minor|major) \(current (\(none\)|\d+\.\d+\.\d+)\)$/.test(line)) {
+            throw new Error("Unsupported marketplace version summary");
+          }
+          continue;
+        }
+        if (line.includes(" → removed (needs marketplace major)")) {
+          const name = line.split(/\s/)[0];
+          if (marketplace.plugins.some(entry => entry.name === name)) throw new Error("Invalid removal plan");
+          max = "major"; count++; continue;
+        }
+        if (!line.includes(" → needs ≥ ")) continue;
+        const match = /^(\S+)\s+(\(new\)|\d+\.\d+\.\d+)\s+→ needs ≥ (patch|minor|major)\s+\(current (\d+\.\d+\.\d+), applied bump: \w+\)$/.exec(line);
+        if (!match) throw new Error("Unsupported version planner output");
+        const [, name, from, level, current] = match;
+        const entry = marketplace.plugins.find(entry => entry.name === name);
+        if (!entry || current !== entry.version) throw new Error("Version plan does not match snapshot");
+        const dir = entry.source.replace(/^\.\//, "").replace(/\/$/, "");
+        if (!/^plugins\/[A-Za-z0-9_-]+$/.test(dir)) throw new Error("Unsupported version-owned path");
+        const manifestPath = dir + "/plugin.json", manifest = json(manifestPath);
+        if (manifest.version !== current) throw new Error("Inconsistent snapshot versions");
+        if (from !== "(new)" && alreadyBumped(from, current, level)) continue;
+        const version = bump(from === "(new)" ? current : from, level);
+        manifest.version = version; entry.version = version;
+        outputs[manifestPath] = JSON.stringify(manifest, null, 2) + "\n";
+        const changelogPath = dir + "/CHANGELOG.md";
+        const tracked = git(["ls-tree", "--name-only", head, "--", changelogPath]).trim();
+        const existing = tracked ? read(changelogPath) : header;
+        const raw = git(["log", "--no-merges", "--format=%s", base + ".." + head, "--", dir]);
+        const subjects = raw.split("\n").map(s => s.trim()).filter(Boolean);
+        const section = [
+          "## [" + version + "] - " + new Date().toISOString().slice(0, 10), "",
+          "_" + level + " release._", "",
+          ...(subjects.length ? subjects : ["Maintenance changes."]).map(s => "- " + s), "",
+        ].join("\n");
+        const idx = existing.indexOf("\n## ");
+        outputs[changelogPath] = idx < 0
+          ? (existing.endsWith("\n") ? existing : existing + "\n") + "\n" + section
+          : existing.slice(0, idx + 1) + section + "\n" + existing.slice(idx + 1);
+        if (levels[level] > levels[max]) max = level;
+        count++;
+      }
+      if (!count && !plan.includes("No plugin source changes detected.") && !plan.includes(" → needs ≥ ")) {
+        throw new Error("Unrecognized version plan");
+      }
+      if (count) {
+        marketplace.metadata = marketplace.metadata ?? {};
+        marketplace.metadata.version = bump(marketplace.metadata.version ?? "0.0.0", max);
+        outputs[marketplacePath] = JSON.stringify(marketplace, null, 2) + "\n";
+      }
+      process.stdout.write(JSON.stringify(outputs));
+    } catch (error) {
+      console.error("Version snapshot failed: " + error.message);
+      process.exitCode = 1;
+    }
+NODE
+}
+
+verify_version_outputs() {
+  node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    import { execFileSync } from "node:child_process";
+    const [head, staged] = process.argv.slice(1);
+    const git = args => execFileSync("git", args);
+    try {
+      const outputs = JSON.parse(readFileSync(0, "utf8"));
+      const current = git(["rev-parse", "HEAD"]).toString().trim();
+      if (staged === "committed") {
+        if (git(["rev-parse", "HEAD^"]).toString().trim() !== head) throw new Error("Unexpected version commit parent");
+      } else if (current !== head) throw new Error("Version HEAD changed");
+      const changed = new Set([
+        ...git(["diff", "--name-only", "-z", head]).toString().split("\0"),
+        ...git(["diff", "--cached", "--name-only", "-z", head]).toString().split("\0"),
+        ...git(["ls-files", "--others", "--exclude-standard", "-z"]).toString().split("\0"),
+      ]);
+      for (const path of changed) {
+        if (path && !Object.hasOwn(outputs, path)) throw new Error("Unexpected version edit: " + path);
+      }
+      for (const [path, text] of Object.entries(outputs)) {
+        if (!readFileSync(path).equals(Buffer.from(text))) throw new Error("Unexpected version content: " + path);
+        const tracked = git(["ls-tree", "--name-only", head, "--", path]).toString().trim();
+        const indexed = git(["ls-files", "--", path]).toString().trim();
+        if (staged === "yes" || staged === "committed") {
+          if (!git(["show", ":" + path]).equals(Buffer.from(text))) throw new Error("Unexpected version index: " + path);
+          if (staged === "committed" && !git(["show", "HEAD:" + path]).equals(Buffer.from(text))) {
+            throw new Error("Unexpected committed version content: " + path);
+          }
+        } else if (tracked) {
+          if (!git(["show", ":" + path]).equals(git(["show", head + ":" + path]))) throw new Error("Concurrent version index: " + path);
+        } else if (indexed) {
+          throw new Error("Unexpected new version index: " + path);
+        }
+      }
+    } catch (error) {
+      console.error("Version ownership failed: " + error.message);
+      process.exitCode = 1;
+    }
+  ' "$1" "$2"
+}
+
 bump_versions() {
-  local unit="$1"
-  if ! node scripts/version.mjs apply >>"$LOGDIR/daemon.log" 2>&1; then
+  local unit="$1" base="$2" head plan outputs targets
+  checkout_is_clean || { log "unsafe pre-version checkout for $unit"; return 1; }
+  head="$(git rev-parse HEAD)" || return 1
+  base="$(git merge-base "$base" "$head")" || { log "version base resolution failed for $unit"; return 1; }
+  plan="$(node scripts/version.mjs plan --base "$base" --head "$head" 2>>"$LOGDIR/daemon.log")" || { log "version plan failed for $unit"; return 1; }
+  checkout_is_clean && [ "$(git rev-parse HEAD)" = "$head" ] || { log "checkout changed during version planning for $unit"; return 1; }
+  outputs="$(version_owned_outputs "$head" "$base" "$plan" 2>>"$LOGDIR/daemon.log")" || { log "version snapshot failed for $unit"; return 1; }
+  checkout_is_clean && [ "$(git rev-parse HEAD)" = "$head" ] || { log "checkout changed before version apply for $unit"; return 1; }
+  if ! node scripts/version.mjs apply --base "$base" >>"$LOGDIR/daemon.log" 2>&1; then
     log "version.mjs apply failed for $unit"
     return 1
   fi
-  if ! git diff --quiet; then
-    git add -A && git commit \
+  verify_version_outputs "$head" no <<<"$outputs" >>"$LOGDIR/daemon.log" 2>&1 \
+    || { log "unexpected version edits for $unit; preserving checkout"; return 1; }
+  targets="$(node -e 'for (const path of Object.keys(JSON.parse(require("fs").readFileSync(0,"utf8")))) console.log(path);' <<<"$outputs")" || return 1
+  if [ -n "$targets" ]; then
+    local paths=() path
+    while IFS= read -r path; do paths+=("$path"); done <<<"$targets"
+    git add -- "${paths[@]}" >>"$LOGDIR/daemon.log" 2>&1 || { log "version staging failed for $unit"; return 1; }
+    verify_version_outputs "$head" yes <<<"$outputs" >>"$LOGDIR/daemon.log" 2>&1 \
+      || { log "unexpected staged version edits for $unit; preserving checkout"; return 1; }
+    git commit --only \
       -m "chore(release): bump versions after $unit review" \
-      -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>" \
-      >>"$LOGDIR/daemon.log" 2>&1
+      -m "Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>" \
+      -- "${paths[@]}" >>"$LOGDIR/daemon.log" 2>&1 \
+      || { log "version commit failed for $unit; preserving checkout"; return 1; }
+    verify_version_outputs "$head" committed <<<"$outputs" >>"$LOGDIR/daemon.log" 2>&1 \
+      || { log "version commit result unverified for $unit; preserving checkout"; return 1; }
   fi
-  return 0
+  checkout_is_clean || { log "version commit left a dirty checkout for $unit"; return 1; }
 }
 
+# Called from the target checkout after version governance. Both publication paths
+# use this gate; a generator failure is not excused by previously fresh outputs.
+generate_and_check_docs() {
+  generated_changes_are_scoped "$1" || return 1
+  node scripts/catalog.mjs >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  generated_changes_are_scoped "$1" || return 1
+  node scripts/plugin-readme.mjs >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  node scripts/validate.mjs >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  node scripts/catalog.mjs --check >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  node scripts/plugin-readme.mjs --check >>"$LOGDIR/daemon.log" 2>&1 || return 1
+}
+
+# README paths contain authored content too. Check both index and working bytes
+# outside the single generated region before staging, committing or restoring.
+readme_authored_regions_are_unchanged() {
+  node --input-type=module - "$1" >>"$LOGDIR/daemon.log" 2>&1 <<'NODE'
+    import { readFileSync } from "node:fs";
+    import { spawnSync } from "node:child_process";
+    const head = process.argv[2];
+    function git(args) {
+      const result = spawnSync("git", args, { maxBuffer: 16 * 1024 * 1024 });
+      if (result.error || result.status !== 0) {
+        throw new Error("Cannot read Git ownership snapshot: " + args[0]);
+      }
+      return result.stdout;
+    }
+    function paths(buffer) {
+      return buffer.toString("utf8").split("\0").filter(Boolean);
+    }
+    function authored(buffer, prefix, path) {
+      const start = Buffer.from("<!-- " + prefix + ":start -->");
+      const end = Buffer.from("<!-- " + prefix + ":end -->");
+      const a = buffer.indexOf(start);
+      const b = buffer.indexOf(end);
+      if (a < 0 || b < a + start.length ||
+          buffer.indexOf(start, a + start.length) !== -1 ||
+          buffer.indexOf(end, b + end.length) !== -1) {
+        throw new Error("Ambiguous or missing generated markers: " + path);
+      }
+      return { before: buffer.subarray(0, a), after: buffer.subarray(b + end.length) };
+    }
+    try {
+      const candidates = new Set([
+        ...paths(git(["ls-tree", "-r", "-z", "--name-only", head])),
+        ...paths(git(["ls-files", "-z"])),
+      ]);
+      for (const path of candidates) {
+        const prefix = path === "README.md" ? "mnm:catalog" :
+          /^plugins\/[^/]+\/README\.md$/.test(path) ? "mnm:plugin-readme" : null;
+        if (!prefix) continue;
+        const baseline = authored(git(["show", head + ":" + path]), prefix, path);
+        const index = authored(git(["show", ":" + path]), prefix, path);
+        const working = authored(readFileSync(path), prefix, path);
+        if (!baseline.before.equals(index.before) || !baseline.after.equals(index.after) ||
+            !baseline.before.equals(working.before) || !baseline.after.equals(working.after)) {
+          throw new Error("Authored README content changed: " + path);
+        }
+      }
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
+NODE
+}
+
+generated_changes_are_scoped() {
+  local head="$1" untracked
+  untracked="$(git ls-files --others --exclude-standard)" || return 1
+  [ -z "$untracked" ] || return 1
+  git diff --quiet "$head" -- . ':(exclude)CATALOG.md' ':(exclude)README.md' ':(exclude,glob)plugins/*/README.md' || return 1
+  git diff --cached --quiet "$head" -- . ':(exclude)CATALOG.md' ':(exclude)README.md' ':(exclude,glob)plugins/*/README.md' || return 1
+  readme_authored_regions_are_unchanged "$head"
+}
+
+# Restore only tracked generator outputs owned by this operation. Unexpected
+# edits, new files or a changed HEAD are preserved and stop the integration batch.
+restore_generated_docs() {
+  local head="$1" current
+  current="$(git rev-parse HEAD)" || return 1
+  [ "$current" = "$head" ] && generated_changes_are_scoped "$head" || return 1
+  git restore --source="$head" --staged --worktree -- CATALOG.md README.md ':(glob)plugins/*/README.md' >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  checkout_is_clean
+}
+
+return_to_default() {
+  checkout_is_clean || return 1
+  git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  default_checkout_is_clean
+}
+
+recover_pr_checkout() {
+  restore_generated_docs "$1" && return_to_default
+}
+
+recover_integration_checkout() {
+  local base="$1" head="$2" current
+  restore_generated_docs "$head" || return 1
+  # The entry HEAD predates this operation's merge. --keep requires the verified
+  # clean checkout and will not force away conflicting local work.
+  git reset --keep "$base" >>"$LOGDIR/daemon.log" 2>&1 || return 1
+  current="$(git rev-parse HEAD)" || return 1
+  [ "$current" = "$base" ] && default_checkout_is_clean
+}
+
+# Status 3 means checkout safety is unverified; the caller must stop the batch.
+# Ordinary failures return 1 only after recovery has restored a clean checkout.
 integrate_one() {
   local cid="$1" unit="$2" branch="$3" action="$4"
-  ( cd "$REPO_DIR" || return 1
-    git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1
-    git merge --no-ff "$branch" -m "merge $branch" >>"$LOGDIR/daemon.log" 2>&1 || { log "merge conflict for $unit; leaving as proposal"; git merge --abort 2>/dev/null; return 1; }
-    # Bump versions + CHANGELOG for the merged content change BEFORE regenerating the
-    # catalog (so generated version numbers match), else CI/governance rejects it.
-    if ! bump_versions "$unit"; then
-      log "version bump failed after merging $unit — rolling back main"
-      git reset --hard "$REMOTE_NAME/$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1
+  ( cd "$REPO_DIR" || return 3
+    local base_head docs_head
+    if ! default_checkout_is_clean; then
+      log "unsafe integration checkout for $unit; preserving existing work"
+      return 3
+    fi
+    base_head="$(git rev-parse HEAD)" || return 3
+    if ! git merge --no-ff "$branch" -m "merge $branch" >>"$LOGDIR/daemon.log" 2>&1; then
+      log "merge conflict for $unit; leaving as proposal"
+      git merge --abort 2>>"$LOGDIR/daemon.log" && default_checkout_is_clean || return 3
       return 1
     fi
-    # Regenerate catalog on main, then validate.
-    node scripts/catalog.mjs >>"$LOGDIR/daemon.log" 2>&1 || true
-    if ! git diff --quiet; then git add -A && git commit -m "docs(catalog): regenerate after $unit review" >>"$LOGDIR/daemon.log" 2>&1; fi
-    if ! node scripts/validate.mjs >>"$LOGDIR/daemon.log" 2>&1 || ! node scripts/catalog.mjs --check >>"$LOGDIR/daemon.log" 2>&1; then
-      log "validation failed after merging $unit — rolling back main"
-      git reset --hard "$REMOTE_NAME/$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1
+    # Govern versions before both generators. Only the catalog includes versions;
+    # plugin README generation excludes them to avoid version-only stale outputs.
+    if ! bump_versions "$unit" "$base_head"; then
+      log "version bump failed after merging $unit; preserving checkout for recovery"
+      return 3
+    fi
+    checkout_is_clean || { log "version governance left a dirty checkout for $unit"; return 3; }
+    docs_head="$(git rev-parse HEAD)" || return 3
+    # Generate and check both documentation outputs before committing or pushing.
+    if ! generate_and_check_docs "$docs_head"; then
+      log "documentation generation or validation failed after merging $unit — rolling back main"
+      recover_integration_checkout "$base_head" "$docs_head" || return 3
       return 1
     fi
+    generated_changes_are_scoped "$docs_head" || { log "unexpected edits during generation for $unit; preserving checkout"; return 3; }
+    if ! git diff --quiet; then
+      if ! { git add -u -- CATALOG.md README.md ':(glob)plugins/*/README.md' && generated_changes_are_scoped "$docs_head" && git commit --only -m "docs(catalog): regenerate catalog and plugin READMEs after $unit review" -- CATALOG.md README.md ':(glob)plugins/*/README.md'; } >>"$LOGDIR/daemon.log" 2>&1; then
+        log "documentation commit failed after merging $unit — rolling back main"
+        recover_integration_checkout "$base_head" "$docs_head" || return 3
+        return 1
+      fi
+    fi
+    checkout_is_clean || { log "documentation commit left a dirty checkout for $unit"; return 3; }
+    docs_head="$(git rev-parse HEAD)" || return 3
     # No half-deploys: push must succeed, else undo the local merge.
     if ! git push "$REMOTE_NAME" "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1; then
       log "push failed for $unit — rolling back local merge (no half-deploy)"
-      git reset --hard "$REMOTE_NAME/$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1
+      recover_integration_checkout "$base_head" "$docs_head" || return 3
       return 2
     fi
     return 0
@@ -530,7 +830,7 @@ integrate_one() {
 }
 
 # Open a GitHub PR for a 'pr'-policy unit instead of merging. Pushes the proposal
-# branch (with a freshly regenerated catalog so CI's `catalog --check` passes) and
+# branch (with fresh catalog and plugin READMEs so CI's generated-output checks pass) and
 # opens/looks-up a PR, writing its URL+number to results/<unit>.{prurl,prnum} for
 # the caller. Never touches main. Returns 0 only if PR identity was captured.
 open_pr() {
@@ -540,31 +840,54 @@ open_pr() {
   if ! command -v gh >/dev/null 2>&1; then
     log "gh unavailable — cannot open PR for $unit; leaving as proposal"; return 1
   fi
-  ( cd "$REPO_DIR" || exit 1
-    git checkout "$branch" >>"$LOGDIR/daemon.log" 2>&1 || { log "checkout $branch failed for $unit"; exit 1; }
-    # Bump versions + CHANGELOG on the branch BEFORE regenerating the catalog, so the
-    # PR head carries the plugin.json/marketplace/metadata bumps + changelog that CI's
-    # `version.mjs check` requires (without it the PR fails the version gate).
-    if ! bump_versions "$unit"; then
-      log "version bump failed on PR branch for $unit — not opening PR"
-      git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1; exit 1
+  local prepare_status=0
+  ( cd "$REPO_DIR" || exit 3
+    local docs_head base_head
+    if ! default_checkout_is_clean; then
+      log "unsafe PR checkout for $unit; preserving existing work"
+      exit 3
     fi
-    # Regenerate the catalog ON the branch so the branch is internally consistent
+    base_head="$(git rev-parse HEAD)" || exit 3
+    if ! git checkout "$branch" >>"$LOGDIR/daemon.log" 2>&1; then
+      log "checkout $branch failed for $unit"
+      default_checkout_is_clean || exit 3
+      exit 1
+    fi
+    # Govern versions before both generators on the proposal branch. The catalog
+    # includes version numbers; plugin README generation intentionally excludes them.
+    if ! bump_versions "$unit" "$base_head"; then
+      log "version bump failed on PR branch for $unit — not opening PR"
+      exit 3
+    fi
+    checkout_is_clean || { log "version governance left a dirty checkout for $unit"; exit 3; }
+    docs_head="$(git rev-parse HEAD)" || exit 3
+    # Regenerate documentation ON the branch so the branch is internally consistent
     # for CI; do NOT merge main in (avoids generated-file conflicts — GitHub will
     # surface any real merge conflicts for the human reviewer).
-    node scripts/catalog.mjs >>"$LOGDIR/daemon.log" 2>&1 || true
-    if ! git diff --quiet; then git add -A && git commit -m "docs(catalog): regenerate for $unit review PR" >>"$LOGDIR/daemon.log" 2>&1; fi
-    if ! node scripts/validate.mjs >>"$LOGDIR/daemon.log" 2>&1 || ! node scripts/catalog.mjs --check >>"$LOGDIR/daemon.log" 2>&1; then
-      log "validation failed on PR branch for $unit — not opening PR"
-      git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1; exit 1
+    if ! generate_and_check_docs "$docs_head"; then
+      log "documentation generation or validation failed on PR branch for $unit — not opening PR"
+      recover_pr_checkout "$docs_head" || exit 3
+      exit 1
     fi
+    generated_changes_are_scoped "$docs_head" || { log "unexpected edits during generation for $unit; preserving checkout"; exit 3; }
+    if ! git diff --quiet; then
+      if ! { git add -u -- CATALOG.md README.md ':(glob)plugins/*/README.md' && generated_changes_are_scoped "$docs_head" && git commit --only -m "docs(catalog): regenerate catalog and plugin READMEs for $unit review PR" -- CATALOG.md README.md ':(glob)plugins/*/README.md'; } >>"$LOGDIR/daemon.log" 2>&1; then
+        log "documentation commit failed on PR branch for $unit — not opening PR"
+        recover_pr_checkout "$docs_head" || exit 3
+        exit 1
+      fi
+    fi
+    checkout_is_clean || { log "documentation commit left a dirty checkout for $unit"; exit 3; }
+    docs_head="$(git rev-parse HEAD)" || exit 3
     if ! git push -u "$REMOTE_NAME" "$branch" >>"$LOGDIR/daemon.log" 2>&1; then
       log "push of $branch failed for $unit — cannot open PR"
-      git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1; exit 1
+      recover_pr_checkout "$docs_head" || exit 3
+      exit 1
     fi
-    git checkout "$DEFAULT_BRANCH" >>"$LOGDIR/daemon.log" 2>&1
+    return_to_default || exit 3
     exit 0
-  ) || return 1
+  ) || prepare_status=$?
+  [ "$prepare_status" -eq 0 ] || return "$prepare_status"
   # Build a rich, human-readable PR body from the persisted result provenance plus
   # the branch's diff (3-dot diff = PR semantics; 2-dot log = commits on the branch).
   # Fall back to a minimal one-liner if generation yields an empty file.
@@ -674,8 +997,13 @@ if [ "$DRY_RUN" = "0" ] && [ "$AUTO_DEPLOY" != "false" ]; then
         node "$DIR/lifecycle.mjs" set "$cid" status=pr prUrl="$prurl" prNumber="$prnum" prOpenedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null
         prs=$((prs+1))
       else
+        integration_status=$?
         node "$DIR/lifecycle.mjs" set "$cid" status=proposed >/dev/null
         deploy_failed=$((deploy_failed+1))
+        if [ "$integration_status" -eq 3 ]; then
+          log "checkout recovery unverified; aborting remaining unit integration"
+          break
+        fi
       fi
       continue
     fi
@@ -686,8 +1014,13 @@ if [ "$DRY_RUN" = "0" ] && [ "$AUTO_DEPLOY" != "false" ]; then
         log "plugin refresh failed for $unit (installed plugins may be stale)"
       if [ "$action" = "revert" ]; then reverted=$((reverted+1)); else applied=$((applied+1)); fi
     else
+      integration_status=$?
       node "$DIR/lifecycle.mjs" set "$cid" status=proposed >/dev/null
       deploy_failed=$((deploy_failed+1))
+      if [ "$integration_status" -eq 3 ]; then
+        log "checkout recovery unverified; aborting remaining unit integration"
+        break
+      fi
     fi
   done <<EOF2
 $PROPOSED
