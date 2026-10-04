@@ -8,9 +8,10 @@ survive logout/login. All durable state lives in the workspace
 > checkout of this repository (the **git working tree** the daemon commits/pushes
 > from — the plugin cache is read-only and must not be used as `repoDir`).
 >
-> **Use a dedicated checkout for `repoDir`.** The daemon does `git checkout main`,
-> `git merge`, and hard resets to the configured remote/default branch during integration —
-> any uncommitted work there would be clobbered. Point `repoDir` at a clone reserved
+> **Use a dedicated checkout for `repoDir`.** The daemon switches proposal branches
+> and merges auto units. Startup sync requires a clean default branch that can
+> fast-forward; dirty, non-default, ahead or diverged state stops the run for
+> inspection. Point `repoDir` at a checkout reserved
 > for the daemon (e.g. `~/.copilot/agent-architect/checkout`), not the checkout you
 > edit by hand. The `scripts/` and `references/` the daemon runs are read from this
 > same checkout, so keep it on `main` and current.
@@ -123,9 +124,11 @@ work non-interactively. Pick **one**:
 - **PAT in `~/.netrc`** (least preferred): `machine github.com login <user> password
   <PAT>` with `chmod 600`.
 
-If push fails at runtime the daemon **does not leave a half-deploy**: it
-hard-resets the merge to the configured remote/default branch, keeps the proposal
-branch, and notifies.
+If an auto-mode push fails, the daemon restores the captured pre-merge HEAD with
+`git reset --keep` only after verifying a clean, operation-owned checkout. The
+proposal branch remains available. Unexpected edits or recovery failures stop
+integration and preserve the checkout for inspection; later sync runs do not
+reset that state. A failed PR push leaves the committed proposal available.
 
 ### gh active-account pinning (PR creation & reconcile)
 

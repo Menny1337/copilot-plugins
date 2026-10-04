@@ -12,6 +12,14 @@ bundled changelog and SDK declarations, live help, and public documentation were
 checked. Re-run [the verification procedure](#re-verification-procedure) before
 relying on this file against a newer CLI.
 
+Partial follow-up, 4 October 2026: shell help reported 1.0.90-0, matching the
+supplied session runtime version. Selected release notes and public documentation
+support the command migration, subagent instruction opt-in, and hook corrections
+below. These checks did not reverify the full package, SDK, schema, or behavior.
+The overall verified baseline remains 1.0.83-5. The latest stable release checked
+was 1.0.91 (1 October); 1.0.92-2 and 1.0.92-3 (2 October) were prereleases,
+not the inspected runtime.
+
 ## Contents
 
 - [Why this file exists](#why-this-file-exists)
@@ -124,6 +132,8 @@ silently choosing whichever source matches the old baseline.
 > describe `copilot plugin` / `copilot plugins` as interchangeable and advertise
 > a `marketplace refresh` alias. The 1.0.83-5 release notes and live command tree
 > disagree. The version-specific sections below state the verified live behavior.
+> The later 1.0.85 command migration supersedes the plugin split for newer targets;
+> see [Plugin and marketplace commands](#plugin-and-marketplace-commands).
 
 > **Do not scrape the minified bundle for schema constants.** As of 1.0.75 the
 > skill name/description limits live in `prebuilds/<platform>/runtime.node` and
@@ -205,16 +215,17 @@ copilot skill add --project <FILE | URL>     # copy into .github/skills/
 copilot skill list [--json]                  # list, with source and enabled state
 copilot skill remove <NAME | DIRECTORY>      # remove a skill or custom source
 
-copilot plugins install --skill <FILE | URL | DIRECTORY>
-copilot plugins install --skill --scope project <FILE | URL>
-copilot plugins enable  <NAME> --skill
-copilot plugins disable <NAME> --skill
-copilot plugins remove  <NAME> --skill
+copilot skill enable <NAME>                 # dedicated toggle in 1.0.85+
+copilot skill disable <NAME>                # dedicated toggle in 1.0.85+
 ```
 
-For the direct `skill add` command, `--project` selects `.github/skills/`. For
-the cross-kind `plugins install --skill` command, `--scope` accepts `user`
-(default) or `project`. Both project forms apply only to file or URL installs.
+For `skill add`, `--project` selects `.github/skills/` and applies only to file
+or URL installs. CLI 1.0.85 removed the historical cross-kind
+`copilot plugins install --skill` form and its `--scope` option. Use
+`copilot skill add [--project]` and the dedicated `skill enable` / `disable`
+commands instead. The [1.0.85 release](https://github.com/github/copilot-cli/releases/tag/v1.0.85),
+[public skill guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills),
+and shell 1.0.90-0 help agree on syntax; installation behavior was not exercised.
 Installing a **directory** registers it as a custom skill source rather than
 copying it; installing a **file or URL** copies the content.
 
@@ -278,13 +289,22 @@ CLI-only additions confirmed from the changelog:
 | `skills` | 1.0.22 | String **array** of skill names whose content is eagerly loaded into the agent's context at startup. A bare string is rejected (`skills: Expected array, received string`) and the agent fails to load entirely. Unknown skill names are silently ignored. |
 | Reasoning effort in the agent definition | 1.0.66 | Per-agent effort without going through `/subagents`. Frontmatter key `reasoning-effort`. |
 | Ordered model fallback and `model-policy` | 1.0.83 | `model` may be a string array tried in order; `model-policy: required` constrains model changes to that list. |
+| `include-custom-instructions` | 1.0.86 | Boolean, documented default `false`. Opts a custom subagent into repository instruction files; does not change the selected session agent's instruction loading. Release/docs evidence only; no runtime fixture in the partial follow-up. |
 
-The authoritative agent frontmatter key set, extracted from the schema in
+The agent frontmatter key set extracted at 1.0.83-5 from the schema in
 `prebuilds/<platform>/runtime.node`: `infer`, `disable-model-invocation`,
 `user-invocable`, `reasoning-effort`, `skills`, `deferred-tool-loading`,
 `model-policy` — alongside
 the documented `name`, `description`, `tools`, `model`, `target`, `mcp-servers`,
 and `metadata`.
+
+The [1.0.86 release](https://github.com/github/copilot-cli/releases/tag/v1.0.86)
+and [CLI agent guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli)
+document the later instruction opt-in. The
+[command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)
+states that `--no-custom-instructions` takes precedence and extra directories
+supplied only to the parent via `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` are not inherited.
+Use the opt-in only for custom subagents that need repository conventions.
 
 > **SDK limitation.** The bundled 1.0.83-5 `CustomAgentConfig` TypeScript
 > interface still exposes `model?: string` and no `modelPolicy`. The ordered
@@ -333,7 +353,9 @@ Corrections to older guidance. See `hooks-crafting` for the full system.
 |---|---|---|
 | Trace context | 1.0.81-13 | Hook inputs can carry W3C `traceparent` and optional `tracestate`; command hooks also receive trace context through environment variables. Preserve and forward these only when the downstream system is trusted. |
 | Direct executable hooks | current docs | CLI command hooks may use `exec` plus string-array `args` instead of `bash`/`powershell`/`command`. Do not combine the forms; `exec` bypasses shell parsing. **Local limitation:** this marketplace's unchanged `scripts/validate.mjs` requires `bash`, `powershell`, or `command`, so `exec` + `args` alone is valid CLI syntax but does not pass this repository's validator. |
-| `sessionEnd` in piped runs | 1.0.78 | A run whose prompt arrives on **stdin** now matches `-p`: `sessionEnd` fires once per completed agent turn with `reason` `complete` (or `error`), instead of once at shutdown with `user_exit`. A piped run that exits before completing a turn fires **no** `sessionEnd` hook. Unattended pipelines that keyed off `user_exit` must be re-checked. |
+| `sessionEnd` in piped runs | 1.0.78 | At baseline 1.0.83-5, a prompt on stdin matches `-p`: `sessionEnd` fires per completed agent turn with `reason` `complete` (or `error`), not at shutdown with `user_exit`. A piped run that exits before completing a turn fires no `sessionEnd`. Do not generalize the count across Stop-hook continuations or newer versions; see the qualification below. |
+| `sessionEnd` on interactive `/clear` | 1.0.85 | Release notes add firing when `/clear` closes the old session. Current public docs specify `reason: "user_exit"` and background dispatch; a later CLI exit terminates handlers still running. Documentation evidence, not an executed fixture. |
+| Prompt-mode completion after Stop continuations | 1.0.92-2 prerelease | Release notes say prompt-mode sessions fire a single `sessionEnd` after Stop-hook continuations complete. This newer prerelease does not establish behavior in shell/session 1.0.90-0. |
 | `userPromptSubmitted` output hardening | 1.0.76 | A non-string `modifiedPrompt` / `modifiedTransformedPrompt` / `responseContent` is ignored with a type-only warning instead of corrupting the session; an empty-string replacement is rejected rather than blanking model-facing content; `handled` without usable `responseContent` is diagnosed instead of silently falling through; `null` `additionalContext` is treated as absent, not injected as the literal `null`. |
 | Hook output size cap | 1.0.76 | Hook output is bounded at **10 MiB per invocation**, so an unbounded command/HTTP response can no longer exhaust memory or leave an oversized session behind. |
 | Hook state across sessions | 1.0.78 | Switching sessions no longer restarts MCP servers or rebuilds hook state, so a turn running in another session is not halted with a stale-hook error. |
@@ -346,9 +368,17 @@ Corrections to older guidance. See `hooks-crafting` for the full system.
 | `postToolUse` `additionalContext` | 1.0.51 | Can be injected into **successful** tool results. |
 | `postToolUse` matchers | 1.0.63 | Matchers such as `Edit\|Write` are honored rather than silently dropped. |
 | Hook progress streaming | 1.0.55 | Command hooks can emit `{"type":"progress","message":"…","temporary":true}` lines before their decision. |
-| Session directory | 1.0.72 | Lifecycle and subagent hook commands run in the current session directory after `/cd`. |
+| Default command-hook directory | 1.0.88 | Release notes restore the project root for commands without explicit `cwd`, superseding the 1.0.72 session-directory guidance. Payload `cwd` describes event context, not a promise about the process directory. Configure the hook's `cwd` explicitly when needed. No runtime fixture in the partial follow-up. |
 | Malformed entries | 1.0.71 | One malformed hook entry no longer discards the valid hooks in the same file. |
 | Claude-format hooks | 1.0.62, 1.0.66 | PascalCase `PreToolUse` / `permissionRequest` fire for matchers like `Bash`, `Read`, `*`, and payloads carry Claude tool names. Nested Claude-style hook groups are handled in inline settings. |
+
+The [1.0.85 release](https://github.com/github/copilot-cli/releases/tag/v1.0.85),
+[1.0.88 release](https://github.com/github/copilot-cli/releases/tag/v1.0.88),
+[1.0.92-2 prerelease](https://github.com/github/copilot-cli/releases/tag/v1.0.92-2),
+and [hook reference](https://docs.github.com/en/copilot/reference/hooks-reference)
+support these scoped corrections. The 4 October follow-up did not execute hooks,
+resume cases, `/clear`, or Stop continuations. Make completion handlers idempotent;
+do not rely on `sessionEnd` alone for cleanup or exactly-once persistence.
 
 **Fail-open is no longer a blanket rule.** Most command-hook failures still let
 the run continue, but `preToolUse` failures and exit-code-2 exits now deny. State
@@ -377,42 +407,56 @@ never fires. `userPromptTransformed` and `preMcpToolCall` have no alias.
 
 ## Plugin and marketplace commands
 
-`copilot plugin` and `copilot plugins` **overlap but are not identical** (verified
-against the 1.0.83-5 live command tree). Shared: `install`, `list`,
-`marketplace`, `update`. Singular-only: `uninstall`. Plural-only: `enable`,
-`disable`, `remove|rm`, and the cross-kind `--plugin`/`--mcp`/`--skill` flags.
-The public plugin reference currently overstates interchangeability; use live
-`--help` for executable command spelling.
+At 1.0.83-5 the singular and plural command trees differed. CLI 1.0.85
+replaced that split: `copilot plugins` is now a legacy alias of `copilot plugin`,
+and other resources have dedicated commands. The
+[1.0.85 release](https://github.com/github/copilot-cli/releases/tag/v1.0.85),
+[plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference),
+and shell 1.0.90-0 help agree. The examples below target the migrated surface;
+they do not establish installation or activation behavior.
 
 ```bash
 copilot plugin install <SPEC>          # plugin@marketplace | OWNER/REPO[:PATH] | git-url | ./path
-copilot plugin uninstall <NAME>        # singular only
-copilot plugin list
-copilot plugin update <NAME> [--all]
-copilot plugins enable  <NAME>         # plural only
-copilot plugins disable <NAME>         # plural only
-copilot plugins remove  <NAME>         # plural only (alias: rm)
+copilot plugin uninstall <NAME>
+copilot plugin list [--json]           # flat plugin array in 1.0.85+
+copilot plugin update <NAME>           # update one plugin
+copilot plugin update --all            # update all plugins; no name required
+copilot plugin enable <NAME>
+copilot plugin disable <NAME>
 
-copilot plugin marketplace add    <SOURCE>        # owner/repo | owner/repo#ref | URL | local path
+copilot plugin marketplace add <SOURCE>           # owner/repo | owner/repo#ref | URL | local path
 copilot plugin marketplace list
 copilot plugin marketplace browse <NAME>
-copilot plugin marketplace update [NAME]          # omit NAME for all; there is NO `refresh` alias
+copilot plugin marketplace update [<NAME>]        # omit the name for all
 copilot plugin marketplace remove <NAME> [--force]
 
-copilot plugins install --skill <FILE|URL|DIR> [--scope user|project]
-copilot plugins enable|disable|remove <NAME> --plugin|--mcp|--skill
-copilot plugins list [--json]
+copilot skill add <FILE | URL | DIRECTORY>
+copilot skill add --project <FILE | URL>
+copilot skill enable <NAME>
+copilot skill disable <NAME>
+copilot skill remove <NAME | DIRECTORY>
+copilot mcp --help
+copilot instruction list [--json]
+copilot lsp list [--json]
 ```
 
 Notes:
 
-- `--plugin` is the default kind for `enable` / `disable` / `remove`.
+- CLI 1.0.85 removed cross-kind `--kind`, `--scope`, `--mcp`, and `--skill`
+  flags from `copilot plugins`. Use the dedicated resource commands above.
+- `plugin list --json` returns a flat array rather than `{ plugins, errors }`.
+  Inspect existing consumers before changing parsers.
+- Public docs advertise `marketplace refresh`; shell 1.0.90-0 accepts
+  `copilot plugin marketplace refresh --help` and displays `update` help.
+  Parent help lists only `update`, so absence there does not disprove the alias.
+  Prefer `update` in recipes; no catalog refresh was executed.
 - `marketplace remove` is refused while plugins from it are installed; `--force`
   uninstalls them too.
 - A marketplace's registration key is its own `name` from `marketplace.json` —
   there is no custom local alias.
 - MCP servers install from a policy-configured registry, not
-  `copilot plugins install`. Use the `/mcp` dashboard's Online view.
+  `copilot plugin install`. Use the `/mcp` dashboard's Online view or inspect
+  `copilot mcp add --help`.
 - `--config-dir` is **deprecated**; use `COPILOT_HOME`.
 - Built-in default marketplaces (`copilot-plugins`, `awesome-copilot`) cannot be
   removed.
@@ -421,11 +465,12 @@ Notes:
 - The interactive `/plugins` command was removed in 1.0.81-10. Use `/plugin`
   for plugins and marketplaces, `/mcp` for MCP servers, `/skills` for skills,
   `/subagents` for agents, and `/instructions` for instruction files.
-- `copilot plugins list` remains a terminal command. It lists plugins, MCP
-  servers, skills, instruction sources, and LSP servers; custom agents and
-  session-scoped hooks require a live session.
+- `copilot plugins list` remains a terminal alias, but in 1.0.85+ it lists only
+  plugins. Use `copilot mcp`, `copilot skill`, `copilot instruction`, and
+  `copilot lsp` for the other resources. Custom agents and session-scoped hooks
+  still require a live session.
 - Hook and LSP enable/disable toggles disappeared with the old `/plugins`
-  dashboard and remain unavailable through `copilot plugins enable|disable`.
+  dashboard and remain unavailable through plugin enable/disable commands.
 
 ## Plugin manifest surface
 
@@ -635,8 +680,15 @@ TTY.
 
 Quick lookup for "when did this land", newest first.
 
+Rows marked partial record only the A01-A03 release/docs/help follow-up.
+They do not advance the overall fully verified baseline beyond 1.0.83-5.
+
 | Version | Change |
 |---|---|
+| 1.0.92-2 prerelease (partial) | Release notes specify one prompt-mode `sessionEnd` after Stop continuations; not verified in shell/session 1.0.90-0. See [hook lifecycle qualifications](#hook-semantics-that-changed). |
+| 1.0.88 (partial) | Release notes restore project-root execution for command hooks without explicit `cwd`, superseding the historical `/cd` guidance. See [hook directory qualifications](#hook-semantics-that-changed). |
+| 1.0.86 (partial) | Documented `include-custom-instructions` opt-in for custom subagents; runtime loading not exercised. See [agent frontmatter](#agent-frontmatter). |
+| 1.0.85 (partial) | Dedicated resource commands, singular/plural plugin aliases and flat-array plugin JSON replace the historical cross-kind forms. See [plugin commands](#plugin-and-marketplace-commands) and [skill commands](#skill-management-commands). Release/docs evidence also adds interactive `/clear` firing; see [hook lifecycle qualifications](#hook-semantics-that-changed). |
 | 1.0.83 | Ordered model fallback and `model-policy: required` for custom agents; relative `--add-dir`/`--plugin-dir` resolution follows `-C` and resumed/worktree cwd; stricter sandbox network behavior and repository-aware sandboxed `gh` auth |
 | 1.0.81-13 | Hook trace context (`traceparent` / `tracestate`) and corrected subagent hook telemetry |
 | 1.0.81-10 | `/plugins` interactive command removed; resources split across `/plugin`, `/mcp`, `/skills`, `/subagents`, and `/instructions`; hook/LSP toggles removed |
@@ -646,7 +698,7 @@ Quick lookup for "when did this land", newest first.
 | 1.0.78 | Piped-stdin runs fire `sessionEnd` per turn like `-p`; first-party plugins auto-update at session start; session switching no longer rebuilds hook state |
 | 1.0.76 | `/plugins` enable/disable for plugins, instructions, agents, LSP servers, hooks; `userPromptSubmitted` output hardening + 10 MiB hook-output cap |
 | 1.0.74 | Open Plugin Spec v1 manifests + `mcp.json`; skill `disable-model-invocation` fully honored |
-| 1.0.72 | `plugins` kind flags + `install --skill`; `agentStop` `stop_hook_active` + 8-block cap; hooks respect `/cd` |
+| 1.0.72 | Historical `plugins` kind flags + `install --skill` (superseded by 1.0.85); `agentStop` `stop_hook_active` + 8-block cap; historical hook `/cd` behavior (superseded by 1.0.88) |
 | 1.0.71 | Canvases; `plugins marketplace` subcommands; `subagents.maxDepth` 6 to 4; plan mode blocks mutating tools |
 | 1.0.70 | Plugin `sha` pinning; trusted-repo settings pinning; `preToolUse` exit 2 denies; draft skills |
 | 1.0.69 | `/plugins` dashboard; `/mcp list` |

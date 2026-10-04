@@ -42,15 +42,18 @@ relying on these forms:
 copilot skill add <FILE | URL | DIRECTORY>
 copilot skill add --project <FILE | URL>
 copilot skill list --json
-
-copilot plugins install --skill <FILE | URL>
-copilot plugins install --skill --scope project <FILE | URL>
+copilot skill enable <NAME>
+copilot skill disable <NAME>
 ```
 
 A file or URL install copies content. A directory install registers a custom
 source rather than copying it. Project scope applies to file/URL installs.
-The direct `skill add` form uses `--project`; the cross-kind `plugins install`
-form uses `--scope project`.
+Use `--project` for that scope. CLI 1.0.85 removed the cross-kind
+`copilot plugins install --skill` form and its `--scope project` spelling.
+Use `copilot skill add` instead, and `copilot skill enable` / `disable` instead
+of plugin commands with `--skill`. Release notes, current documentation and
+shell 1.0.90-0 help confirm this migration; no installation or activation
+behavior was exercised in that partial check.
 
 For an authored marketplace skill, add it to the plugin's `skills/` directory;
 no global install is needed. Manage plugin-sourced skills through their plugin.

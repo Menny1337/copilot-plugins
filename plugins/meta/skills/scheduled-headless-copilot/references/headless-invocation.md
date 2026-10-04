@@ -9,6 +9,7 @@ Authoritative, regularly-refreshed CLI surface: `../../agent-skill-audit/referen
 ## Contents
 
 - [Full flag reference](#full-flag-reference)
+- [Completion hooks](#completion-hooks)
 - [Environment variables](#environment-variables)
 - [Authentication — how it resolves unattended](#authentication--how-it-resolves-unattended)
 - [git / gh push without a prompt](#git--gh-push-without-a-prompt)
@@ -22,7 +23,7 @@ Authoritative, regularly-refreshed CLI surface: `../../agent-skill-audit/referen
 
 | Flag | Effect | Unattended use |
 |---|---|---|
-| `-p, --prompt <text>` | Run a prompt non-interactively, then exit. | The core of every scheduled run. Note the hook semantics: `sessionEnd` fires **once per completed turn** with `reason` `complete`/`error`, not once at shutdown with `user_exit`. A run that dies before completing a turn fires no `sessionEnd` at all — don't rely on it for cleanup. Piping the prompt on stdin behaves identically as of 1.0.78. |
+| `-p, --prompt <text>` | Run a prompt non-interactively, then exit. | At baseline 1.0.83-5, `sessionEnd` fires per completed agent turn with `complete`/`error`, not at shutdown with `user_exit`; stdin parity dates to 1.0.78. A piped run that exits before completing a turn fires none. Do not assume the same count across Stop continuations or newer versions; see the qualification below. |
 | `--mode <interactive\|plan\|autopilot>` | Set the initial agent mode. | Prefer `autopilot` for unattended execution; use `plan` only when the output should be a plan. |
 | `--autopilot` / `--plan` | Shorthands for the corresponding `--mode`. | `--autopilot` is the usual unattended mode. |
 | `--max-autopilot-continues <n>` | Continuation cap in autopilot (default 5). | Bounds self-continuation loops. |
@@ -62,6 +63,17 @@ Authoritative, regularly-refreshed CLI surface: `../../agent-skill-audit/referen
 | `--remote` / `--remote-export` / `--no-remote` / `--no-remote-export` | Explicitly enable or disable remote control/export. | Pin the desired exposure rather than inheriting saved state. |
 | `--no-custom-instructions` | Ignore `AGENTS.md` etc. | Use when the repo's instructions shouldn't apply to the job. |
 | `--secret-env-vars <vars…>` | Strip named values from shell/MCP envs and redact them from output. | Protect injected tokens. |
+
+### Completion hooks
+
+The 1.0.92-2 prerelease notes specify one prompt-mode `sessionEnd` after
+Stop-hook continuations finish. That is not verified behavior in shell/session
+1.0.90-0. CLI 1.0.85 also adds `sessionEnd` on interactive `/clear`; current docs
+describe background handlers that a later CLI exit can terminate.
+See the [baseline's dated lifecycle evidence](../../agent-skill-audit/references/cli-feature-baseline.md#hook-semantics-that-changed).
+Keep required cleanup in the runner, make completion handlers idempotent,
+and do not promise exactly-once persistence from `sessionEnd`.
+No continuation or shutdown fixture was executed in the partial check.
 
 Recommended unattended baseline:
 

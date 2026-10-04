@@ -121,7 +121,7 @@ hook that returns JSON to control behavior.
 | Event | Fires when | Can control behavior? |
 |-------|-----------|-----------------------|
 | `sessionStart` | A new or resumed session begins | Inject `additionalContext` |
-| `sessionEnd` | The session terminates — but under `-p` or a piped stdin prompt it fires once per completed turn instead | No |
+| `sessionEnd` | A session ends; firing also depends on mode, `/clear`, and Stop continuations. See the lifecycle qualification below. | No |
 | `userPromptSubmitted` | The user submits a prompt | Inject `additionalContext`, or answer directly and skip the model (CLI only — the cloud agent fires it but ignores the output) |
 | `userPromptTransformed` | After the prompt has been transformed | Replace it via `modifiedTransformedPrompt` |
 | `preToolUse` | Before each tool executes | Allow / deny / modify args |
@@ -135,6 +135,16 @@ hook that returns JSON to control behavior.
 | `errorOccurred` | An error occurs | No |
 | `preCompact` | Before context compaction | No |
 | `notification` | CLI emits a system notification (CLI only) | Inject `additionalContext` |
+
+At baseline 1.0.83-5, `-p` and piped stdin prompts fire `sessionEnd` per completed
+agent turn with `complete` or `error`, not at shutdown with `user_exit`. A piped
+run that exits before completing a turn fires none. CLI 1.0.85 adds firing on
+interactive `/clear`; current docs describe `user_exit` and background handlers
+that a later CLI exit can terminate. The 1.0.92-2 prerelease notes specify a single
+prompt-mode event after Stop continuations finish. That newer contract was not
+verified in shell/session 1.0.90-0. See the
+[baseline evidence](../agent-skill-audit/references/cli-feature-baseline.md#hook-semantics-that-changed).
+Make handlers idempotent; do not rely on the event alone for cleanup or exactly-once persistence.
 
 > **Two surfaces.** These events are the full **Copilot CLI** set. Hooks also run in the
 > **Copilot cloud agent** sandbox, where a subset fires (no `notification`; `preCompact` only
@@ -248,9 +258,12 @@ the decision parser.
   `preToolUse`, which fails closed — plan for both directions. For enforcement use the
   dedicated decision events (`preToolUse` deny, `permissionRequest` deny) and verify they
   actually block.
-- **Hook commands run in the current session directory.** Since CLI 1.0.72 lifecycle and
-  subagent hook commands follow `/cd`, so don't assume the directory the CLI started in.
-  Resolve paths from the payload or an absolute base.
+- CLI 1.0.88 release notes restore the project root for command hooks without
+  explicit `cwd`, replacing the older session-directory guidance. Payload `cwd`
+  describes the event context; do not assume it equals the hook process directory.
+  Set the hook's `cwd` when the command needs a specific directory, and resolve
+  script paths from a known base. This correction has release/docs support,
+  not an executed directory fixture.
 - **Trace context is propagation data.** Since CLI 1.0.81-13 hook inputs may include W3C
   `traceparent` and `tracestate`, and command hooks receive trace context through environment
   variables. Forward it only to trusted telemetry destinations; do not log it indiscriminately.

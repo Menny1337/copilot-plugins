@@ -27,6 +27,11 @@ command hooks additionally receive trace context through environment variables.
 Treat trace context as propagation metadata and forward it only to trusted
 telemetry systems.
 
+For CLI 1.0.88+, release notes place command hooks without configured `cwd`
+in the project root. Payload `cwd` describes the event context, not the hook
+process directory. Set the hook entry's `cwd` when the command needs a
+specific directory.
+
 CLI command hooks may use `exec` plus a string-array `args` to invoke an
 executable directly. Do not combine that form with `bash`, `powershell`, or
 `command`; shell expansion, pipes, redirects, and globs are unavailable. This
@@ -41,7 +46,7 @@ camelCase shapes shown; PascalCase equivalents use snake_case keys plus `hook_ev
 | Event | Extra fields beyond `sessionId`, `timestamp`, `cwd` |
 |-------|-----------------------------------------------------|
 | `sessionStart` | `source: "startup"\|"resume"\|"new"`, `initialPrompt?` |
-| `sessionEnd` | `reason: "complete"\|"error"\|"abort"\|"timeout"\|"user_exit"`. **Firing differs by run mode:** an interactive run fires once at shutdown (typically `user_exit`); a `-p` run *or* a run whose prompt arrives on **stdin** fires once per completed agent turn with `complete` (or `error`), and fires nothing at all if it exits before completing a turn (stdin parity added in 1.0.78). |
+| `sessionEnd` | `reason: "complete"\|"error"\|"abort"\|"timeout"\|"user_exit"`. Firing depends on mode and version; see the qualification below. |
 | `userPromptSubmitted` | `prompt` |
 | `userPromptTransformed` | `prompt`, `transformedPrompt` — fires after the prompt is transformed (e.g. by `userPromptSubmitted` context injection). Output may set `modifiedTransformedPrompt`. No PascalCase alias. |
 | `preToolUse` | `toolName`, `toolArgs` |
@@ -57,6 +62,22 @@ camelCase shapes shown; PascalCase equivalents use snake_case keys plus `hook_ev
 | `notification` | `hook_event_name: "Notification"`, `message`, `title?`, `notification_type` |
 
 > The built-in `general-purpose` agent does not emit `subagentStart` / `subagentStop`.
+
+### `sessionEnd` lifecycle qualification
+
+At baseline 1.0.83-5, interactive shutdown normally supplies `user_exit`.
+Prompt mode and piped stdin fire per completed agent turn with `complete` or
+`error`; a piped run that exits before completing a turn fires no event.
+Stdin parity dates to 1.0.78. CLI 1.0.85 also fires the event when interactive
+`/clear` closes the old session. Current docs specify `user_exit` and background
+dispatch, so quitting the CLI later can terminate handlers still running.
+
+The 1.0.92-2 prerelease notes specify a single prompt-mode `sessionEnd` after
+Stop-hook continuations complete. This is newer than shell/session 1.0.90-0;
+the partial check did not exercise those continuations, `/clear`, or resume.
+Use the [baseline's dated evidence](../../agent-skill-audit/references/cli-feature-baseline.md#hook-semantics-that-changed).
+Make handlers idempotent and keep required cleanup or persistence independent
+of a promised event count.
 
 ### `notification_type` values
 
