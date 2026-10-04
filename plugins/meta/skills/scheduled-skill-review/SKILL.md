@@ -76,7 +76,15 @@ isolated subprocesses and never reads raw transcripts itself.
    bumps `metadata.version`; the bump level is derived from the subprocess's Conventional
    Commit), commits that, then regenerates the catalog and plugin READMEs.
    Before version apply, it captures a clean HEAD and checks a read-only version
-   plan against that snapshot. Only the planned plugin version fields,
+   `version.mjs plan --json` (`version-plan/1`) against that snapshot. Root tooling
+   owns the bump calculation and rendering. The plan supplies resolved refs, a UTC
+   date, and exact before/after UTF-8 bytes for each version-owned path.
+   Root `version-contract.mjs` supplies the shared 8 MiB data limit for the
+   producer and consumer.
+   The daemon passes it to `version.mjs apply --plan -`, which recomputes and
+   verifies it before writing. The daemon does not parse human output or
+   reconstruct version files. Unknown schemas or mismatched refs stop integration.
+   Only the planned plugin version fields,
    marketplace version fields and exact generated changelog insertion may
    change. Both staged and working bytes must match the expected outputs before
    a scoped version commit. Planning, apply, staging or commit failure preserves

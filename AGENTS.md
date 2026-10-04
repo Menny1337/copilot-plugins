@@ -27,6 +27,18 @@ node --test plugins/meta/skills/scheduled-headless-copilot/scripts/loops/tests/*
 node scripts/version.mjs plan
 ```
 
+Run version and scheduled-review contracts in an approved artifact directory outside
+the checkout:
+
+```bash
+VERSION_TEST_ARTIFACT_DIR=/absolute/path/to/approved/artifacts \
+  node --test scripts/version.test.mjs plugins/meta/skills/scheduled-skill-review/scripts/integration-docs.test.mjs
+```
+
+`SKILL_REVIEW_TEST_ARTIFACT_DIR` remains an alias. Tests create synthetic Git
+repositories there and remove their fixtures when finished. There is no system-temp
+fallback.
+
 On macOS, also run the Copilot Loops Swift contract harness and bundle build:
 
 ```bash
