@@ -3,6 +3,12 @@
 All notable changes to the `meta` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.16.1] - 2026-10-04
+
+_patch release._
+
+- fix(meta): align CLI guidance and safeguard scheduled reviews
+
 ## [1.16.0] - 2026-09-15
 
 _Initial public release._
