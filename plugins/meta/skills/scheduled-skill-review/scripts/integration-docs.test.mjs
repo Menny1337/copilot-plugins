@@ -7,10 +7,11 @@ import {
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { MAX_PLAN_BYTES } from '../../../../../scripts/version-contract.mjs';
 
 // Set this to an authorized artifact directory. No implicit system-temp fallback:
 // self-audit probes must remain inside the approved session artifact scope.
-const artifactDir = process.env.SKILL_REVIEW_TEST_ARTIFACT_DIR;
+const artifactDir = process.env.VERSION_TEST_ARTIFACT_DIR ?? process.env.SKILL_REVIEW_TEST_ARTIFACT_DIR;
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptsDir, '../../../../..');
 const source = readFileSync(join(scriptsDir, 'run-batch-review.sh'), 'utf8');
@@ -33,7 +34,7 @@ function functionSource(name) {
 }
 
 function runNode(root, args) {
-  return spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8' });
+  return spawnSync(process.execPath, args, { cwd: root, env: gitEnvironment(root), encoding: 'utf8' });
 }
 
 function gitEnvironment(root) {
@@ -49,7 +50,7 @@ function gitEnvironment(root) {
 
 function fixture(t) {
   assert.ok(artifactDir && isAbsolute(artifactDir),
-    'Set SKILL_REVIEW_TEST_ARTIFACT_DIR to an authorized absolute artifact directory');
+    'Set VERSION_TEST_ARTIFACT_DIR or SKILL_REVIEW_TEST_ARTIFACT_DIR to an authorized absolute artifact directory');
   const base = resolve(artifactDir);
   assert.ok(base !== repoRoot && !base.startsWith(`${repoRoot}${sep}`),
     'Fixtures must not write inside the source checkout');
@@ -65,7 +66,7 @@ function fixture(t) {
   mkdirSync(join(root, 'run/results'), { recursive: true });
   // These inspected generators resolve their root from their own script location.
   // Only the synthetic manifest's relative plugin path and synthetic docs are used.
-  for (const script of ['catalog.mjs', 'plugin-readme.mjs', 'validate.mjs']) {
+  for (const script of ['catalog.mjs', 'plugin-readme.mjs', 'validate.mjs', 'version.mjs', 'version-contract.mjs']) {
     copyFileSync(join(repoRoot, 'scripts', script), join(root, 'scripts', script));
   }
   writeFileSync(join(root, '.github/plugin/marketplace.json'), JSON.stringify({
@@ -122,7 +123,7 @@ function runPath(f, path, {
   failRecovery = false, failDefaultCheckout = false, batch = false, unexpectedEdit = '',
   readmePath = '', readmeEdit = '', readmeStage = 'unstaged',
   failPush = false, failReset = false,
-  actualVersions = false, versionEdit = '', versionFailure = '', versionNoop = false,
+  actualVersions = false, versionEdit = '', versionFailure = '',
   versionPlanEdit = '',
   versionStageFailure = false,
 } = {}) {
@@ -154,7 +155,6 @@ README_STAGE=${quote(readmeStage)}
 README_TRIGGER=${quote(stage === 1 ? 'scripts/plugin-readme.mjs' : 'scripts/plugin-readme.mjs --check')}
 VERSION_EDIT=${quote(versionEdit)}
 VERSION_FAILURE=${quote(versionFailure)}
-VERSION_NOOP=${versionNoop ? 1 : 0}
 VERSION_PLAN_EDIT=${quote(versionPlanEdit)}
 VERSION_STAGE_FAILURE=${versionStageFailure ? 1 : 0}
 BASE_HEAD=${quote(f.defaultHead ?? 'fixture-head')}
@@ -169,7 +169,7 @@ applied=0
 reverted=0
 log() { printf 'log %s\\n' "$*" >>"$CALLS"; }
 bump_versions() { printf 'bump_versions %s\\n' "$*" >>"$CALLS"; }
-# Network and version operations stay stubbed. Real git is enabled only for
+# Network operations stay stubbed. Real git and version tooling run only in
 # explicitly initialized local fixtures inside the authorized artifact directory.
 git() {
   printf 'git %s\\n' "$*" >>"$CALLS"
@@ -200,6 +200,23 @@ node() {
   if [ "$1" = scripts/version.mjs ]; then
     if [ "$2" = plan ]; then
       [ "$VERSION_FAILURE" != plan ] || return 1
+      ${quote(process.execPath)} "$@" >logs/version-plan.json || return $?
+      if [ "$VERSION_FAILURE" = override ]; then
+        ${quote(process.execPath)} "$@" --set example=major >logs/version-plan.json || return $?
+      fi
+      ${quote(process.execPath)} -e '
+        const fs = require("node:fs"), fault = process.argv[1], path = "logs/version-plan.json";
+        const plan = JSON.parse(fs.readFileSync(path, "utf8"));
+        if (fault === "schema") plan.schema = "version-plan/2";
+        if (fault === "head") plan.head = plan.base;
+        if (fault === "base") plan.base = plan.head;
+        if (fault === "path") plan.outputs[0].path = "README.md";
+        if (fault === "before") plan.outputs[0].before += "tampered";
+        if (fault === "content") plan.outputs[0].after += "tampered";
+        if (fault === "empty") plan.outputs = [];
+        fs.writeFileSync(path, fault === "payload-cap" ? " ".repeat(${MAX_PLAN_BYTES} + 1)
+          : fault === "malformed" ? "{broken" : JSON.stringify(plan));
+      ' "$VERSION_FAILURE" || return $?
       if [ -n "$VERSION_PLAN_EDIT" ]; then
         ${quote(process.execPath)} -e '
           const fs = require("node:fs"), { execFileSync } = require("node:child_process");
@@ -214,30 +231,18 @@ node() {
           fs.writeFileSync("logs/version-path.txt", path);
         ' "$VERSION_PLAN_EDIT" || return $?
       fi
-      if [ "$VERSION_NOOP" = 1 ]; then printf 'No plugin source changes detected. No version bumps required.\\n'
-      else printf 'version plan — base fixture-base … head fixture-head\\n\\n  %-22s %-8s → needs ≥ %-6s (current 1.0.0, applied bump: none)\\n\\n  marketplace metadata.version: 1.0.0 → needs ≥ patch (current 1.0.0)\\n' example 1.0.0 patch; fi
+      cat logs/version-plan.json
       return 0
     fi
-    [ "$VERSION_NOOP" != 1 ] || return 0
     [ "$VERSION_FAILURE" != apply-before ] || return 1
+    ${quote(process.execPath)} "$@" || return $?
+    if [ -z "$VERSION_EDIT" ]; then [ "$VERSION_FAILURE" != apply ]; return $?; fi
     ${quote(process.execPath)} -e '
       const fs = require("node:fs"), { execFileSync } = require("node:child_process");
       const edit = process.argv[1], manifestPath = "plugins/example/plugin.json";
       const marketplacePath = ".github/plugin/marketplace.json", changelogPath = "plugins/example/CHANGELOG.md";
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-      manifest.version = "1.0.1";
       const marketplace = JSON.parse(fs.readFileSync(marketplacePath, "utf8"));
-      marketplace.plugins[0].version = "1.0.1"; marketplace.metadata.version = "1.0.1";
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\\n");
-      fs.writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + "\\n");
-      const header = "# Changelog\\n\\nAll notable changes to this plugin are documented here.\\n" +
-        "Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).\\n\\n" +
-        "## [1.0.1] - " + new Date().toISOString().slice(0, 10) + "\\n\\n_patch release._\\n\\n- Fixture committed proposal\\n";
-      if (fs.existsSync(changelogPath)) {
-        const existing = fs.readFileSync(changelogPath, "utf8"), idx = existing.indexOf("\\n## ");
-        const section = header.slice(header.indexOf("## [1.0.1]"));
-        fs.writeFileSync(changelogPath, existing.slice(0, idx + 1) + section + "\\n" + existing.slice(idx + 1));
-      } else fs.writeFileSync(changelogPath, header);
       let path;
       if (["root-readme", "plugin-readme", "index-root-readme", "index-plugin-readme"].includes(edit)) {
         path = edit.endsWith("root-readme") ? "README.md" : "plugins/example/README.md";
@@ -338,7 +343,7 @@ node() {
 ${recoveryFunctions}
 ${functionSource('sync_repo')}
 ${actualVersions ? [
-  'version_owned_outputs', 'verify_version_outputs', 'bump_versions',
+  'read_version_outputs', 'verify_version_outputs', 'bump_versions',
 ].map(functionSource).join('\n') : ''}
 # Recipe-only tests use mocked Git. Ownership and recovery checks are exercised
 # by the real local-Git fixtures below, not inferred from those mocks.
@@ -448,7 +453,7 @@ function localGit(f, args) {
   return result.stdout.trim();
 }
 
-function localGitFixture(t, stage = -1, existingChangelog = false) {
+function localGitFixture(t, stage = -1, existingChangelog = false, subject = 'Fixture committed proposal') {
   const f = fixture(t);
   const skill = join(f.root, 'plugins/example/skills/example/SKILL.md');
   writeFileSync(skill, readFileSync(skill, 'utf8').replace('Changed description', 'Original description'));
@@ -484,7 +489,7 @@ function localGitFixture(t, stage = -1, existingChangelog = false) {
   } else {
     failStage(f, stage);
   }
-  commit('Fixture committed proposal');
+  commit(subject);
   f.proposalHead = localGit(f, ['rev-parse', 'HEAD']);
   localGit(f, ['checkout', 'main']);
   for (const name of ['example', 'second']) {
@@ -836,7 +841,7 @@ function assertVersionEditPreserved(f) {
 }
 
 for (const path of ['integrate_one', 'open_pr']) {
-  test(`${path} accepts complete padded planner output and commits only predicted version outputs`,
+  test(`${path} consumes the real structured plan and commits only planned version outputs`,
     options, t => {
       const f = localGitFixture(t, -1, true);
       const result = runPath(f, path, { realGit: true, actualVersions: true });
@@ -882,7 +887,10 @@ for (const path of ['integrate_one', 'open_pr']) {
       });
   }
 
-  for (const versionFailure of ['plan', 'apply', 'apply-before', 'stage', 'commit']) {
+  for (const versionFailure of [
+    'plan', 'apply', 'apply-before', 'stage', 'commit',
+    'schema', 'head', 'base', 'path', 'before', 'content', 'empty', 'malformed', 'override', 'payload-cap',
+  ]) {
     test(`${path} fails closed on version ${versionFailure} failure across runs`,
       options, t => {
         const f = localGitFixture(t);
@@ -900,6 +908,19 @@ for (const path of ['integrate_one', 'open_pr']) {
         if (versionFailure === 'commit') {
           assert.ok(trace.some(line => line.startsWith('git commit --only ')));
           assert.notEqual(localGit(f, ['diff', '--cached', '--name-only']), '');
+        }
+        if (['schema', 'head', 'base', 'path', 'before', 'malformed', 'override', 'payload-cap'].includes(versionFailure)) {
+          assert.ok(!trace.some(line => line.startsWith('node scripts/version.mjs apply')));
+        }
+        if (versionFailure === 'payload-cap') {
+          assert.match(readFileSync(join(f.root, 'logs/daemon.log'), 'utf8'),
+            new RegExp(`exceeds ${MAX_PLAN_BYTES} byte limit`));
+          assert.equal(localGit(f, ['status', '--porcelain']), '');
+        }
+        if (['content', 'empty'].includes(versionFailure)) {
+          assert.ok(trace.some(line => line.startsWith('node scripts/version.mjs apply')));
+          assert.equal(localGit(f, ['status', '--porcelain']), '');
+          assert.equal(JSON.parse(readFileSync(join(f.root, 'plugins/example/plugin.json'), 'utf8')).version, '1.0.0');
         }
         assertNextSyncPreserves(f);
       });
@@ -919,15 +940,113 @@ test('actual bump_versions returns failure for a failed scoped version commit', 
 
 test('actual bump_versions verifies a no-op without manufacturing a version commit', options, t => {
   const f = localGitFixture(t);
-  localGit(f, ['checkout', 'fixture-branch']);
+  // The real no-op producer compares a clean branch with itself.
+  localGit(f, ['checkout', 'main']);
   const before = checkoutSnapshot(f);
   const result = runPath(f, 'bump_versions', {
-    realGit: true, actualVersions: true, versionNoop: true,
+    realGit: true, actualVersions: true,
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.deepEqual(checkoutSnapshot(f), before);
   assert.ok(!calls(f).some(line => /^git (add|commit) /.test(line)));
 });
+
+test('actual bump_versions accepts a bounded plan with a changelog above 1 MiB', options, t => {
+  const f = localGitFixture(t, -1, true);
+  localGit(f, ['checkout', 'fixture-branch']);
+  const path = join(f.root, 'plugins/example/CHANGELOG.md');
+  const historical = readFileSync(path, 'utf8') + '\n' + '- Historical café note.\n'.repeat(60_000);
+  assert.ok(Buffer.byteLength(historical) > 1024 * 1024);
+  writeFileSync(path, historical);
+  localGit(f, ['add', '--', 'plugins/example/CHANGELOG.md']);
+  localGit(f, ['commit', '-m', 'docs: historical fixture notes']);
+  const result = runPath(f, 'bump_versions', { realGit: true, actualVersions: true });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  const planBytes = readFileSync(join(f.root, 'logs/version-plan.json')).length;
+  assert.ok(planBytes <= MAX_PLAN_BYTES);
+  t.diagnostic(`changelog=${Buffer.byteLength(historical)} bytes; plan=${planBytes} bytes; cap=${MAX_PLAN_BYTES} bytes`);
+  assert.ok(readFileSync(path, 'utf8').endsWith(historical.slice(historical.indexOf('## [1.0.0]'))));
+  assert.equal(localGit(f, ['status', '--porcelain']), '');
+});
+
+test('actual bump_versions rejects an oversized producer plan without writes or commits', options, t => {
+  const f = localGitFixture(t, -1, true);
+  localGit(f, ['checkout', 'fixture-branch']);
+  const path = join(f.root, 'plugins/example/CHANGELOG.md');
+  const historical = readFileSync(path, 'utf8') + '\n' + '- Historical café note.\n'.repeat(180_000);
+  const bytes = Buffer.byteLength(historical);
+  assert.ok(bytes < MAX_PLAN_BYTES && bytes * 2 > MAX_PLAN_BYTES);
+  writeFileSync(path, historical);
+  localGit(f, ['add', '--', 'plugins/example/CHANGELOG.md']);
+  localGit(f, ['commit', '-m', 'docs: oversized fixture history']);
+  const before = checkoutSnapshot(f);
+  const result = runPath(f, 'bump_versions', { realGit: true, actualVersions: true });
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  const log = readFileSync(join(f.root, 'logs/daemon.log'), 'utf8');
+  assert.match(log, new RegExp(`Version plan exceeds ${MAX_PLAN_BYTES} byte limit`));
+  assert.deepEqual(checkoutSnapshot(f), before);
+  assert.equal(readFileSync(path, 'utf8'), historical);
+  assert.ok(!calls(f).some(line => /^git (add|commit) /.test(line)));
+  assert.ok(!calls(f).some(line => line.startsWith('node scripts/version.mjs apply')));
+  const [, rejectedBytes] = log.match(/byte limit: (\d+) bytes/);
+  t.diagnostic(`preserved changelog=${bytes} bytes; rejected plan=${rejectedBytes} bytes; producer cap=${MAX_PLAN_BYTES} bytes`);
+});
+
+for (const [subject, version] of [['feat: add feature', '1.1.0'], ['fix!: replace interface', '2.0.0']]) {
+  test(`actual bump_versions consumes a ${version} release from the root producer`, options, t => {
+    const f = localGitFixture(t, -1, true, subject);
+    localGit(f, ['checkout', 'fixture-branch']);
+    const result = runPath(f, 'bump_versions', { realGit: true, actualVersions: true });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(JSON.parse(readFileSync(join(f.root, 'plugins/example/plugin.json'), 'utf8')).version, version);
+    assert.equal(localGit(f, ['status', '--porcelain']), '');
+    assert.equal(localGit(f, ['rev-parse', 'HEAD^']), f.proposalHead);
+    assert.match(readFileSync(join(f.root, 'plugins/example/CHANGELOG.md'), 'utf8'),
+      /Authored historical release note\./);
+  });
+}
+
+for (const scenario of ['new', 'removed', 'already-bumped']) {
+  test(`actual root producer and daemon preserve ${scenario} releases`, options, t => {
+    const f = localGitFixture(t);
+    localGit(f, ['checkout', 'fixture-branch']);
+    const marketplacePath = join(f.root, '.github/plugin/marketplace.json');
+    const marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8'));
+    if (scenario === 'new') {
+      marketplace.plugins.push({ name: 'added', version: '0.1.0', source: 'plugins/added' });
+      mkdirSync(join(f.root, 'plugins/added'));
+      writeFileSync(join(f.root, 'plugins/added/plugin.json'), '{"name":"added","version":"0.1.0"}\n');
+      writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
+    } else if (scenario === 'removed') {
+      marketplace.plugins = [];
+      writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
+      rmSync(join(f.root, 'plugins/example'), { recursive: true });
+    } else {
+      const apply = runNode(f.root, ['scripts/version.mjs', 'apply', '--base', f.defaultHead]);
+      assert.equal(apply.status, 0, apply.stderr);
+    }
+    localGit(f, ['add', '-A']);
+    localGit(f, ['commit', '-m', 'chore: prepare release fixture']);
+    const head = localGit(f, ['rev-parse', 'HEAD']);
+    const result = runPath(f, 'bump_versions', { realGit: true, actualVersions: true });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(localGit(f, ['status', '--porcelain']), '');
+    if (scenario === 'already-bumped') {
+      assert.equal(localGit(f, ['rev-parse', 'HEAD']), head);
+      assert.ok(!calls(f).some(line => /^git (add|commit) /.test(line)));
+    } else {
+      assert.equal(localGit(f, ['rev-parse', 'HEAD^']), head);
+      const version = JSON.parse(readFileSync(marketplacePath, 'utf8')).metadata.version;
+      assert.equal(version, scenario === 'removed' ? '2.0.0' : '1.0.1');
+      if (scenario === 'new') {
+        assert.equal(JSON.parse(readFileSync(join(f.root, 'plugins/added/plugin.json'), 'utf8')).version, '0.1.1');
+      } else {
+        assert.equal(localGit(f, ['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']),
+          '.github/plugin/marketplace.json');
+      }
+    }
+  });
+}
 
 for (const staged of [false, true]) {
   test(`actual bump_versions rejects pre-existing ${staged ? 'staged' : 'working'} authored edits before planning`,

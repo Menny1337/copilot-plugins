@@ -13,12 +13,15 @@
  *   • anything else (fix, docs, refactor, chore, …)       → patch
  *
  * Subcommands:
- *   plan   [--base <ref>] [--head <ref>]   read-only report of required bumps
+ *   plan   [--base <ref>] [--head <ref>] [--json]
+ *                                         read-only report; JSON uses version-plan/1
  *   check  [--base <ref>] [--head <ref>]   CI guard (ci-hard); exit 1 if a plugin's
  *                                          source changed without a sufficient bump,
  *                                          a CHANGELOG section, or a marketplace bump
  *   apply  [--base <ref>] [--set p=lvl…]   write computed bumps into plugin.json,
- *          [--allow-dirty]                 marketplace.json, and per-plugin CHANGELOG
+ *          [--allow-dirty] [--plan -]       marketplace.json, and per-plugin CHANGELOG
+ *                                         --plan - verifies a JSON plan from stdin
+ *                                         against recomputation before writing
  *   tags   [--json] [--all]                list release tags for current versions
  *                                          (missing only by default; --all includes existing)
  *   notes  --tag <tag>                      print release notes for a tag (from CHANGELOG)
@@ -30,13 +33,22 @@
  *     --head ${{ github.event.pull_request.head.sha }}
  *
  * Pure Node, zero deps — mirrors validate.mjs / catalog.mjs.
+ * version-plan/1: resolved base/head commit IDs, UTC date, overrides, and outputs
+ * {path, before, after}. Text is exact UTF-8; before=null means absent. apply uses
+ * the same computation, binds supplied plans to HEAD/date/refs/preconditions,
+ * and never writes paths or content supplied by a plan without recomputing them.
+ * Plan/apply JSON (including whitespace), version inputs and related Git output
+ * streams are bounded to 8,388,608 bytes (8 MiB). Oversize data fails before
+ * parsing/writing.
  * Exits 0 on success; check/apply exit 1 on failure.
  */
 
-import { readFileSync, writeFileSync, statSync } from 'node:fs';
+import { writeFileSync, statSync, lstatSync } from 'node:fs';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
+import { MAX_GIT_BYTES, readBoundedText, serializePlan } from './version-contract.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -62,15 +74,17 @@ function git(args, { allowFail = false } = {}) {
     return execFileSync('git', args, {
       cwd: repoRoot,
       encoding: 'utf8',
+      maxBuffer: MAX_GIT_BYTES,
       stdio: ['ignore', 'pipe', 'pipe'], // capture stderr so probes don't leak `fatal:` noise
     });
   } catch (e) {
+    if (e.code === 'ENOBUFS') throw new Error(`Git output exceeds ${MAX_GIT_BYTES} byte limit.`);
     if (allowFail) return null;
     throw new Error(`git ${args.join(' ')} failed: ${(e.stderr || e.message).toString().trim()}`);
   }
 }
 function exists(p) { try { statSync(p); return true; } catch { return false; } }
-function readJsonFile(p) { return JSON.parse(readFileSync(p, 'utf8')); }
+function readJsonFile(p) { return JSON.parse(readBoundedText(p)); }
 function readJsonAtRef(ref, relPath) {
   const out = git(['show', `${ref}:${relPath}`], { allowFail: true });
   if (out == null) return null;
@@ -87,7 +101,8 @@ const LEVEL_NAME = ['none', 'patch', 'minor', 'major'];
 function parseSemver(v) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v ?? '').trim());
   if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
+  const parts = [Number(m[1]), Number(m[2]), Number(m[3])];
+  return parts.every(Number.isSafeInteger) ? parts : null;
 }
 function cmpSemver(a, b) {
   for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
@@ -105,11 +120,15 @@ function bumpLevel(base, head) {
   return 'patch';
 }
 function applyBump(version, level) {
-  const [x, y, z] = parseSemver(version);
-  if (level === 'major') return `${x + 1}.0.0`;
-  if (level === 'minor') return `${x}.${y + 1}.0`;
-  if (level === 'patch') return `${x}.${y}.${z + 1}`;
-  return version;
+  const parts = parseSemver(version);
+  if (!parts) throw new Error(`Invalid or unsafe version: ${version}`);
+  if (level === 'none') return version;
+  const index = { major: 0, minor: 1, patch: 2 }[level];
+  if (index === undefined) throw new Error(`Invalid bump level: ${level}`);
+  parts[index]++;
+  if (!Number.isSafeInteger(parts[index])) throw new Error(`Version increment overflow: ${version} (${level})`);
+  for (let i = index + 1; i < parts.length; i++) parts[i] = 0;
+  return parts.join('.');
 }
 
 // ── conventional commits ─────────────────────────────────────────────────────
@@ -209,10 +228,10 @@ const CHANGELOG_HEADER = [
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
-function renderChangelogSection(version, level, subjects) {
+function renderChangelogSection(version, level, subjects, date) {
   const bullets = subjects.length ? subjects : ['Maintenance changes.'];
   return [
-    `## [${version}] - ${today()}`,
+    `## [${version}] - ${date}`,
     '',
     `_${level} release._`,
     '',
@@ -290,13 +309,17 @@ function analyze(base, head) {
 
   const baseMeta = baseMarketplace?.metadata?.version ?? null;
   const headMeta = marketplace.metadata?.version ?? null;
-  return { results, marketplace, baseMeta, headMeta };
+  return { results, marketplace, plugins, baseMeta, headMeta };
 }
 function maxLevel(a, b) { return LEVEL[a] >= LEVEL[b] ? a : b; }
 
 // ── command: plan ────────────────────────────────────────────────────────────
 function cmdPlan() {
   const { base, head } = resolveRefs();
+  if (flag('json')) {
+    process.stdout.write(serializePlan(computePlan(base, head)));
+    process.exit(0);
+  }
   const { results, baseMeta, headMeta } = analyze(base, head);
   console.log(`version plan — base ${short(base)} … head ${short(head)}\n`);
   const changed = results.filter(r => r.changed);
@@ -406,7 +429,7 @@ function cmdCheck() {
 
 function readFileText(relPath) {
   const p = resolve(repoRoot, relPath);
-  return exists(p) ? readFileSync(p, 'utf8') : '';
+  return exists(p) ? readBoundedText(p) : '';
 }
 
 // ── command: apply ───────────────────────────────────────────────────────────
@@ -416,25 +439,105 @@ function cmdApply() {
     console.error('✗ version.mjs apply: working tree is dirty. Commit/stash first, or pass --allow-dirty.');
     process.exit(1);
   }
-  const { base, head } = resolveRefs();
-  const { results } = analyze(base, head);
+  let supplied = null;
+  if (argv.includes('--plan')) {
+    if (opt('plan') !== '-') throw new Error('apply --plan accepts only - (stdin).');
+    supplied = JSON.parse(readBoundedText(0));
+    if (supplied?.schema !== 'version-plan/1') throw new Error('Unsupported version plan schema.');
+    if (typeof supplied.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(supplied.date) ||
+        Number.isNaN(Date.parse(supplied.date)) ||
+        new Date(supplied.date).toISOString().slice(0, 10) !== supplied.date) {
+      throw new Error('Invalid version plan date.');
+    }
+  }
+  const refs = supplied
+    ? { base: opt('base', supplied.base), head: opt('head', supplied.head) }
+    : resolveRefs();
+  const plan = computePlan(refs.base, refs.head, supplied?.date ?? today(),
+    supplied?.overrides ?? readOverrides());
+  if (supplied) {
+    if (plan.head !== git(['rev-parse', 'HEAD']).trim()) throw new Error('Version plan HEAD mismatch.');
+    if (opts('set').length && !isDeepStrictEqual(readOverrides(), plan.overrides)) {
+      throw new Error('Version plan overrides mismatch.');
+    }
+    if (!isDeepStrictEqual(supplied, plan)) throw new Error('Version plan does not match refs or checkout preconditions.');
+  }
+  // Check all preconditions before any writes.
+  for (const output of plan.outputs) {
+    if (snapshotText(output.path) !== output.before) throw new Error(`Version precondition changed: ${output.path}`);
+  }
+  for (const output of plan.outputs) writeFileSync(resolve(repoRoot, output.path), output.after);
+  if (!plan.touched.length) {
+    console.log('Nothing to apply — no changed plugins needed a bump.');
+    process.exit(0);
+  }
+  console.log('Applied version bumps:');
+  for (const t of plan.touched) console.log(`  • ${t}`);
+  console.log(`  • marketplace metadata.version → ${plan.marketplaceVersion} (${plan.maxApplied})`);
+  console.log('\nNext: review the diff, then `node scripts/catalog.mjs` (descriptions/versions may affect the catalog) and `node scripts/validate.mjs`.');
+  process.exit(0);
+}
 
+function readOverrides() {
   const overrides = new Map();
   for (const s of opts('set')) {
     const m = /^([^=]+)=(major|minor|patch)$/.exec(s.trim());
     if (!m) { console.error(`✗ bad --set "${s}" (want plugin=major|minor|patch).`); process.exit(1); }
     overrides.set(m[1], m[2]);
   }
+  return Object.fromEntries(overrides);
+}
 
-  const { marketplace, plugins } = loadPlugins();
-  const marketplacePath = resolve(repoRoot, MARKETPLACE_REL);
+function snapshotText(path) {
+  if (isAbsolutePathUnsafe(path)) throw new Error(`Unsafe version path: ${path}`);
+  const absolute = resolve(repoRoot, path);
+  // Refuse symlinks, including symlinked parent directories.
+  let parent = absolute;
+  while (parent !== repoRoot) {
+    let stat;
+    try { stat = lstatSync(parent); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (stat?.isSymbolicLink()) throw new Error(`Symlink version path: ${path}`);
+    parent = dirname(parent);
+  }
+  if (!exists(absolute)) return null;
+  if (!lstatSync(absolute).isFile()) throw new Error(`Non-file version path: ${path}`);
+  return readBoundedText(absolute);
+}
+
+function isAbsolutePathUnsafe(path) {
+  return typeof path !== 'string' || !path || path.includes('\\') ||
+    path.split('/').some(part => !part || part === '.' || part === '..') ||
+    relative(repoRoot, resolve(repoRoot, path)).startsWith('..');
+}
+
+function computePlan(baseRef, headRef, date = today(), overrides = readOverrides()) {
+  const base = git(['rev-parse', '--verify', `${baseRef}^{commit}`]).trim();
+  const head = git(['rev-parse', '--verify', `${headRef}^{commit}`]).trim();
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides) ||
+      Object.values(overrides).some(level => !['patch', 'minor', 'major'].includes(level))) {
+    throw new Error('Invalid version plan overrides.');
+  }
+  const { results, marketplace, plugins, baseMeta, headMeta } = analyze(base, head);
+  for (const version of [baseMeta, headMeta]) {
+    if (version != null && !parseSemver(version)) throw new Error(`Invalid or unsafe marketplace version: ${version}`);
+  }
+  for (const p of plugins) {
+    for (const version of [p.pluginJson?.version, p.entry.version]) {
+      if (!parseSemver(version)) throw new Error(`Invalid or unsafe version for ${p.name}: ${version}`);
+    }
+  }
   const byName = new Map(plugins.map(p => [p.name, p]));
   let maxApplied = 'none';
   const touched = [];
+  const outputs = [];
+  const output = (path, after) => outputs.push({ path, before: snapshotText(path), after });
 
   for (const r of results) {
-    const override = overrides.get(r.name);
+    const override = Object.hasOwn(overrides, r.name) ? overrides[r.name] : undefined;
     if (!r.changed && !override) continue;
+    if (!r.isNew && !parseSemver(r.baseVersion)) throw new Error(`Invalid or unsafe base version for ${r.name}: ${r.baseVersion}`);
     if (r.isRemoved) {
       maxApplied = maxLevel(maxApplied, 'major');
       touched.push(`${r.name} → removed (major)`);
@@ -453,34 +556,29 @@ function cmdApply() {
 
     // plugin.json
     p.pluginJson.version = newVersion;
-    writeFileSync(join(p.dir, 'plugin.json'), JSON.stringify(p.pluginJson, null, 2) + '\n');
+    output(p.pluginJsonRel, JSON.stringify(p.pluginJson, null, 2) + '\n');
     // marketplace entry
     const entry = marketplace.plugins.find(e => e.name === r.name);
     entry.version = newVersion;
     // changelog
     const subjects = commitSubjects(base, head, r.sourceRel);
-    const clPath = resolve(repoRoot, r.changelogRel);
-    const existing = exists(clPath) ? readFileSync(clPath, 'utf8') : CHANGELOG_HEADER;
-    const section = renderChangelogSection(newVersion, level, subjects);
-    writeFileSync(clPath, insertChangelogSection(existing, section));
+    const existing = snapshotText(r.changelogRel) ?? CHANGELOG_HEADER;
+    const section = renderChangelogSection(newVersion, level, subjects, date);
+    output(r.changelogRel, insertChangelogSection(existing, section));
     touched.push(`${r.name} → ${newVersion} (${level})`);
   }
 
-  if (!touched.length) {
-    console.log('Nothing to apply — no changed plugins needed a bump.');
-    process.exit(0);
+  if (touched.length) {
+    marketplace.metadata = marketplace.metadata ?? {};
+    marketplace.metadata.version = applyBump(marketplace.metadata.version ?? '0.0.0', maxApplied);
+    output(MARKETPLACE_REL, JSON.stringify(marketplace, null, 2) + '\n');
   }
-
-  // marketplace metadata.version
-  marketplace.metadata = marketplace.metadata ?? {};
-  marketplace.metadata.version = applyBump(marketplace.metadata.version ?? '0.0.0', maxApplied);
-  writeFileSync(marketplacePath, JSON.stringify(marketplace, null, 2) + '\n');
-
-  console.log('Applied version bumps:');
-  for (const t of touched) console.log(`  • ${t}`);
-  console.log(`  • marketplace metadata.version → ${marketplace.metadata.version} (${maxApplied})`);
-  console.log('\nNext: review the diff, then `node scripts/catalog.mjs` (descriptions/versions may affect the catalog) and `node scripts/validate.mjs`.');
-  process.exit(0);
+  const plan = {
+    schema: 'version-plan/1', base, head, date, overrides,
+    touched, maxApplied, marketplaceVersion: marketplace.metadata?.version ?? null, outputs,
+  };
+  serializePlan(plan);
+  return plan;
 }
 
 function insertChangelogSection(existing, section) {

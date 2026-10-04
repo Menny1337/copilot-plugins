@@ -130,6 +130,27 @@ proposal branch remains available. Unexpected edits or recovery failures stop
 integration and preserve the checkout for inspection; later sync runs do not
 reset that state. A failed PR push leaves the committed proposal available.
 
+The daemon uses the checkout's root `scripts/version.mjs` for version governance.
+It captures a clean HEAD, then requests `plan --json` with resolved base/head refs.
+The `version-plan/1` contract contains those commit IDs, a UTC release date,
+overrides and exact output records: `{path, before, after}`. Each record contains
+UTF-8 text; `before: null` means the file does not exist.
+Root `scripts/version-contract.mjs` sets an 8,388,608-byte (8 MiB) limit for each
+plan, version file and Git output stream. The limit includes JSON whitespace.
+The producer and consumer buffer data within this limit; they reject oversized
+input before JSON parsing and oversized computed plans before writing.
+
+The daemon checks paths and preconditions against the captured commit, then sends
+the plan to `apply --plan -` through stdin. Root tooling recomputes the plan using
+its bound date and rejects mismatches before writing. The daemon checks working,
+staged and committed bytes before completing its scoped version commit.
+Unsupported schemas, unexpected edits or failed checks preserve the checkout and
+stop further integration. Keep root tooling with the repository; the plugin does
+not carry a separate bump or changelog renderer.
+These checks do not lock the checkout. A concurrent edit during the scoped commit
+can enter that commit before the final check fails. The daemon then stops
+publication and preserves the resulting checkout for inspection.
+
 ### gh active-account pinning (PR creation & reconcile)
 
 Opening PRs and reconciling merges go through the `gh` CLI, which keeps **one

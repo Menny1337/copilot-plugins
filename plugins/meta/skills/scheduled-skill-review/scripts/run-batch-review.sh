@@ -500,114 +500,56 @@ reviewed="$(printf '%s\n' "$WORK_TSV" | grep -c . || true)"
 # bumps + changelog; we then commit them before both documentation generators.
 # The catalog includes versions; plugin README generation intentionally excludes them.
 # Caller must already be cd'd into $REPO_DIR.
-# Predict exact version-owned bytes from the read-only planner and captured Git
-# blobs. Keep this contract aligned with version.mjs's JSON/changelog writers.
-version_owned_outputs() {
-  node --input-type=module - "$1" "$2" "$3" <<'NODE'
+# Validate the root planner's version-plan/1 boundary against the captured HEAD.
+# No release computation or rendering lives in the daemon.
+read_version_outputs() {
+  node --input-type=module -e '
     import { execFileSync } from "node:child_process";
-    const [head, base, plan] = process.argv.slice(2);
-    const git = args => execFileSync("git", args, { encoding: "utf8" });
-    const read = path => {
-      const bytes = execFileSync("git", ["show", head + ":" + path]);
-      const text = bytes.toString("utf8");
-      if (!Buffer.from(text).equals(bytes)) throw new Error("Non-UTF8 version snapshot: " + path);
-      return text;
-    };
-    const json = path => JSON.parse(read(path));
-    const levels = { none: 0, patch: 1, minor: 2, major: 3 };
-    function semver(text) {
-      if (!/^\d+\.\d+\.\d+$/.test(text)) throw new Error("Invalid snapshot version");
-      const parts = text.split(".").map(Number);
-      if (!parts.every(Number.isSafeInteger)) throw new Error("Unsafe snapshot version");
-      return parts;
-    }
-    function bump(text, level) {
-      const parts = semver(text), i = 3 - levels[level];
-      parts[i]++;
-      if (!Number.isSafeInteger(parts[i])) throw new Error("Unsafe bumped version");
-      for (let j = i + 1; j < 3; j++) parts[j] = 0;
-      return parts.join(".");
-    }
-    function alreadyBumped(from, current, level) {
-      const a = semver(from), b = semver(current);
-      for (let i = 0; i < 3; i++) {
-        if (a[i] !== b[i]) return b[i] > a[i] && 3 - i >= levels[level];
-      }
-      return false;
-    }
+    import { MAX_GIT_BYTES, readBoundedText } from "./scripts/version-contract.mjs";
+    const [head, base] = process.argv.slice(1);
+    const git = args => execFileSync("git", args, { maxBuffer: MAX_GIT_BYTES });
     try {
+      const raw = readBoundedText(0);
       const marketplacePath = ".github/plugin/marketplace.json";
-      const marketplace = json(marketplacePath), outputs = {};
-      let max = "none", count = 0;
-      const header = "# Changelog\n\nAll notable changes to this plugin are documented here.\n" +
-        "Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).\n";
-      for (const line of plan.split("\n").map(line => line.trim())) {
-        if (line.startsWith("marketplace metadata.version:")) {
-          if (!/^marketplace metadata\.version: (\(none\)|\d+\.\d+\.\d+) → needs ≥ (patch|minor|major) \(current (\(none\)|\d+\.\d+\.\d+)\)$/.test(line)) {
-            throw new Error("Unsupported marketplace version summary");
-          }
-          continue;
-        }
-        if (line.includes(" → removed (needs marketplace major)")) {
-          const name = line.split(/\s/)[0];
-          if (marketplace.plugins.some(entry => entry.name === name)) throw new Error("Invalid removal plan");
-          max = "major"; count++; continue;
-        }
-        if (!line.includes(" → needs ≥ ")) continue;
-        const match = /^(\S+)\s+(\(new\)|\d+\.\d+\.\d+)\s+→ needs ≥ (patch|minor|major)\s+\(current (\d+\.\d+\.\d+), applied bump: \w+\)$/.exec(line);
-        if (!match) throw new Error("Unsupported version planner output");
-        const [, name, from, level, current] = match;
-        const entry = marketplace.plugins.find(entry => entry.name === name);
-        if (!entry || current !== entry.version) throw new Error("Version plan does not match snapshot");
+      const plan = JSON.parse(raw);
+      if (plan.schema !== "version-plan/1" || plan.head !== head || plan.base !== base ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(plan.date) || !Array.isArray(plan.outputs) ||
+          !plan.overrides || typeof plan.overrides !== "object" || Array.isArray(plan.overrides) ||
+          Object.keys(plan.overrides).length !== 0) {
+        throw new Error("Unsupported or unbound version plan");
+      }
+      const marketplace = JSON.parse(git(["show", head + ":" + marketplacePath]));
+      const allowed = new Set([marketplacePath]), outputs = {};
+      for (const entry of marketplace.plugins) {
         const dir = entry.source.replace(/^\.\//, "").replace(/\/$/, "");
         if (!/^plugins\/[A-Za-z0-9_-]+$/.test(dir)) throw new Error("Unsupported version-owned path");
-        const manifestPath = dir + "/plugin.json", manifest = json(manifestPath);
-        if (manifest.version !== current) throw new Error("Inconsistent snapshot versions");
-        if (from !== "(new)" && alreadyBumped(from, current, level)) continue;
-        const version = bump(from === "(new)" ? current : from, level);
-        manifest.version = version; entry.version = version;
-        outputs[manifestPath] = JSON.stringify(manifest, null, 2) + "\n";
-        const changelogPath = dir + "/CHANGELOG.md";
-        const tracked = git(["ls-tree", "--name-only", head, "--", changelogPath]).trim();
-        const existing = tracked ? read(changelogPath) : header;
-        const raw = git(["log", "--no-merges", "--format=%s", base + ".." + head, "--", dir]);
-        const subjects = raw.split("\n").map(s => s.trim()).filter(Boolean);
-        const section = [
-          "## [" + version + "] - " + new Date().toISOString().slice(0, 10), "",
-          "_" + level + " release._", "",
-          ...(subjects.length ? subjects : ["Maintenance changes."]).map(s => "- " + s), "",
-        ].join("\n");
-        const idx = existing.indexOf("\n## ");
-        outputs[changelogPath] = idx < 0
-          ? (existing.endsWith("\n") ? existing : existing + "\n") + "\n" + section
-          : existing.slice(0, idx + 1) + section + "\n" + existing.slice(idx + 1);
-        if (levels[level] > levels[max]) max = level;
-        count++;
+        allowed.add(dir + "/plugin.json"); allowed.add(dir + "/CHANGELOG.md");
       }
-      if (!count && !plan.includes("No plugin source changes detected.") && !plan.includes(" → needs ≥ ")) {
-        throw new Error("Unrecognized version plan");
-      }
-      if (count) {
-        marketplace.metadata = marketplace.metadata ?? {};
-        marketplace.metadata.version = bump(marketplace.metadata.version ?? "0.0.0", max);
-        outputs[marketplacePath] = JSON.stringify(marketplace, null, 2) + "\n";
+      for (const { path, before, after } of plan.outputs) {
+        if (!allowed.has(path) || Object.hasOwn(outputs, path) || typeof after !== "string" ||
+            !(before === null || typeof before === "string")) throw new Error("Invalid version output");
+        const tracked = git(["ls-tree", "--name-only", head, "--", path]).toString().trim();
+        if (before === null ? tracked : !tracked || !git(["show", head + ":" + path]).equals(Buffer.from(before))) {
+          throw new Error("Version precondition does not match HEAD: " + path);
+        }
+        outputs[path] = after;
       }
       process.stdout.write(JSON.stringify(outputs));
     } catch (error) {
       console.error("Version snapshot failed: " + error.message);
       process.exitCode = 1;
     }
-NODE
+  ' "$1" "$2" <<<"$3"
 }
 
 verify_version_outputs() {
   node --input-type=module -e '
-    import { readFileSync } from "node:fs";
     import { execFileSync } from "node:child_process";
+    import { MAX_GIT_BYTES, readBoundedText } from "./scripts/version-contract.mjs";
     const [head, staged] = process.argv.slice(1);
-    const git = args => execFileSync("git", args);
+    const git = args => execFileSync("git", args, { maxBuffer: MAX_GIT_BYTES });
     try {
-      const outputs = JSON.parse(readFileSync(0, "utf8"));
+      const outputs = JSON.parse(readBoundedText(0));
       const current = git(["rev-parse", "HEAD"]).toString().trim();
       if (staged === "committed") {
         if (git(["rev-parse", "HEAD^"]).toString().trim() !== head) throw new Error("Unexpected version commit parent");
@@ -621,7 +563,7 @@ verify_version_outputs() {
         if (path && !Object.hasOwn(outputs, path)) throw new Error("Unexpected version edit: " + path);
       }
       for (const [path, text] of Object.entries(outputs)) {
-        if (!readFileSync(path).equals(Buffer.from(text))) throw new Error("Unexpected version content: " + path);
+        if (!Buffer.from(readBoundedText(path)).equals(Buffer.from(text))) throw new Error("Unexpected version content: " + path);
         const tracked = git(["ls-tree", "--name-only", head, "--", path]).toString().trim();
         const indexed = git(["ls-files", "--", path]).toString().trim();
         if (staged === "yes" || staged === "committed") {
@@ -647,17 +589,17 @@ bump_versions() {
   checkout_is_clean || { log "unsafe pre-version checkout for $unit"; return 1; }
   head="$(git rev-parse HEAD)" || return 1
   base="$(git merge-base "$base" "$head")" || { log "version base resolution failed for $unit"; return 1; }
-  plan="$(node scripts/version.mjs plan --base "$base" --head "$head" 2>>"$LOGDIR/daemon.log")" || { log "version plan failed for $unit"; return 1; }
+  plan="$(node scripts/version.mjs plan --json --base "$base" --head "$head" 2>>"$LOGDIR/daemon.log")" || { log "version plan failed for $unit"; return 1; }
   checkout_is_clean && [ "$(git rev-parse HEAD)" = "$head" ] || { log "checkout changed during version planning for $unit"; return 1; }
-  outputs="$(version_owned_outputs "$head" "$base" "$plan" 2>>"$LOGDIR/daemon.log")" || { log "version snapshot failed for $unit"; return 1; }
+  outputs="$(read_version_outputs "$head" "$base" "$plan" 2>>"$LOGDIR/daemon.log")" || { log "version snapshot failed for $unit"; return 1; }
   checkout_is_clean && [ "$(git rev-parse HEAD)" = "$head" ] || { log "checkout changed before version apply for $unit"; return 1; }
-  if ! node scripts/version.mjs apply --base "$base" >>"$LOGDIR/daemon.log" 2>&1; then
+  if ! node scripts/version.mjs apply --base "$base" --head "$head" --plan - <<<"$plan" >>"$LOGDIR/daemon.log" 2>&1; then
     log "version.mjs apply failed for $unit"
     return 1
   fi
   verify_version_outputs "$head" no <<<"$outputs" >>"$LOGDIR/daemon.log" 2>&1 \
     || { log "unexpected version edits for $unit; preserving checkout"; return 1; }
-  targets="$(node -e 'for (const path of Object.keys(JSON.parse(require("fs").readFileSync(0,"utf8")))) console.log(path);' <<<"$outputs")" || return 1
+  targets="$(node --input-type=module -e 'import { readBoundedText } from "./scripts/version-contract.mjs"; for (const path of Object.keys(JSON.parse(readBoundedText(0)))) console.log(path);' <<<"$outputs")" || return 1
   if [ -n "$targets" ]; then
     local paths=() path
     while IFS= read -r path; do paths+=("$path"); done <<<"$targets"
