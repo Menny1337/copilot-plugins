@@ -2,7 +2,7 @@
   "name": "menny1337-plugins",
   "metadata": {
     "description": "Public Copilot CLI plugin marketplace: reusable agents and skills organized by domain (core, meta, presentation, docs, ui, duty).",
-    "version": "3.6.1"
+    "version": "3.6.2"
   },
   "owner": {
     "name": "Menny1337",
@@ -12,7 +12,7 @@
     {
       "name": "core-skills",
       "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), multi-model-review (adversarial cross-vendor review panel with synthesis), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
-      "version": "3.3.0",
+      "version": "3.3.1",
       "source": "./plugins/core-skills",
       "author": {
         "name": "Menny1337",

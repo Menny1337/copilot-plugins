@@ -3,6 +3,12 @@
 All notable changes to the `core-skills` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.1] - 2026-10-06
+
+_patch release._
+
+- fix(core-skills): harden create-image request and output handling
+
 ## [3.3.0] - 2026-09-15
 
 _Initial public release._
