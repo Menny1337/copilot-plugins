@@ -3,6 +3,12 @@
 All notable changes to the `core-agents` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.1] - 2026-10-06
+
+_patch release._
+
+- fix(core-agents): make session sync explicit
+
 ## [2.6.0] - 2026-09-17
 
 _minor release._
