@@ -29,7 +29,7 @@ Invoke these for every relevant task:
 
 - **github-session-sync** — The GitHub-backend twin of `ado-session-sync`: review a finished session, infer the related GitHub issue, and post a progress comment carrying a hidden `<!-- copilot-session:<uuid> -->` marker (never a per-session label). Active when `taskBackend = "github"`.
 
-  Both session-sync skills are fired automatically by the same `agentStop` hook, which validates the selected config and dispatches to its remote backend (`hooks/task-session-sync.sh`/`.ps1`). Opt-in via `adoSessionSync.enabled`/`ADO_SESSION_SYNC=1` (ADO) or `taskSessionSync.enabled`/`COPILOT_PLUGIN_GITHUB_SESSION_SYNC=1` (GitHub); the active backend's `=0` env flag or `COPILOT_PLUGIN_TASK_SESSION_SYNC=0` force-disables it. Enable flags never bypass target validation. Every run — either backend — is logged to the same `~/.copilot/logs/ado-session-sync/`; review it with `ado-session-sync`'s `scripts/sync-status.sh` viewer (try `--errors`; `--reconcile` is ADO-only).
+  Automatic `agentStop` sync is not registered by the plugin. Invoke the matching session-sync skill only on explicit request. The skill still requires `adoSessionSync.enabled`/`ADO_SESSION_SYNC=1` (ADO) or `taskSessionSync.enabled`/`COPILOT_PLUGIN_GITHUB_SESSION_SYNC=1` (GitHub); the active backend's `=0` env flag or `COPILOT_PLUGIN_TASK_SESSION_SYNC=0` force-disables it. Enable flags never bypass target validation. Every run — either backend — is logged to the same `~/.copilot/logs/ado-session-sync/`; review it with `ado-session-sync`'s `scripts/sync-status.sh` viewer (try `--errors`; `--reconcile` is ADO-only).
 
 ## Available Backends
 

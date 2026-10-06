@@ -2,7 +2,7 @@
 
 # Catalog
 
-**7** plugins · **9** agents · **37** skills · **5** hooks
+**7** plugins · **9** agents · **37** skills · **4** hooks
 
 A single index of every agent, skill, and hook across all plugins in this marketplace. Source files (`SKILL.md`, `*.agent.md`, `hooks.json`) remain the only source of truth — this catalog is regenerated from their frontmatter by `scripts/catalog.mjs`.
 
@@ -19,7 +19,6 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`agent-architect-self-audit`](plugins/meta/skills/agent-architect-self-audit/SKILL.md) 📚 | skill | `meta` | Audits the Agent Architect's own instructions, skills, references, and memory, producing a prioritized update checklist. |
 | [`agent-crafting`](plugins/meta/skills/agent-crafting/SKILL.md) 📚 🔒 | skill | `meta` | Creates and troubleshoots Copilot agent definitions (.agent.md). Use for persona, frontmatter, tool access, or loading and routing changes. |
 | [`agent-skill-audit`](plugins/meta/skills/agent-skill-audit/SKILL.md) 📚 🔒 | skill | `meta` | Audits agent, skill, and hook definitions for structural quality, routing, and inventory. Use for static reviews, not architect self-audits or session-history analysis. |
-| [`agentStop: hooks/task-session-sync.sh`](plugins/core-agents/hooks/task-session-sync.sh) | hook | `core-agents` | On `agentStop` runs `hooks/task-session-sync.sh` (timeout 20s). |
 | [`assistant`](plugins/core-agents/agents/assistant.agent.md) | agent | `core-agents` | Personal assistant for notes, tasks, reminders, and Microsoft Teams messaging. Takes meeting notes, captures ideas, tracks decisions, manages todo lists with priorities and due… |
 | [`assistant-capture`](plugins/core-agents/skills/assistant-capture/SKILL.md) 📜 📚 | skill | `core-agents` | Captures personal notes, tasks, and reminders. Use to save a note, manage a task or reminder, or turn meeting action items into tasks. |
 | [`assistant-query`](plugins/core-agents/skills/assistant-query/SKILL.md) 📜 📚 | skill | `core-agents` | Queries saved notes, tasks, reminders, and open pull requests, and creates daily or weekly briefings. Use to find personal context, check what is due, or get a briefing. |
@@ -126,7 +125,6 @@ _Source: [`plugins/core-agents/`](plugins/core-agents/)_
 | --- | --- | --- |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
-| [`agentStop: hooks/task-session-sync.sh`](plugins/core-agents/hooks/task-session-sync.sh) | On `agentStop` runs `hooks/task-session-sync.sh` (timeout 20s). | — |
 
 ### `meta`
 
@@ -293,7 +291,6 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 
 | Name | Plugin | Description | Triggers / Keywords |
 | --- | --- | --- | --- |
-| [`agentStop: hooks/task-session-sync.sh`](plugins/core-agents/hooks/task-session-sync.sh) | `core-agents` | On `agentStop` runs `hooks/task-session-sync.sh` (timeout 20s). | — |
 | [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/core-agents/hooks/ado-sync-advisory.sh) | `core-agents` | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/link-commands.sh`](plugins/core-agents/hooks/link-commands.sh) | `core-agents` | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/detect-tools.sh`](plugins/core-skills/hooks/detect-tools.sh) | `core-skills` | On `sessionStart` runs `hooks/detect-tools.sh` (timeout 15s). | — |

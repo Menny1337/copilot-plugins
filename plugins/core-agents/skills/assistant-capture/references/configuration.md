@@ -83,12 +83,14 @@ the source checkout and plugin caches. Merge fields into an existing file
 without losing unknown keys; review a redacted preview and get approval before
 changing the user's settings. Never overwrite a configuration during setup.
 
-Sync is off by default. Configure and confirm the personal board first, then
-enable `adoSessionSync.enabled` for ADO or `taskSessionSync.enabled` for GitHub
-only with approval. Both use a 10-minute debounce, an unrestricted repository
-list when `syncRepos` is absent or empty, and the existing session-state
-relocation default. Set `sessionStateDir` to an empty string to disable
-relocation. The selected backend's block supplies `logLevel` and `retentionDays`.
+Automatic `agentStop` sync is not registered by default. Configure and confirm
+the personal board first, then enable `adoSessionSync.enabled` for ADO or
+`taskSessionSync.enabled` for GitHub only with approval before explicitly
+invoking the matching session-sync skill. The retained optional launchers use a
+10-minute debounce, an unrestricted repository list when `syncRepos` is absent
+or empty, and the existing session-state relocation default. Set
+`sessionStateDir` to an empty string to disable relocation. The selected
+backend's block supplies `logLevel` and `retentionDays`.
 
 Keep credentials in the existing environment or credential store. Config
 selection does not change token precedence, log/store locations, tenant-cache

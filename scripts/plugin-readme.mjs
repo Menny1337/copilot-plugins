@@ -47,7 +47,7 @@ function readFrontmatter(path) {
   if (!raw.startsWith('---\n') && !raw.startsWith('---\r\n')) return null;
   const end = raw.indexOf('\n---', 4);
   if (end < 0) return null;
-  const body = raw.slice(4, end);
+  const body = raw.slice(4, end).replace(/\r$/, '');
   const out = {};
   const rel = relative(repoRoot, path);
   for (const line of body.split(/\r?\n/)) {
