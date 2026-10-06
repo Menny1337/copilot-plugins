@@ -17,6 +17,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_DEPLOYMENT = "gpt-image-2";
 const KEY_ENV = "AZURE_OPENAI_IMAGE_KEY";
@@ -77,7 +79,18 @@ function bgPromptSuffix(hex) {
 
 function normalizeFuzz(v) {
   if (v === undefined) return undefined;
-  return /^\d+$/.test(v) ? `${v}%` : v;
+  const value = v.replace(/%$/, "");
+  if (!/^\d+(?:\.\d+)?$/.test(value) || Number(value) > 100) {
+    fail("--fuzz must be a percentage between 0 and 100");
+  }
+  return `${Number(value)}%`;
+}
+
+function integerArg(value, flag) {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    fail(`${flag} must be an integer`);
+  }
+  return Number(value);
 }
 
 const HELP = `gpt-image — generate/edit images with gpt-image-2 (Azure AI Foundry)
@@ -104,7 +117,7 @@ Options:
   --fuzz <pct>     Color match tolerance for keying (default: 16% global / 22% floodfill).
   --despill <n>    Erode the alpha edge by n px to kill fringe (default: 1 global / 0 floodfill).
   --resize <spec>  Post-process resize via high-quality Lanczos: N (fit longest side
-                   to NxN) or WxH (fit inside + transparent-pad to exact WxH). Great
+                   to NxN) or WxH (fit inside + pad to exact WxH; alpha on PNG only). Great
                    for crisp small icons: generate large, then downscale. Works with/without -t.
   -f <format>      Output format: png|jpeg (default: png). WebP is unsupported on Azure.
   -c <0-100>       JPEG compression level (only with -f jpeg).
@@ -112,10 +125,11 @@ Options:
   -r <path>        Reference image to edit (repeatable; routes to images/edits).
                    PNG/JPG/WebP only. Render SVG to PNG first (e.g. rsvg-convert).
   --moderation <v> Moderation level: auto|low (default: model default).
-  --endpoint <url> Set endpoint (otherwise use $${ENDPOINT_ENV} from env/.env).
+  --endpoint <url> HTTPS resource root, /openai/v1 base, or full images URL.
+                   Otherwise use $${ENDPOINT_ENV} from env/.env.
   --deployment <n> Override deployment/model name (default: ${DEFAULT_DEPLOYMENT}).
   --model <name>   Alias for --deployment.
-  --dry-run        Print the resolved request without calling the API.
+  --dry-run        Validate and print the request without an API call or a key.
   -h, --help       Show this help.
 
 Size constraints (gpt-image-2): both edges multiples of 16, max edge <= 3840,
@@ -128,11 +142,10 @@ There is no built-in endpoint.
 `;
 
 function fail(msg, code = 1) {
-  console.error(`gpt-image: ${msg}`);
-  process.exit(code);
+  throw Object.assign(new Error(msg), { exitCode: code });
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const opts = {
     prompt: undefined,
     output: "gpt-image",
@@ -177,11 +190,11 @@ function parseArgs(argv) {
       case "--bg": opts.bg = next(); break;
       case "--key-method": opts.keyMethod = next().toLowerCase(); break;
       case "--fuzz": opts.fuzz = normalizeFuzz(next()); break;
-      case "--despill": opts.despill = parseInt(next(), 10); break;
+      case "--despill": opts.despill = integerArg(next(), a); break;
       case "--resize": opts.resize = next().toLowerCase(); break;
       case "-f": opts.format = next().toLowerCase(); break;
-      case "-c": opts.compression = parseInt(next(), 10); break;
-      case "-n": opts.n = parseInt(next(), 10); break;
+      case "-c": opts.compression = integerArg(next(), a); break;
+      case "-n": opts.n = integerArg(next(), a); break;
       case "-r": opts.refs.push(next()); break;
       case "--moderation": opts.moderation = next().toLowerCase(); break;
       case "--endpoint": opts.endpoint = next(); break;
@@ -239,7 +252,7 @@ function validateExplicitSize(size) {
   return undefined;
 }
 
-function resolveSize(opts) {
+export function resolveSize(opts) {
   if (opts.size && opts.aspect) {
     fail("use either -s or -a, not both");
   }
@@ -293,8 +306,8 @@ function parseEnvFile(file) {
       }
       out[k] = v;
     }
-  } catch {
-    /* missing file is fine */
+  } catch (err) {
+    if (err.code !== "ENOENT") fail(`cannot read configuration ${file}: ${err.message}`);
   }
   return out;
 }
@@ -322,31 +335,30 @@ function keyFromKeychain(account) {
   }
 }
 
-function resolveCredentials(opts) {
+export function resolveCredentials(opts) {
   let endpoint = opts.endpoint || process.env[ENDPOINT_ENV];
   let key = process.env[KEY_ENV];
   let source = key ? `$${KEY_ENV}` : undefined;
 
-  const cwdEnv = parseEnvFile(path.join(process.cwd(), ".env"));
-  if (!endpoint && cwdEnv[ENDPOINT_ENV]) endpoint = cwdEnv[ENDPOINT_ENV];
-  if (!key && cwdEnv[KEY_ENV]) {
-    key = cwdEnv[KEY_ENV];
-    source = "./.env";
-  }
-
-  const homeEnv = parseEnvFile(path.join(os.homedir(), ".gpt-image", ".env"));
-  if (!endpoint && homeEnv[ENDPOINT_ENV]) endpoint = homeEnv[ENDPOINT_ENV];
-  if (!key && homeEnv[KEY_ENV]) {
-    key = homeEnv[KEY_ENV];
-    source = "~/.gpt-image/.env";
+  for (const [file, label] of [
+    [path.join(process.cwd(), ".env"), "./.env"],
+    [path.join(os.homedir(), ".gpt-image", ".env"), "~/.gpt-image/.env"],
+  ]) {
+    if (endpoint && (key || opts.dryRun)) break;
+    const values = parseEnvFile(file);
+    if (!endpoint && values[ENDPOINT_ENV]) endpoint = values[ENDPOINT_ENV];
+    if (!key && values[KEY_ENV]) {
+      key = values[KEY_ENV];
+      source = label;
+    }
   }
 
   if (!endpoint) {
-    console.error(`Error: Missing endpoint. Pass --endpoint or set ${ENDPOINT_ENV}`);
-    process.exit(1);
+    fail(`Missing endpoint. Pass --endpoint or set ${ENDPOINT_ENV}`);
   }
+  imagesEndpoint(endpoint);
 
-  if (!key) {
+  if (!key && !opts.dryRun) {
     const fromKc = keyFromKeychain(endpointHost(endpoint));
     if (fromKc) {
       key = fromKc;
@@ -354,68 +366,118 @@ function resolveCredentials(opts) {
     }
   }
 
-  if (!key) {
-    console.error(`Error: Missing key. Set ${KEY_ENV} or store in Keychain for ${endpointHost(endpoint)}`);
-    process.exit(1);
+  if (!key && !opts.dryRun) {
+    fail(`Missing key. Set ${KEY_ENV} or store in Keychain for ${endpointHost(endpoint)}`);
   }
 
   return { endpoint, key, source };
 }
 
-function editsEndpoint(generationsEndpoint) {
-  return generationsEndpoint.replace(/\/images\/generations\/?$/, "/images/edits");
+export function imagesEndpoint(endpoint, isEdit = false) {
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    fail("invalid endpoint URL; use an HTTPS resource root or full images URL");
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+    fail("endpoint must use HTTPS with no URL credentials or fragment");
+  }
+  const base = url.pathname.replace(/\/+$/, "");
+  const operation = isEdit ? "edits" : "generations";
+  if (!base || base === "/openai/v1") {
+    url.pathname = `/openai/v1/images/${operation}`;
+  } else if (/\/images\/(?:generations|edits)$/.test(base)) {
+    url.pathname = base.replace(/\/(?:generations|edits)$/, `/${operation}`);
+  } else {
+    fail("endpoint must be a resource root, /openai/v1 base, or full images/generations or images/edits URL");
+  }
+  return url.href;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function postWithRetry(url, init) {
+export async function postWithRetry(url, init, {
+  fetchImpl = fetch,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  maxRetries = MAX_RETRIES,
+  sleepImpl = sleep,
+} = {}) {
   let attempt = 0;
   for (;;) {
     attempt++;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     let res;
+    let body;
+    let retryReason;
     try {
-      res = await fetch(url, { ...init, signal: ctrl.signal });
+      res = await fetchImpl(url, { ...init, signal: ctrl.signal });
+      body = await res.text();
     } catch (err) {
-      clearTimeout(timer);
       const isTimeout = err.name === "AbortError";
-      const label = isTimeout ? "request timed out" : `network error (${err.message})`;
-      if (attempt > MAX_RETRIES) {
-        fail(`${label} after ${MAX_RETRIES} attempts`);
-      }
-      const waitMs = Math.min(60_000, 2 ** attempt * 1000) + Math.floor(Math.random() * 1000);
-      console.error(
-        `gpt-image: ${label}. Waiting ${Math.round(waitMs / 1000)}s, retry ${attempt}/${MAX_RETRIES}...`
-      );
-      await sleep(waitMs);
-      continue;
-    }
-    clearTimeout(timer);
-
-    if (res.status === 429 || res.status >= 500) {
-      if (attempt > MAX_RETRIES) {
-        const body = await res.text().catch(() => "");
-        fail(`API error ${res.status} after ${MAX_RETRIES} retries: ${body.slice(0, 500)}`);
-      }
-      const retryAfter = parseFloat(res.headers.get("retry-after") || "");
-      const waitMs = Number.isFinite(retryAfter)
-        ? retryAfter * 1000
-        : Math.min(60_000, 2 ** attempt * 1000) + Math.floor(Math.random() * 1000);
-      console.error(
-        `gpt-image: HTTP ${res.status} (rate limit / transient). ` +
-          `Waiting ${Math.round(waitMs / 1000)}s, retry ${attempt}/${MAX_RETRIES}...`
-      );
-      await sleep(waitMs);
-      continue;
+      retryReason = isTimeout ? "request timed out" : `network error (${err.message})`;
+    } finally {
+      clearTimeout(timer);
     }
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      fail(`API error ${res.status}: ${body.slice(0, 800)}`);
+    if (!retryReason) {
+      if (res.status === 429 || res.status >= 500) {
+        retryReason = `API error ${res.status}: ${body.slice(0, 500)}`;
+      } else if (!res.ok) {
+        fail(`API error ${res.status}: ${body.slice(0, 800)}`);
+      } else {
+        try {
+          return JSON.parse(body);
+        } catch {
+          fail("API returned invalid JSON");
+        }
+      }
     }
-    return res;
+    if (attempt > maxRetries) {
+      fail(`${retryReason} after ${attempt} attempts (${maxRetries} retries)`);
+    }
+    const retryAfter = res?.headers.get("retry-after")?.trim();
+    const seconds = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) : NaN;
+    const dateDelay = retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
+    const serverDelay = Number.isFinite(seconds) ? seconds * 1000 : dateDelay;
+    if (serverDelay > REQUEST_TIMEOUT_MS) {
+      fail(`${retryReason}; Retry-After exceeds the four-minute retry wait budget. Retry later.`);
+    }
+    const waitMs = Number.isFinite(serverDelay) && serverDelay >= 0
+      ? serverDelay
+      : Math.min(60_000, 2 ** attempt * 1000) + Math.floor(Math.random() * 1000);
+    console.error(
+      `gpt-image: ${retryReason}. Waiting ${Math.round(waitMs / 1000)}s, retry ${attempt}/${maxRetries}...`
+    );
+    await sleepImpl(waitMs);
   }
+}
+
+export function decodeImages(json, count, format) {
+  const items = json?.data;
+  if (!Array.isArray(items) || items.length !== count) {
+    fail(`API returned ${Array.isArray(items) ? items.length : 0} images; expected ${count}`);
+  }
+  return items.map((item, index) => {
+    const base64 = typeof item?.b64_json === "string" ? item.b64_json.replace(/\s/g, "") : undefined;
+    if (typeof base64 !== "string" || !base64.length ||
+        base64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(base64)) {
+      fail(`API image ${index + 1} contains invalid or missing base64 data`);
+    }
+    const buffer = Buffer.from(base64, "base64");
+    const png = buffer.length >= 45 &&
+      buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
+      buffer.readUInt32BE(8) === 13 && buffer.toString("ascii", 12, 16) === "IHDR" &&
+      buffer.readUInt32BE(16) > 0 && buffer.readUInt32BE(20) > 0 &&
+      buffer.subarray(-12).equals(Buffer.from([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]));
+    const jpeg = buffer.length > 4 && buffer[0] === 255 && buffer[1] === 216 &&
+      buffer.at(-2) === 255 && buffer.at(-1) === 217;
+    if (buffer.toString("base64") !== base64 || !(format === "png" ? png : jpeg)) {
+      fail(`API image ${index + 1} is not a complete ${format.toUpperCase()} image container`);
+    }
+    return buffer;
+  });
 }
 
 function extFor(format) {
@@ -431,10 +493,11 @@ function mimeForImage(file) {
   fail(`unsupported reference image type: ${file} (use .png, .jpg, or .webp)`);
 }
 
-function imagemagickCmd() {
+export function imagemagickCmd(run = execFileSync) {
   for (const c of ["magick", "convert"]) {
     try {
-      execFileSync(c, ["-version"], { stdio: "ignore" });
+      run(c, ["-version"], { stdio: "ignore" });
+      if (c === "convert") run("identify", ["-version"], { stdio: "ignore" });
       return c;
     } catch {
       /* not available */
@@ -449,7 +512,7 @@ function imagemagickCmd() {
 //   - floodfill: alpha floodfill from a bordered corner seed (removes only the
 //                connected background; preserves interior pixels of that color)
 // Optional despill erodes the alpha edge by n px to kill the color fringe.
-function keyOut(file, magick, { hex, method, fuzz, despill }) {
+function keyOut(file, magick, { hex, method, fuzz, despill, output = file }, run = execFileSync) {
   const dir = path.dirname(file);
   const ext = path.extname(file);
   const base = path.basename(file, ext);
@@ -474,14 +537,14 @@ function keyOut(file, magick, { hex, method, fuzz, despill }) {
   if (despill > 0) {
     args.push("-channel", "A", "-morphology", "Erode", `Octagon:${despill}`, "+channel");
   }
-  args.push(file);
-  execFileSync(magick, args, { stdio: ["ignore", "ignore", "pipe"] });
+  args.push(output);
+  run(magick, args, { stdio: ["ignore", "ignore", "pipe"] });
   return backup;
 }
 
 // High-quality Lanczos resize. spec "N" fits the longest side to NxN (aspect
 // preserved); spec "WxH" fits inside WxH then transparent-pads to exactly WxH.
-function resizeImage(file, magick, spec) {
+function resizeImage(file, magick, spec, run = execFileSync) {
   let fit;
   let extent;
   if (/^\d+$/.test(spec)) {
@@ -502,13 +565,67 @@ function resizeImage(file, magick, spec) {
   ];
   if (extent) args.push("-extent", extent);
   args.push(file);
-  execFileSync(magick, args, { stdio: ["ignore", "ignore", "pipe"] });
+  run(magick, args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
-async function main() {
-  const opts = parseArgs(process.argv.slice(2));
-  if (opts.prompt === undefined) fail("a prompt is required (see --help)");
+function postProcess(file, magick, opts, key, run) {
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}-${randomUUID()}.tmp${path.extname(file)}`);
+  try {
+    if (opts.transparent) {
+      console.error(
+        `gpt-image: keying ${file}: ${key.method} key-out of ${key.hex} ` +
+          `(fuzz ${key.fuzz}, despill ${key.despill})`
+      );
+      const backup = keyOut(file, magick, { ...key, output: temporary }, run);
+      console.error(`gpt-image: opaque backup: ${backup}`);
+    } else {
+      fs.copyFileSync(file, temporary);
+    }
+    if (opts.resize) resizeImage(temporary, magick, opts.resize, run);
+    const identify = magick === "convert" ? "identify" : magick;
+    const format = opts.transparent ? "%w %h %[fx:minima.a] %[fx:maxima.a]" : "%w %h";
+    const metadata = run(identify, [
+      ...(magick === "convert" ? [] : ["identify"]), "-format", format, temporary,
+    ], { stdio: ["ignore", "pipe", "pipe"] }).toString().trim().split(/\s+/).map(Number);
+    const [width, height, alphaMin, alphaMax] = metadata;
+    if (metadata.length !== (opts.transparent ? 4 : 2) || !metadata.every(Number.isFinite) ||
+        !Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+      fail("ImageMagick returned invalid image metadata");
+    }
+    if (opts.transparent && (alphaMin >= 1 || alphaMax <= 0)) {
+      fail("keying produced an opaque or fully empty image; adjust --bg or --fuzz");
+    }
+    if (opts.resize) {
+      const dimensions = opts.resize.split("x").map(Number);
+      if (dimensions.length === 1 ? Math.max(width, height) !== dimensions[0] :
+          width !== dimensions[0] || height !== dimensions[1]) {
+        fail(`post-processing did not produce the requested --resize ${opts.resize}`);
+      }
+    }
+    fs.renameSync(temporary, file);
+    console.error(`gpt-image: completed post-processing for ${file}`);
+  } catch (err) {
+    fail(`post-processing failed for ${file}: ${err.message}; original generated image kept`);
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
+}
+
+export async function main(argv = process.argv.slice(2), {
+  request = postWithRetry,
+  getCredentials = resolveCredentials,
+  findImageMagick = imagemagickCmd,
+  runImageMagick = execFileSync,
+} = {}) {
+  const opts = parseArgs(argv);
+  if (!opts.prompt?.trim()) fail("a non-empty prompt is required (see --help)");
   if (!Number.isInteger(opts.n) || opts.n < 1 || opts.n > 10) fail("-n must be an integer 1-10");
+  if (!["low", "medium", "high", "auto"].includes(opts.quality)) {
+    fail("-q quality must be low, medium, high, or auto");
+  }
+  if (!opts.output || opts.output === "." || opts.output === ".." || /[/\\]/.test(opts.output)) {
+    fail("-o must be a basename, not a path; use -d for the output directory");
+  }
   if (opts.format === "webp") {
     fail("WebP output is not supported on Azure OpenAI; use -f png or -f jpeg.");
   }
@@ -518,6 +635,7 @@ async function main() {
       fail("-c compression must be an integer 0-100");
     }
     if (opts.format !== "jpeg") fail("-c compression only applies to -f jpeg");
+    if (opts.transparent) fail("-c compression cannot be combined with -t, which forces PNG");
   }
   if (opts.moderation !== undefined && !["auto", "low"].includes(opts.moderation)) {
     fail("--moderation must be auto or low");
@@ -528,8 +646,9 @@ async function main() {
   if (opts.despill !== undefined && (!Number.isInteger(opts.despill) || opts.despill < 0)) {
     fail("--despill must be a non-negative integer");
   }
-  if (opts.resize !== undefined && !/^\d+$/.test(opts.resize) && !/^\d+x\d+$/.test(opts.resize)) {
-    fail(`--resize must be N or WxH (got ${opts.resize})`);
+  if (opts.resize !== undefined && (!/^\d+(?:x\d+)?$/.test(opts.resize) ||
+      !opts.resize.split("x").every((value) => Number.isSafeInteger(Number(value)) && Number(value) > 0))) {
+    fail(`--resize must be a positive N or WxH (got ${opts.resize})`);
   }
 
   let format = opts.format;
@@ -540,9 +659,7 @@ async function main() {
 
   const size = resolveSize(opts);
   const deployment = opts.deployment || DEFAULT_DEPLOYMENT;
-  const { endpoint, key, source } = resolveCredentials(opts);
   const isEdit = opts.refs.length > 0;
-  const url = isEdit ? editsEndpoint(endpoint) : endpoint;
 
   // Resolve the transparency key strategy. gpt-image-2 cannot emit native alpha,
   // so -t generates on a flat key color and removes it with ImageMagick.
@@ -565,22 +682,29 @@ async function main() {
         `Then re-run with: -r ${pngName}`
     );
   }
+  for (const reference of opts.refs) {
+    mimeForImage(reference);
+    try {
+      if (!fs.statSync(reference).isFile()) fail(`reference image is not a file: ${reference}`);
+      fs.accessSync(reference, fs.constants.R_OK);
+    } catch (err) {
+      fail(`cannot read reference image ${reference}: ${err.message}`);
+    }
+  }
 
   let magick;
   if (opts.transparent || opts.resize) {
-    magick = imagemagickCmd();
+    magick = findImageMagick();
     if (!magick) {
       const what = opts.transparent ? "transparency keying" : "resizing";
-      console.error(
-        `gpt-image: ${what} requested but ImageMagick (magick/convert) was not found. ` +
-          (opts.transparent
-            ? `The image will be generated on a flat ${bg.hex} background but NOT ` +
-              `keyed to transparent. `
-            : "") +
-          "Install ImageMagick (brew install imagemagick) and re-run, or post-process manually."
+      fail(
+        `${what} requested but ImageMagick (magick/convert) was not found. ` +
+          "Install ImageMagick (brew install imagemagick) before generating; no API call was made."
       );
     }
   }
+  const { endpoint, key, source } = getCredentials(opts);
+  const url = imagesEndpoint(endpoint, isEdit);
   const effectivePrompt = opts.transparent
     ? opts.prompt + bgPromptSuffix(bg.hex)
     : opts.prompt;
@@ -595,17 +719,13 @@ async function main() {
     n: opts.n,
     output_format: format,
     transparent: opts.transparent
-      ? magick
-        ? `${keyMethod} key-out of ${bg.hex} (fuzz ${fuzz}, despill ${despill})`
-        : "requested but ImageMagick missing"
+      ? `${keyMethod} key-out of ${bg.hex} (fuzz ${fuzz}, despill ${despill})`
       : false,
     resize: opts.resize
-      ? magick
-        ? `${opts.resize} (Lanczos)`
-        : "requested but ImageMagick missing"
+      ? `${opts.resize} (Lanczos)`
       : false,
     references: opts.refs,
-    keySource: source || "(none found)",
+    keySource: source || "(not checked; not required for dry-run)",
   };
 
   if (opts.dryRun) {
@@ -614,21 +734,9 @@ async function main() {
   }
 
   if (!key) {
-    fail(
-      `no API key found. Provide it via one of:\n` +
-        `  - export ${KEY_ENV}=<key>\n` +
-        `  - ./.env containing ${KEY_ENV}=<key>\n` +
-        `  - ~/.gpt-image/.env containing ${KEY_ENV}=<key>\n` +
-        `  - macOS Keychain: security add-generic-password -s gpt-image -a ${endpointHost(
-          endpoint
-        )} -w <key>`
-    );
+    fail(`Missing key. Configure ${KEY_ENV} locally; do not paste the key into chat.`);
   }
-  for (const r of opts.refs) {
-    if (!fs.existsSync(r)) fail(`reference image not found: ${r}`);
-  }
-
-  let res;
+  let json;
   if (isEdit) {
     const form = new FormData();
     form.append("model", deployment);
@@ -643,7 +751,7 @@ async function main() {
       const buf = fs.readFileSync(r);
       form.append("image[]", new Blob([buf], { type: mimeForImage(r) }), path.basename(r));
     }
-    res = await postWithRetry(url, {
+    json = await request(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}` },
       body: form,
@@ -659,7 +767,7 @@ async function main() {
     };
     if (opts.compression !== undefined) payload.output_compression = opts.compression;
     if (opts.moderation !== undefined) payload.moderation = opts.moderation;
-    res = await postWithRetry(url, {
+    json = await request(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -669,44 +777,21 @@ async function main() {
     });
   }
 
-  const json = await res.json();
-  const items = Array.isArray(json.data) ? json.data : [];
-  if (items.length === 0) fail("API returned no image data");
+  const images = decodeImages(json, opts.n, format);
 
   fs.mkdirSync(opts.dir, { recursive: true });
   const ext = extFor(format);
   const written = [];
-  items.forEach((item, idx) => {
-    if (!item.b64_json) return;
-    const suffix = items.length > 1 ? `-${idx + 1}` : "";
+  images.forEach((buffer, idx) => {
+    const suffix = images.length > 1 ? `-${idx + 1}` : "";
     const file = path.resolve(opts.dir, `${opts.output}${suffix}.${ext}`);
-    fs.writeFileSync(file, Buffer.from(item.b64_json, "base64"));
+    fs.writeFileSync(file, buffer);
     written.push(file);
   });
 
-  if (written.length === 0) fail("API response contained no decodable images");
-
   if ((opts.transparent || opts.resize) && magick) {
     for (const f of written) {
-      try {
-        if (opts.transparent) {
-          const backup = keyOut(f, magick, { hex: bg.hex, method: keyMethod, fuzz, despill });
-          console.error(
-            `gpt-image: removed ${bg.hex} background via ${keyMethod} ` +
-              `(fuzz ${fuzz}, despill ${despill}; opaque backup: ${backup})`
-          );
-        }
-        if (opts.resize) {
-          resizeImage(f, magick, opts.resize);
-          console.error(`gpt-image: resized ${path.basename(f)} to ${opts.resize} (Lanczos).`);
-        }
-      } catch (err) {
-        console.error(
-          `gpt-image: post-processing failed for ${f} (${
-            err?.message || err
-          }); kept the generated image.`
-        );
-      }
+      postProcess(f, magick, opts, { hex: bg.hex, method: keyMethod, fuzz, despill }, runImageMagick);
     }
   }
 
@@ -716,4 +801,9 @@ async function main() {
   }
 }
 
-main().catch((err) => fail(err?.stack || String(err)));
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(`gpt-image: ${err?.message || String(err)}`);
+    process.exitCode = err.exitCode || 1;
+  });
+}

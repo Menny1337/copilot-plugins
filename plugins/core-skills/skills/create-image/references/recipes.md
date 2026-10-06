@@ -4,9 +4,21 @@ Portable, copy-paste command templates and prompt profiles for the `gpt-image`
 wrapper (gpt-image-2 on Azure AI Foundry). From the skill directory, replace
 `gpt-image` with `node scripts/gpt-image.mjs`.
 
-All commands require a configured endpoint and a resolvable API key
+Generation commands require a configured endpoint and a resolvable API key
 (see `SKILL.md` → Prerequisites). Quotas depend on your deployment; space out
-batches according to its rate limits.
+batches according to its rate limits. `-t` and `--resize` also require
+ImageMagick. Dry-run needs an endpoint but no key and validates the same flags,
+references, and post-processing tools.
+
+## Contents
+
+- [Model quick reference](#gpt-image-2-quick-reference)
+- [Generation and editing recipes](#1-presentation-cover--hero)
+- [Local post-processing recovery](#local-recovery-without-another-api-call)
+- [SVG charts and exact data](#9-svg-scaffold--polished-infographic--chart--slide)
+- [Request preview](#11-preview-the-request-without-spending-a-call)
+- [Prompt profiles](#prompt-profiles)
+- [UI and app asset recipes](#ui--app-asset-recipes-web--desktop)
 
 ---
 
@@ -73,6 +85,51 @@ gpt-image "minimal blue cloud upload icon, flat, app-icon style" \
 Tuning: `--key-method auto|global|floodfill`, `--fuzz <pct>`, `--despill <px>`.
 For arbitrary photos (hair, fur, glass, soft shadows) prefer a dedicated
 background-removal model (rembg, remove.bg) run on the `-opaque.png` backup.
+
+### Local recovery without another API call
+
+If keying failed, preserve the opaque backup and write a separate recovery file.
+Use the same key color, method, and tolerances recorded in the original request.
+The wrapper prints those resolved settings on stderr before keying, including
+when that step fails. Named colors use these exact hex values, not ImageMagick's
+potentially different color names:
+
+| Wrapper color | Hex |
+| --- | --- |
+| `green` (default) | `#00d800` |
+| `magenta` | `#ff00ff` |
+| `blue` | `#0000ff` |
+| `white` | `#ffffff` |
+| `black` | `#000000` |
+| `gray` | `#808080` |
+
+For a global magenta key with the defaults:
+
+```bash
+magick mascot-opaque.png -fuzz 16% -transparent '#ff00ff' \
+  -channel A -morphology Erode 'Octagon:1' +channel mascot-recovered.png
+```
+
+For a white floodfill key with the defaults:
+
+```bash
+magick mascot-opaque.png -alpha set -bordercolor '#ffffff' -border 2 \
+  -fuzz 22% -fill none -draw 'alpha 0,0 floodfill' -shave 2x2 +repage \
+  mascot-recovered.png
+```
+
+Apply an optional resize as a separate local step; this uses PNG so padding can
+remain transparent:
+
+```bash
+magick mascot-recovered.png -filter Lanczos -resize 512x512 \
+  -background none -gravity center -extent 512x512 mascot-recovered-512.png
+```
+
+On ImageMagick 6, substitute `convert` for `magick` and use the standalone
+`identify` binary to inspect dimensions. Open the recovered PNG on both light
+and dark backgrounds and check subject details before using it. These commands
+make no model calls.
 
 ---
 
@@ -215,6 +272,10 @@ gpt-image "any prompt" -a 16:9 -t --dry-run
 
 Prints the resolved mode, URL, size, quality, and key source as JSON. Useful for
 confirming flag parsing and size mapping before a real (slow, rate-limited) call.
+No API key is required or printed. If a key source was not checked, the preview
+says so; it does not claim that Keychain or other unconsulted sources lack a key.
+Missing references, invalid options, and
+missing required ImageMagick tools are errors, not successful previews.
 
 ---
 
