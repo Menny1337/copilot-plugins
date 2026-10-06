@@ -14,7 +14,7 @@ This is a broad bundle; each skill carries its own requirements, and skills you 
 | `publish-html` | Windows, PowerShell 7.2+, Azure CLI MSI, corporate connectivity, deployment permissions, and an approved entitlement-protected HTML host |
 | `browser` | [Playwright](https://playwright.dev/) CLI + a Chromium/Chrome browser |
 | `grok-search` | Playwright CLI + a browser with a logged-in X / grok.com session |
-| `create-image` | Node.js 18+ and an Azure OpenAI image key (`AZURE_OPENAI_IMAGE_KEY`, Keychain, or `.env`) |
+| `create-image` | Node.js 18+, an Azure OpenAI image endpoint and key (`AZURE_OPENAI_IMAGE_KEY`, Keychain, or `.env`); ImageMagick for transparency/resizing and a raster renderer for SVG references |
 | `narrate` | [ffmpeg](https://ffmpeg.org/) and Azure OpenAI TTS access (`az login`, or `NARRATE_AZURE_OPENAI_API_KEY`) |
 
 `memory`, `multi-model-review`, `prompt-builder`, and `research-methodology` need nothing beyond the Copilot CLI.

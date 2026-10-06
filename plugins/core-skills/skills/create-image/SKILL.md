@@ -31,7 +31,7 @@ vector output.
 - User wants transparent-background assets: logos, mascots, icons, stickers, app tiles
 - User wants UI/app mockups or promo images
 - User wants to edit or restyle an existing image using one or more reference images
-- User wants to turn a chart or diagram SVG into a polished infographic or slide (see `references/recipes.md` recipe 9)
+- User wants to turn a chart or diagram SVG into a polished infographic or slide (see [recipe 9](references/recipes.md#9-svg-scaffold--polished-infographic--chart--slide))
 - User wants repeatable command-line image generation that can be scripted later
 
 ## When to skip
@@ -86,7 +86,7 @@ Copy these patterns and substitute the prompt, flags, and paths:
 | Edit one reference image | `gpt-image "<edit prompt>" -r ./input/source.png -o edited` |
 | Restyle from an SVG (render first) | `rsvg-convert -w 1920 -b white logo.svg -o logo.png` then `gpt-image "<edit prompt>" -r ./logo.png -o edited` |
 | Multi-reference edit / merge | `gpt-image "<merge prompt>" -r ./a.png -r ./b.png -o merged` |
-| JPEG/WebP output | `gpt-image "<prompt>" -f jpeg -o photo` |
+| JPEG output | `gpt-image "<prompt>" -f jpeg -o photo` |
 | Preview the request only | `gpt-image "<prompt>" -a 16:9 -t --dry-run` |
 
 When running from the skill directory, replace `gpt-image` with
@@ -100,8 +100,21 @@ Check these before generation:
 
 ```bash
 node --version                 # Node 18+ (uses built-in fetch); 20+ recommended
-printenv AZURE_OPENAI_IMAGE_KEY
+node <skill>/scripts/gpt-image.mjs "configuration check" --dry-run
 ```
+
+Dry-run needs an endpoint but not an API key. It validates flags, references,
+and required post-processing tools without calling the API or writing images.
+It reports the source of a key already resolved from the environment or a
+configuration file consulted for the endpoint, never its value. It skips
+unnecessary key lookups, including Keychain, and says "not checked" rather than
+claiming a key is missing. Do not print keys, paste them into chat, or put
+credentials in the repository.
+
+ImageMagick (`magick` or `convert`) is required for `-t` or `--resize`; the wrapper
+stops before generation if it is absent. Install it separately
+(`brew install imagemagick` on macOS). SVG input also needs a raster renderer;
+see [recipe 9](references/recipes.md#9-svg-scaffold--polished-infographic--chart--slide).
 
 The wrapper resolves the **API key** in this order (first hit wins):
 
@@ -114,12 +127,24 @@ The **endpoint** must be set via `AZURE_OPENAI_IMAGE_ENDPOINT` (in the environme
 
 There is no built-in endpoint. Configure your own deployment before running the wrapper.
 
+Accepted endpoint forms are an HTTPS resource root, its `/openai/v1` base, or a
+full `/openai/v1/images/generations` or `/openai/v1/images/edits` URL. For example:
+
+```bash
+export AZURE_OPENAI_IMAGE_ENDPOINT="https://<resource>.services.ai.azure.com/openai/v1/images/generations"
+```
+
+The wrapper derives the operation path and preserves query parameters. URLs
+with embedded credentials or fragments are rejected.
+
 To store the key in the Keychain (macOS):
 
 ```bash
-security add-generic-password -s gpt-image \
-  -a <your-resource-name>.services.ai.azure.com -w '<key>'
+security add-generic-password -U -s gpt-image \
+  -a <your-resource-name>.services.ai.azure.com -w
 ```
+
+Enter the key at the local password prompt, not as a command argument.
 
 Optional one-time global install so `gpt-image` is on `PATH`:
 
@@ -129,18 +154,12 @@ ln -sf "$(pwd)/scripts/gpt-image.mjs" /usr/local/bin/gpt-image   # from the skil
 
 ---
 
-## Workflow
+## Procedure
 
 ### 1. Classify the request
 
-| Request Type | Wrapper Pattern |
-|---|---|
-| New image from text | `gpt-image "<prompt>"` |
-| Edit an existing image | `gpt-image "<edit prompt>" -r <image>` |
-| Combine / restyle references | `gpt-image "<merge prompt>" -r <img1> -r <img2>` |
-| Transparent asset | `gpt-image "<prompt>" -t` |
-| Presentation visual | `gpt-image "<prompt>" -a 16:9 -q high` |
-| App / mobile visual | `gpt-image "<prompt>" -a 9:16` or `-a 1:1` |
+Choose the matching canonical command form above. Reference images route to
+edits; `-t` adds local background removal rather than native API transparency.
 
 ### 2. Gather only the missing inputs
 
@@ -180,14 +199,18 @@ Flags:
 | Transparent background | `-t` (forces PNG) — see Transparency below |
 | Transparency key color | `--bg green\|magenta\|blue\|white\|black\|gray\|#RRGGBB` (default green) |
 | Transparency removal method | `--key-method auto\|global\|floodfill` (default auto) |
-| Keying tolerance / edge | `--fuzz <pct>` · `--despill <px>` |
-| Resize (Lanczos) | `--resize N` (fit longest side) or `WxH` (fit + transparent-pad) |
+| Keying tolerance / edge | `--fuzz <0-100>` · `--despill <non-negative integer px>` |
+| Resize (Lanczos) | Positive `--resize N` (fit longest side) or `WxH` (fit + pad; padding is transparent for PNG, not JPEG) |
 | Output format | `-f png\|jpeg` (WebP is unsupported on Azure) |
 | JPEG compression | `-c <0-100>` (only with `-f jpeg`) |
 | Image count | `-n <count>` |
 | Reference image (edit) | `-r <path>` (repeatable; PNG/JPG/WebP only — render any SVG to PNG first) |
 | Endpoint / deployment override | `--endpoint <url>` / `--deployment <name>` |
 | Preview without calling API | `--dry-run` |
+
+Counts, compression, and despill must be integers; fractional or suffixed values
+are rejected. Use `-d` for a directory and `-o` for a basename, not a path.
+`-t` forces PNG, so it cannot be combined with JPEG compression (`-c`).
 
 `gpt-image-2` supports **arbitrary** sizes — both edges multiples of 16, max edge
 ≤ 3840, aspect ≤ 3:1, total pixels 655,360–8,294,400 (`>2560×1440` is
@@ -230,7 +253,14 @@ true RGBA PNG (keeps an opaque backup at `<name>-opaque.png`).
 ### 5. Execute and return the artifact path
 
 The wrapper prints the absolute path of each written file on stdout (and a
-usage summary on stderr). After generation:
+usage summary on stderr). It checks the requested batch count, base64 data,
+and PNG/JPEG container signatures before writing. Required post-processing
+runs on temporary files and is checked for resize dimensions and nonempty
+alpha output before replacing each original. This is a per-image transaction,
+not an all-or-nothing batch: if one image fails, completed images stay processed,
+the failed and unprocessed images stay original, and any opaque backups remain.
+The wrapper exits nonzero without printing success paths for an incomplete
+batch. After generation:
 
 - Confirm the output file path(s)
 - Restate the exact command if the user will likely repeat it
@@ -277,7 +307,8 @@ Decision rule: if the request fits comfortably in one strong sentence, use prose
 if it has multiple visual goals, hard constraints, preserve-vs-change rules, or
 will be reused, use JSON.
 
-See `references/recipes.md` for ready-to-run command templates and prompt profiles.
+Use [recipes and prompt profiles](references/recipes.md) when the request needs
+a worked template; routine requests do not require reading that reference.
 
 ---
 
@@ -293,20 +324,28 @@ See `references/recipes.md` for ready-to-run command templates and prompt profil
   retries with backoff; if it still fails, wait and reduce batch size or
   use `-n` on a single call instead of many invocations.
 - **Timeout** — generation is slow (~60–90s at `high`, longer under 429 backoff);
-  the wrapper already uses a long timeout and retries. Do not abort manually. For
+  the four-minute per-attempt timeout covers response-body consumption too.
+  Network failures, timeouts, 429s and 5xx responses get at most six retries.
+  Retries after an ambiguous timeout may generate and bill another image.
+  A `Retry-After` longer than four minutes stops with a retry-later error.
+  Do not abort manually. For
   quick iteration use `-q low` (≈45s).
 - **Transparent background rejected (HTTP 400)** — expected: gpt-image-2 has no
   native alpha. Always use `-t` (post-processing), never `background=transparent`.
 - **Subject partly erased after `-t`** — the key color was present in the subject.
   Switch `--bg` to a color absent from the subject (green↔magenta), or use
   `--key-method floodfill`. The opaque backup at `<name>-opaque.png` is never lost.
+- **Post-processing failed** — the run is incomplete even if an image exists.
+  Fix the reported dependency, key color, tolerance, or resize error. Use the
+  preserved original or opaque backup for [local recovery](references/recipes.md#local-recovery-without-another-api-call)
+  rather than spending another generation call unnecessarily.
 - **Green/color fringe on edges** — raise `--despill` (e.g. `--despill 2`) or lower
   `--fuzz`; for halos from a too-tight key, raise `--fuzz`.
 - **Unsupported size** — keep edges multiples of 16, max edge ≤ 3840, aspect ≤ 3:1,
   pixels 655,360–8,294,400; or use a named size / `-a` ratio.
 - **Wrong composition** — revise the prompt first before changing size or quality.
-- **Reference not found** — verify each `-r` path exists; the wrapper checks and
-  errors out before calling the API.
+- **Cannot read reference** — verify each `-r` path is a readable PNG/JPG/WebP
+  file; dry-run and generation both check before calling the API.
 - **SVG reference rejected** — `-r` is raster-only, so the wrapper stops on a
   `.svg` path. Render it to PNG first (`rsvg-convert -w 1920 -b white in.svg -o
   in.png`), check the labels, then pass the PNG. See recipe 9 for renderer options.
