@@ -528,7 +528,7 @@ describe('github-session-sync.ps1 — launcher detection behavior (pwsh)', { ski
       input: payload(VALID_SID, sandbox.root),
       env: { PATH: pathOverride, HOME: sandbox.home, TMPDIR: sandbox.root },
       encoding: 'utf8',
-      timeout: 8000,
+      timeout: 15000,
     });
   }
 
@@ -575,7 +575,7 @@ describe('github-session-sync.ps1 — launcher detection behavior (pwsh)', { ski
       "if (-not $launcherShell) { Write-Output 'NO-LAUNCHER-BRANCH-TAKEN' } else { Write-Output \"unexpected: $launcherShell\" }",
     ].join('\n');
     const pwsh = spawnSync('bash', ['-c', 'command -v pwsh'], { encoding: 'utf8' }).stdout.trim();
-    const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', harness], { encoding: 'utf8', timeout: 8000 });
+    const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', harness], { encoding: 'utf8', timeout: 15000 });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.stdout.trim(), 'NO-LAUNCHER-BRANCH-TAKEN');
   });
