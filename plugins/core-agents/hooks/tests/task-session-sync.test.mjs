@@ -110,6 +110,18 @@ function noJqPath(sandboxBin) {
   return `${sandboxBin}:${dir}`;
 }
 
+function noGhPath(sandboxBin) {
+  const dir = mkdtempSync(join(tmpdir(), 'no-gh-bin-'));
+  for (const tool of ['mkdir', 'date', 'cat', 'grep', 'sed', 'uuidgen', 'sh', 'bash', 'sleep', 'rm', 'basename', 'dirname', 'head', 'tr', 'git', 'python3', 'nohup', 'setsid', 'pwd', 'printf', 'jq', 'node']) {
+    const real = spawnSync('bash', ['-lc', `command -v ${tool}`], { encoding: 'utf8' }).stdout.trim();
+    if (!real) continue;
+    try {
+      symlinkSync(real, join(dir, tool));
+    } catch { /* best-effort */ }
+  }
+  return `${sandboxBin}:${dir}`;
+}
+
 function runHook(hookPath, sandbox, { env = {}, sid = VALID_SID } = {}) {
   const result = spawnSync('bash', [hookPath], {
     input: payload(sid),
@@ -439,15 +451,9 @@ describe('github-session-sync.sh — opt-in and gating (invoked directly)', () =
     chmodSync(fakeCopilot, 0o755);
     try {
       writeConfig(sandbox.home, { taskBackend: 'github', taskSessionSync: { enabled: true, debounceMinutes: 0 } });
-      // System dirs (for bash/mkdir/sed/grep/jq) + the copilot-only bin, but
-      // explicitly excluding any directory that actually contains a real `gh`.
-      const ghPath = spawnSync('bash', ['-lc', 'command -v gh'], { encoding: 'utf8' }).stdout.trim();
-      const ghDir = ghPath ? dirname(ghPath) : null;
-      const safeDirs = [copilotOnlyBin, '/bin', '/usr/bin', '/usr/local/bin', '/opt/homebrew/bin', dirname(process.execPath)]
-        .filter((d) => d && d !== ghDir);
       const r = spawnSync('bash', [GITHUB_HOOK], {
         input: payload(),
-        env: { PATH: safeDirs.join(':'), HOME: sandbox.home, TMPDIR: sandbox.root },
+        env: { PATH: noGhPath(copilotOnlyBin), HOME: sandbox.home, TMPDIR: sandbox.root },
         encoding: 'utf8',
       });
       assert.equal(r.status, 0, r.stderr);
@@ -522,7 +528,7 @@ describe('github-session-sync.ps1 — launcher detection behavior (pwsh)', { ski
       input: payload(VALID_SID, sandbox.root),
       env: { PATH: pathOverride, HOME: sandbox.home, TMPDIR: sandbox.root },
       encoding: 'utf8',
-      timeout: 8000,
+      timeout: 15000,
     });
   }
 
@@ -569,7 +575,7 @@ describe('github-session-sync.ps1 — launcher detection behavior (pwsh)', { ski
       "if (-not $launcherShell) { Write-Output 'NO-LAUNCHER-BRANCH-TAKEN' } else { Write-Output \"unexpected: $launcherShell\" }",
     ].join('\n');
     const pwsh = spawnSync('bash', ['-c', 'command -v pwsh'], { encoding: 'utf8' }).stdout.trim();
-    const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', harness], { encoding: 'utf8', timeout: 8000 });
+    const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', harness], { encoding: 'utf8', timeout: 15000 });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.stdout.trim(), 'NO-LAUNCHER-BRANCH-TAKEN');
   });

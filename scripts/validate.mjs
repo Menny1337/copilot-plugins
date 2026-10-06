@@ -78,7 +78,7 @@ function readFrontmatter(path) {
   }
   const end = raw.indexOf('\n---', 4);
   if (end < 0) return { ok: false, reason: 'unterminated frontmatter (no closing `---`)' };
-  const body = raw.slice(4, end);
+  const body = raw.slice(4, end).replace(/\r$/, '');
   // Minimal sanity: at least one `key:` line
   if (!/\n?[a-zA-Z_][\w-]*\s*:/.test(body)) {
     return { ok: false, reason: 'frontmatter has no key:value lines' };

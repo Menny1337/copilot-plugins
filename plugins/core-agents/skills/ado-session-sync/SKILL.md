@@ -1,6 +1,6 @@
 ---
 name: ado-session-sync
-description: "Reviews the just-finished Copilot session and updates the related Azure DevOps work item so the ADO board stays a source of truth linking work items to the sessions that produced them. Posts a concise progress comment and stamps the work item with a session:<id> tag for later rediscovery. Invoked by the agentStop session-yield hook (headless copilot -p) but also usable on request. Use when syncing a session to ADO, updating a work item with progress, recording what a session changed, or tagging a work item with its session id. Triggers: ado session sync, update work item with progress, session-to-task, sync session to ADO, stamp session id on work item, session-yield hook."
+description: "Reviews the just-finished Copilot session and updates the related Azure DevOps work item so the ADO board stays a source of truth linking work items to the sessions that produced them. Posts a concise progress comment and stamps the work item with a session:<id> tag for later rediscovery. Runs only on explicit request by default; optional launcher scripts support custom agentStop automation. Use when syncing a session to ADO, updating a work item with progress, recording what a session changed, or tagging a work item with its session id. Triggers: ado session sync, update work item with progress, session-to-task, sync session to ADO, stamp session id on work item, session-yield hook."
 user-invocable: false
 ---
 
@@ -10,8 +10,9 @@ Review the session that just yielded control back to the user, infer which Azure
 work item the work relates to, and update that work item with a short progress note plus a
 `session:<id>` tag — so every work item links back to the session(s) that moved it.
 
-This skill is normally driven non-interactively: the `agentStop` hook launches a headless
-`copilot -p` agent that invokes this procedure. It can also be run on explicit request.
+This skill runs on explicit request by default. The plugin does not register an
+`agentStop` hook. The retained launcher scripts can drive it non-interactively from a
+separately configured custom hook.
 
 ## When to Use
 
@@ -282,13 +283,14 @@ fail-open and honors `adoSessionSync.logLevel`; just call it and continue.
 
 ## Idempotency & Safety Summary
 
-- **Recursion:** guarded by the launcher hook — it skips when `ADO_SYNC_ACTIVE` is already
-  set, so a sync child never spawns another sync. The child itself runs with it set and proceeds.
+- **Recursion:** when a custom hook uses the retained launcher, it skips when
+  `ADO_SYNC_ACTIVE` is already set, so a sync child never spawns another sync. The child
+  itself runs with it set and proceeds.
 - **Opt-in:** disabled unless `adoSessionSync.enabled` / `ADO_SESSION_SYNC=1` (Step 1).
   `ADO_SESSION_SYNC=0` force-disables regardless of config and always wins.
 - **No over-update:** ambiguous inference → skip (Step 4); never touch unrelated items.
-- **Repo allowlist (efficiency):** when `adoSessionSync.syncRepos` is set, the launcher
-  hook only spawns a sync child for sessions whose `cwd` is under a listed path prefix —
+- **Repo allowlist (efficiency):** when `adoSessionSync.syncRepos` is set, the optional
+  launcher only spawns a sync child for sessions whose `cwd` is under a listed path prefix —
   or that carry an explicit work-item signal (`AB#`/`work item N`/`_workitems` URL, or a
   numeric branch / `AB#` commit trailer). Other sessions skip cheaply at the gate
   (`skip` / `repo-not-eligible`) without burning a ~4-minute headless run. Unset/empty

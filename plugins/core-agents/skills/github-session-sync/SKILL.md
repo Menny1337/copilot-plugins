@@ -1,6 +1,6 @@
 ---
 name: github-session-sync
-description: "Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced them. Posts a concise progress comment carrying a hidden <!-- copilot-session:<uuid> --> marker and records a local session-to-issue mapping for fast rediscovery. Invoked by the agentStop session-yield hook (via the backend-neutral task-session-sync dispatcher, headless copilot -p) when taskBackend is \"github\", but also usable on request. Use when syncing a session to GitHub, updating an issue with progress, recording what a session changed, or linking a session to an issue. Triggers: github session sync, update issue with progress, session-to-issue, sync session to github, stamp issue with session, session-yield hook."
+description: "Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced them. Posts a concise progress comment carrying a hidden <!-- copilot-session:<uuid> --> marker and records a local session-to-issue mapping for fast rediscovery. Runs only on explicit request by default; optional launcher scripts support custom agentStop automation when taskBackend is \"github\". Use when syncing a session to GitHub, updating an issue with progress, recording what a session changed, or linking a session to an issue. Triggers: github session sync, update issue with progress, session-to-issue, sync session to github, stamp issue with session, session-yield hook."
 user-invocable: false
 ---
 
@@ -13,10 +13,10 @@ back to the session(s) that moved it. This is the GitHub-backend twin of
 `ado-session-sync`; see that skill's SKILL.md for the parallel ADO procedure and
 [assistant-capture's task-backend contract](../assistant-capture/references/task-backend-contract.md) for the shared contract.
 
-This skill is normally driven non-interactively: the `agentStop` hook's
-`task-session-sync.sh`/`.ps1` dispatcher launches a headless `copilot -p` agent that
-invokes this procedure whenever `taskBackend == "github"`. It can also be run on
-explicit request.
+This skill runs on explicit request by default. The plugin does not register an
+`agentStop` hook. The retained `task-session-sync.sh`/`.ps1` dispatcher can launch a
+headless `copilot -p` agent from a separately configured custom hook when
+`taskBackend == "github"`.
 
 ## When to Use
 
@@ -262,10 +262,11 @@ token**, no transcript dumps.
 - Bundled script: `scripts/session-map.mjs` — marker text, hidden-marker parsing,
   local session→issue mapping I/O, and the pure issue-resolution precedence
   function. Covered by `scripts/tests/session-map.test.mjs`.
-- Recursion guard, debounce, repo allowlist, detached-child cleanup, and fail-open
-  behavior are handled by the launcher hook (`hooks/github-session-sync.sh`/`.ps1`),
-  reached via the backend-neutral `hooks/task-session-sync.sh`/`.ps1` dispatcher —
-  not by this skill. See those files' header comments for the full gating order.
+- When a custom hook is configured, recursion guard, debounce, repo allowlist,
+  detached-child cleanup, and fail-open behavior are handled by the optional launcher
+  (`hooks/github-session-sync.sh`/`.ps1`), reached via the backend-neutral
+  `hooks/task-session-sync.sh`/`.ps1` dispatcher — not by this skill. See those files'
+  header comments for the full gating order.
 - Monitoring: the same `ado-session-sync` skill's `scripts/sync-status.sh` viewer
   reads this skill's log entries too (shared log file) — `sync-status.sh --errors`
   works regardless of which backend produced an entry.

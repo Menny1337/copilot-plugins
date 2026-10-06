@@ -14,14 +14,6 @@
         "powershell": ". ./hooks/ado-sync-advisory.ps1",
         "timeoutSec": 10
       }
-    ],
-    "agentStop": [
-      {
-        "type": "command",
-        "bash": "./hooks/task-session-sync.sh",
-        "powershell": ". ./hooks/task-session-sync.ps1",
-        "timeoutSec": 20
-      }
     ]
   }
 }
