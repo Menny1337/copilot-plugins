@@ -64,9 +64,22 @@ and handoff steps, keeping any interim artifacts in the session folder.
 
 ## Hooks and agents
 
-Agents are configured purely through their file — they don't declare hooks. The Copilot
-`hooks.json` lifecycle system is separate, but two events relate to agents: `subagentStart`
-(fires before a subagent runs; can prepend `additionalContext` to its prompt) and
-`subagentStop` (fires when a subagent finishes; can `block` to force another turn). The
-built-in `general-purpose` agent does **not** emit these events. To author hooks around the
-agent lifecycle, use the `hooks-crafting` skill.
+The specialized [GitHub hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference#agent-scoped-hooks)
+documents **Copilot CLI-only** agent-scoped hooks in a frontmatter `hooks` event map.
+The general custom-agent configuration table does not list this field; do not
+treat either page as proof of support in every host or installed CLI.
+
+Agent-crafting owns profile placement and host compatibility. Use `hooks-crafting`
+and its [scoped-hook contract](../../hooks-crafting/references/hooks-reference.md#agent-scoped-hooks-cli-only)
+for event, payload, command/HTTP, and trust semantics. Verify the exact target
+runtime in an authorized isolated fixture before prescribing an executable
+configuration; documentation alone is not an enablement instruction.
+
+The documented map is nested YAML, outside this marketplace's scalar-only
+frontmatter schema. Authoring such profiles here requires a separate approved
+schema/governance change; do not add scoped hooks to an agent or relax validation
+as part of a documentation correction.
+
+Session-level `subagentStart` (can prepend `additionalContext`) and `subagentStop`
+(can `block` to force another turn) remain separate lifecycle events. The built-in
+`general-purpose` agent does **not** emit these events.

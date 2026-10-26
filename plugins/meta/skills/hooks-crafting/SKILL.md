@@ -17,6 +17,9 @@ on memory.
 ## When to Use
 
 - Creating or editing a `hooks.json` (plugin, repo, or user level)
+- Assessing CLI agent-scoped hook events, payloads, or trust constraints — use the
+  [scoped-hook contract](references/hooks-reference.md#agent-scoped-hooks-cli-only);
+  `agent-crafting` owns the profile and host/schema compatibility
 - Running a command at session start/end, before/after a tool, or when the agent stops
 - Programmatically allowing, denying, or modifying a tool call
 - Injecting extra context, logging, notifications, or recovery guidance into a session
@@ -25,7 +28,8 @@ on memory.
 ## When to Skip
 
 - Creating or modifying skills — use `skill-crafting`
-- Creating or modifying agents — use `agent-crafting`
+- Creating or modifying agent roles/frontmatter placement — use `agent-crafting`;
+  agent-scoped hook semantics belong here
 - Packaging hooks into a plugin or marketplace — use `plugin-crafting`
 - Auditing an existing agent/skill/hook system for quality — use `agent-skill-audit`
 - The `hooks` *frontmatter field* on a Claude Code skill — that is a different, host-specific
@@ -36,6 +40,13 @@ on memory.
 A hook is an external action (a shell command, an HTTP POST, or an auto-submitted prompt)
 that Copilot runs when a lifecycle **event** fires. Hooks are declared in JSON files with
 `version: 1` and a `hooks` object keyed by event name.
+
+CLI agent-scoped hooks instead use a frontmatter event map and supplement the
+session-level sources below. See the [scoped-hook contract](references/hooks-reference.md#agent-scoped-hooks-cli-only)
+before using that route. Its nested YAML is outside this marketplace's scalar-only
+agent schema and requires separate approval to author here. Verify exact
+target-runtime support in an authorized isolated fixture before prescribing or
+enabling executable configurations; the JSON-file recipe below is not that proof.
 
 ### Locations and load order
 

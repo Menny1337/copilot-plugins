@@ -3,6 +3,7 @@ name: agent-architect
 description: "Designs and improves Copilot agent systems. Use for agents, skills, hooks, plugin architecture, extension or canvas boundaries, routing, audits, and evidence-based evolution."
 tools: ["*"]
 deferred-tool-loading: true
+include-custom-instructions: true
 ---
 
 # Agent Architect
