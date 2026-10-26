@@ -61,6 +61,11 @@ If `playwright-cli` is missing, install it and retry:
 npm install -g @playwright/cli@latest
 ```
 
+The default `active` mode is verified with CLI 0.1.19 and requires bundled `playwright-core`
+`1.63.0-alpha-2026-08-31`. Other core versions fail closed in active mode. Use
+`--activity native` with a newer, unverified runtime, or update this skill's compatibility
+adapter after verification.
+
 The helper reads the Bridge token from the browser profile through
 `scripts/bridge-token.mjs`; never paste, print, or commit the token. The first macOS use may
 request Automation or Accessibility access so the helper can target and close one exact
@@ -99,10 +104,25 @@ Optional explicit session name:
 node scripts/browser-window.mjs start --session agent-research
 ```
 
+Pages are active by default, including while another application is foreground. Chromium's
+native focus emulation reports `visibilityState: "visible"`, `hidden: false`, and
+`document.hasFocus(): true`. It applies across websites, navigation, reloads, and new tabs.
+It does not replace JavaScript getters or require DevTools. Automation does not foreground
+the browser after the brief startup handshake.
+
+To preserve the browser's actual visibility and focus behavior instead:
+
+```bash
+node scripts/browser-window.mjs start --activity native
+```
+
+Choose the mode at startup; it belongs to that session. Keep using ordinary
+`playwright-cli -s=<session>` commands in either mode.
+
 Success is one JSON object:
 
 ```json
-{"ok":true,"session":"agent-msedge-1234-a1b2c3d4","browser":"msedge","profile":"Person 1","profileDirectory":"Default","windowId":"123456"}
+{"ok":true,"session":"agent-msedge-1234-a1b2c3d4","browser":"msedge","activity":"active","profile":"Person 1","profileDirectory":"Default","windowId":"123456"}
 ```
 
 The helper:
@@ -117,9 +137,17 @@ The helper:
 - verifies the Welcome-only scope internally, then replaces its credential-bearing URL with
   one safe `about:blank` page
 - restores the user's previous foreground window
+- in active mode, checks native foreground stability and reads visibility and focus from
+  the fresh replacement page before reporting success
 
 Every start creates a new window and session. Concurrent agents may work independently; the
 helper serializes only the brief create-and-attach handshake.
+
+Active mode uses the existing profile launcher preload to enable only Chromium's native
+focus initialization through the Bridge-authorized page session. A version and exact-shape
+check protects this in-memory compatibility adaptation. It does not modify installed
+Playwright files, change the CLI or its session registry, open debug ports, or enable other
+Playwright default overrides. Native mode does not install the adaptation.
 
 ## Use normal Playwright CLI
 
@@ -201,6 +229,16 @@ session open until the user confirms they are done with it, then run `close`.
 
 ## Failure handling
 
+- `invalid-activity` — use `active` or `native` on `start` only.
+- `activity-unsupported` — this runtime is not verified for native focus initialization.
+  Update the skill or explicitly start with `--activity native`; do not patch global
+  dependencies or silently substitute native mode.
+- `activity-verification-failed` — the fresh page did not report active visibility and
+  focus after foreground restoration. Startup attempted exact-window cleanup.
+- `activity-verification-interrupted` — native foreground changed during the check, so
+  background activity was not proven. Let user or other-agent activity settle before retrying.
+- `foreground-restore-failed` — the previous foreground window could not be restored.
+  Startup attempted exact-window cleanup.
 - `bridge-token-unavailable` — install/enable the Bridge extension in the selected browser
   profile and open it once so it creates a token. Check the requested profile name with
   `bridge-token.mjs list`.
@@ -239,6 +277,7 @@ See [`references/known-issues.md`](references/known-issues.md) for diagnostic de
 | Resource | Use |
 | --- | --- |
 | `scripts/browser-window.mjs` | Start and close dedicated browser windows |
+| `scripts/browser-activity.cjs` | Guarded, session-local native focus compatibility |
 | `scripts/bridge-token.mjs` | Internal token resolution and token diagnostics |
 | `scripts/owa-compose.mjs` | Outlook drafting, reading, replying, and sending |
 | `references/outlook-web.md` | Required before Outlook work |

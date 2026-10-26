@@ -33,6 +33,35 @@ argument. The helper therefore:
 Do not remove the post-focus identity check. Without it, concurrent user activity can route the
 Bridge to the wrong window.
 
+## Active pages in a background window
+
+`start` defaults to `--activity active`. The current adapter supports CLI 0.1.19 with
+`playwright-core` `1.63.0-alpha-2026-08-31`, on the existing macOS/Windows Edge/Chrome path.
+The compatibility guard alone does not prove live background behavior for a browser/OS
+combination; confirm native foreground and page activity together.
+
+The Bridge connection uses `noDefaults: true`, which skips Playwright's native focus
+initialization. The profile launcher preload checks the resolved core package version and
+one exact initialization block before adapting that block in memory. It enables
+`Emulation.setFocusEmulationEnabled` on the existing authorized main-frame session.
+Other `noDefaults` behavior stays unchanged. This is a private runtime compatibility boundary,
+not an upstream supported focus API. No installed package is written or copied.
+
+The helper restores the prior foreground window and reads the fresh page's native visibility
+and focus before returning success. `activity-verification-interrupted` means foreground
+changed during that check, not that focus emulation failed. Do not count
+a foreground browser as proof that background emulation works. If another agent is starting
+a browser or the user is switching applications, allow the foreground to settle before a
+new attempt. Do not force focus repeatedly during automation.
+
+`activity-unsupported` means the version or initialization shape is unverified, not that
+the extension needs more permissions. Use `start --activity native` to retain real
+visibility/focus, or update and verify the adapter. Do not bypass the guard, spoof DOM
+getters, open DevTools manually, expose a debug port, or replace the Bridge transport.
+
+Native focus emulation does not promise faster HTML loads or backend telemetry ingestion.
+It changes page activity signals only.
+
 ## Concurrent agents
 
 Each start generates a unique Playwright session and native window. A cross-process lock
