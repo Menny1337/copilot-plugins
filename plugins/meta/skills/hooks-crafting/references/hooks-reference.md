@@ -5,11 +5,39 @@ returns JSON to control behavior. Source: GitHub Copilot hooks reference (docs.g
 
 ## Contents
 
+- [Agent-scoped hooks (CLI only)](#agent-scoped-hooks-cli-only)
 - [Payload formats](#payload-formats)
 - [Event input payloads](#event-input-payloads)
 - [Decision / output schemas](#decision--output-schemas)
 - [Tool names for matchers](#tool-names-for-matchers)
 - [Exit codes](#exit-codes)
+
+## Agent-scoped hooks (CLI only)
+
+The specialized [GitHub hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference#agent-scoped-hooks)
+documents a `hooks` event map in custom-agent YAML frontmatter, not a
+`{ version: 1, hooks: ... }` JSON-file wrapper. It runs command or HTTP hooks
+only while that agent is selected, in addition to session, user, repository,
+plugin, and policy hooks.
+
+| Contract | Documented CLI behavior |
+| --- | --- |
+| Event names | Runtime names such as `postToolUse` and aliases such as `PostToolUse` are accepted; use the corresponding payload convention below. |
+| Commands | `command` is the fallback; `windows`, `linux`, and `osx` override it per platform. Paths resolve from the repository root. Do not assume the JSON-file `bash`/`powershell` shape is interchangeable. |
+| Scoped subagent Stop | `Stop` (`agentStop`) runs at `SubagentStop` for a subagent. After eight consecutive scoped blocks, further blocks are ignored. |
+| Trust | Repository and inherited-agent hooks require workspace admission. Hook-disable settings, enterprise restrictions, and timeouts still apply. |
+| Unsupported origins | Remote or organization-hosted agent definitions do not run scoped hooks. No cloud-agent or IDE parity is established here. |
+
+The general [custom-agent configuration table](https://docs.github.com/en/copilot/reference/custom-agents-configuration)
+does not list `hooks`. This documentation difference is not target-runtime
+verification. Before prescribing or enabling executable configuration, prove
+support in the exact runtime using an authorized isolated fixture; do not enable
+hooks, widen trust, or change permissions merely to test a documentation claim.
+
+`agent-crafting` owns agent placement and host compatibility. The documented map
+is nested YAML, outside this marketplace's scalar-only agent frontmatter schema.
+Shipping such a profile here requires a separate approved schema/governance
+change. No validator change or executable agent-hook example is implied.
 
 ## Payload formats
 

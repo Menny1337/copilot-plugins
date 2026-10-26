@@ -20,6 +20,31 @@ The overall verified baseline remains 1.0.83-5. The latest stable release checke
 was 1.0.91 (1 October); 1.0.92-2 and 1.0.92-3 (2 October) were prereleases,
 not the inspected runtime.
 
+Partial follow-up, 26 October 2026 (documentation and selected help only):
+shell CLI reports **1.0.104-3**, distinct from the supplied session runtime
+**1.0.102-0.unstable.r40029025960.g5a14a15**. The current
+[CLI custom-agent guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli)
+confirms `include-custom-instructions: true` for custom subagents only; selected
+session agents already receive repository instructions. `--no-custom-instructions`
+still overrides it. Shell help confirms that opt-out flag, not inheritance behavior.
+The [GitHub plugin overview](https://docs.github.com/en/copilot/concepts/customizations/plugins)
+and [VS Code plugin documentation](https://code.visualstudio.com/docs/agent-customization/agent-plugins)
+confirm VS Code plugin support, `chat.plugins.enabled`, harness/format-dependent
+components, and discovery of CLI-installed plugins. See the corrected
+[consuming-surfaces matrix](#consuming-surfaces); other IDE parity is unverified.
+
+The specialized [hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference#agent-scoped-hooks)
+documents CLI agent-frontmatter `hooks` (command/HTTP, platform overrides,
+repository-root paths, scoped Stop, and trust/origin restrictions); the
+[general agent table](https://docs.github.com/en/copilot/reference/custom-agents-configuration)
+still omits it. Use the [scoped-hook contract](../../hooks-crafting/references/hooks-reference.md#agent-scoped-hooks-cli-only),
+not an assumption of cross-host support. That nested map is outside this
+marketplace's scalar-only frontmatter schema; shipping it requires separate
+schema/governance approval and exact-runtime proof before executable guidance.
+No hooks were enabled or executed, no inheritance fixture was executed, and no
+full package/SDK/schema or platform behavior refresh was performed. The overall
+verified baseline remains **1.0.83-5**.
+
 ## Contents
 
 - [Why this file exists](#why-this-file-exists)
@@ -612,7 +637,7 @@ other change.
 ## Consuming surfaces
 
 Authoring guidance is often written as if the CLI were the only consumer. It is
-not. Four surfaces read overlapping subsets of the same artifacts, so a skill
+not. These surfaces read overlapping subsets of the same artifacts, so a skill
 that says "Copilot" without naming a surface is ambiguous.
 
 | Surface | What it is | Reads plugins? | Reads hooks? |
@@ -620,7 +645,14 @@ that says "Copilot" without naming a surface is ambiguous.
 | **Copilot CLI** | The terminal agent this file documents | Yes — full `copilot plugin` machinery | Yes — policy, user, repo, plugin, and `settings.json` |
 | **GitHub Copilot app** | Desktop app (macOS/Windows/Linux), **built on Copilot CLI** | Yes — CLI-installed plugins, skills, and MCP servers are automatically available | Yes, via the CLI engine |
 | **Copilot cloud agent** | GitHub.com bot that turns issues into PRs | Declaratively only — `enabledPlugins` in `.github/copilot/settings.json`; no `copilot plugin install` | Only `.github/hooks/*.json`, `bash`-only, in a Linux sandbox |
-| **IDE agent mode** | VS Code, Visual Studio, JetBrains, etc. | No | VS Code only, in preview |
+| **VS Code** | Editor agent harnesses; availability depends on harness and plugin format | Yes — requires `chat.plugins.enabled`; discovers CLI installs under `~/.copilot/installed-plugins/` (marketplace and `_direct`) | Documented plugin capability; verify selected harness/format, not CLI parity |
+| **Other IDEs** | Visual Studio, JetBrains, etc. | Not verified here; do not extrapolate from VS Code | Not verified here |
+
+VS Code documents skills, MCP servers, custom agents, hooks, slash commands, and
+automation templates as plugin capabilities, conditional on harness and format.
+Agent Plugins 1.0 makes skills and MCP servers portable; other components can be
+client-specific. See [VS Code's component and format guidance](https://code.visualstudio.com/docs/agent-customization/agent-plugins).
+Discovery does not prove activation or universal component parity.
 
 **Practical consequence for this marketplace:** the desktop app is a first-class
 consumer of everything published here. Plugins need no app-specific packaging,

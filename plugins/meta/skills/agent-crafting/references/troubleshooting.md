@@ -5,15 +5,22 @@ Read this when an agent fails to load, does not appear, or does not trigger.
 
 ## "Attribute X is not supported" error
 
-Remove the unsupported attribute. The documented frontmatter properties (GitHub.com +
-Copilot CLI) are: `name`, `description`, `tools`, `model`, `target`,
+Check the target host, version, and repository validator before removing a field.
+The general GitHub custom-agent configuration table lists: `name`, `description`, `tools`, `model`, `target`,
 `disable-model-invocation`, `user-invocable`, `mcp-servers`, and `metadata`. `infer` is
 retired — replace it with `disable-model-invocation` and `user-invocable`. `argument-hint`
 and `handoffs` are VS Code-only and are ignored elsewhere rather than erroring.
 
-CLI additions are `skills`, `reasoning-effort`, `deferred-tool-loading`, and
+CLI additions include `skills`, `reasoning-effort`, `deferred-tool-loading`,
+`include-custom-instructions`, and
 `model-policy`. Since CLI 1.0.83, `model` may also be a string array; use
 `model-policy: required` to keep model changes within that configured list.
+
+The specialized hooks reference also documents CLI agent-scoped `hooks`, absent
+from the general table. See [Hooks and agents](advanced-topics.md#hooks-and-agents)
+for host verification and the separate marketplace schema/approval boundary.
+A runtime-supported nested map can still fail this repository's scalar-only
+frontmatter validator; do not remove that safeguard to make it pass.
 
 ## "Unexpected indentation" error
 

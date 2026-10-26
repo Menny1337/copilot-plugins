@@ -3,6 +3,12 @@
 All notable changes to the `meta` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.17.1] - 2026-10-26
+
+_patch release._
+
+- fix(meta): apply approved architect audit findings
+
 ## [1.17.0] - 2026-10-04
 
 _minor release._

@@ -368,7 +368,16 @@ Package once, but know who reads it. See
   through `enabledPlugins` in `.github/copilot/settings.json`, and only `.github/hooks/*.json`
   runs (`bash`-only, Linux sandbox). Document this install path separately if you want your
   plugin usable there.
-- **IDE agent mode** — does not consume plugins at all.
+- **VS Code** — documented plugin support requires `chat.plugins.enabled`.
+  Supported capabilities include skills, MCP servers, custom agents, hooks, slash
+  commands, and automation templates, depending on the selected harness and plugin
+  format. VS Code also discovers CLI-installed plugins under
+  `~/.copilot/installed-plugins/`, including marketplace and `_direct` installs.
+  See [Agent plugins in VS Code](https://code.visualstudio.com/docs/agent-customization/agent-plugins)
+  for prerequisites, supported components, formats, and installation interfaces.
+  Discovery is not proof of component parity or activation in every harness.
+- **Other IDEs** — plugin consumption is not established by this guidance; verify
+  the specific client's documentation rather than extrapolating VS Code support.
 
 The desktop app additionally reads `.github/github-app.yml` for repo-level instructions,
 scripts, and automation. That file is app-only; the CLI ignores it, and it is not a plugin

@@ -103,6 +103,12 @@ directories supplied only to the parent through `COPILOT_CUSTOM_INSTRUCTIONS_DIR
 are not inherited through this field. The baseline records release and public
 documentation evidence separately from untested runtime loading behavior.
 
+For CLI agent-scoped `hooks`, follow [Hooks and agents](advanced-topics.md#hooks-and-agents)
+only when that capability is needed. The specialized hooks documentation describes
+a nested map omitted from the general agent table; it is outside this marketplace's
+scalar-only schema and needs separate approval before authoring here. Verify
+target-runtime support before prescribing executable configuration.
+
 ## Model and invocation controls
 
 Check `model`, `model-policy`, `reasoning-effort`, `target`,
