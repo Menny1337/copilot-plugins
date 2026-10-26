@@ -45,7 +45,7 @@ function fail(code, message, details) {
 export function parseArgs(argv) {
   const command = argv[0];
   if (!['start', 'close'].includes(command)) {
-    fail('usage', 'Usage: browser-window.mjs start [--browser msedge|chrome] [--profile name] [--session name]\n' +
+    fail('usage', 'Usage: browser-window.mjs start [--browser msedge|chrome] [--profile name] [--session name] [--activity active|native]\n' +
       '       browser-window.mjs close --session name');
   }
 
@@ -56,10 +56,15 @@ export function parseArgs(argv) {
     const equal = arg.indexOf('=');
     const name = equal === -1 ? arg.slice(2) : arg.slice(2, equal);
     const value = equal === -1 ? argv[++i] : arg.slice(equal + 1);
-    if (!['browser', 'profile', 'session'].includes(name) || !value || value.startsWith('--')) {
+    if (!['browser', 'profile', 'session', 'activity'].includes(name) || !value || value.startsWith('--')) {
       fail('usage', `--${name} requires a value`);
     }
     values[name] = value;
+  }
+  if (command === 'close' && values.activity) fail('usage', '--activity is only supported by start');
+  const activity = values.activity || 'active';
+  if (!['active', 'native'].includes(activity)) {
+    fail('invalid-activity', '--activity must be active or native');
   }
 
   const browser = (values.browser || 'msedge').toLowerCase();
@@ -81,6 +86,7 @@ export function parseArgs(argv) {
     browser,
     profile: values.profile || null,
     session: values.session || null,
+    activity,
   };
 }
 
@@ -335,6 +341,7 @@ export function extensionAttachEnvironment(
     env = process.env,
     nodePath = process.execPath,
     launcherPath = PROFILE_LAUNCHER,
+    activity = 'active',
   } = {},
 ) {
   return {
@@ -343,11 +350,12 @@ export function extensionAttachEnvironment(
     COPILOT_PLUGIN_BROWSER_PROFILE_LAUNCH: '1',
     COPILOT_PLUGIN_BROWSER_EXECUTABLE: browserExecutable(browser, os, env),
     COPILOT_PLUGIN_BROWSER_PROFILE_DIRECTORY: profileDirectory,
+    COPILOT_PLUGIN_BROWSER_ACTIVITY: activity,
     NODE_OPTIONS: nodeOptionsWithRequire(env.NODE_OPTIONS, launcherPath),
   };
 }
 
-function attachPlaywright(browser, session, token, profileDirectory) {
+function attachPlaywright(browser, session, token, profileDirectory, activity) {
   if (!PROFILE_RE.test(profileDirectory || '')) {
     fail('invalid-profile', 'Selected browser profile directory is unavailable');
   }
@@ -360,9 +368,12 @@ function attachPlaywright(browser, session, token, profileDirectory) {
     `--session=${session}`,
   ], {
     timeout: ATTACH_TIMEOUT_MS,
-    env: extensionAttachEnvironment(browser, profileDirectory, token),
+    env: extensionAttachEnvironment(browser, profileDirectory, token, { activity }),
   });
   if (result.timedOut) fail('attach-timeout', 'Playwright Bridge attach timed out');
+  if (result.output.includes('COPILOT_BROWSER_ACTIVITY_UNSUPPORTED')) {
+    fail('activity-unsupported', 'Active mode requires a verified Playwright runtime; use --activity native or update the browser skill');
+  }
   if (result.status !== 0) fail('attach-failed', 'Playwright Bridge attach failed');
 }
 
@@ -415,6 +426,16 @@ function sanitizeScopedSession(session) {
   const listed = runPlaywright([`-s=${session}`, 'tab-list']);
   if (listed.status !== 0 || !hasSafeBlank(listed.output)) {
     fail('scope-sanitization-failed', 'Playwright session did not settle on one safe blank page');
+  }
+}
+
+function verifyActivePage(session) {
+  const result = runPlaywright([
+    `-s=${session}`, '--raw', 'eval',
+    '() => document.visibilityState === "visible" && !document.hidden && document.hasFocus()',
+  ]);
+  if (result.status !== 0 || result.output.trim() !== 'true') {
+    fail('activity-verification-failed', 'The fresh page did not report visible, not hidden, and focused');
   }
 }
 
@@ -472,6 +493,7 @@ export function createRuntime(overrides = {}) {
     bindSession: overrides.bindSession || bindPlaywrightSession,
     clearWelcome: overrides.clearWelcome || clearBridgeWelcome,
     sanitizeSession: overrides.sanitizeSession || sanitizeScopedSession,
+    verifyActivity: overrides.verifyActivity || verifyActivePage,
     detach: overrides.detach || detachPlaywright,
     launch: overrides.launch || launchBrowser,
     wait: overrides.wait || sleep,
@@ -531,8 +553,26 @@ function closeTrackedWindow(runtime, state) {
   return result;
 }
 
+function verifyBackgroundActivity(runtime, state, previous) {
+  if (previous?.id || previous?.processName) {
+    const restored = runtime.native.invoke('restore', state.browser, {}, previous);
+    if (!restored.restored) fail('foreground-restore-failed', 'Could not restore the previous foreground window');
+  }
+  const before = runtime.native.invoke('current', state.browser);
+  runtime.verifyActivity(state.session);
+  const after = runtime.native.invoke('current', state.browser);
+  if (String(after.processId) !== String(before.processId) ||
+      String(after.id) !== String(before.id) ||
+      (String(after.processId) === String(state.window.processId) &&
+       String(after.id) === String(state.window.id))) {
+    fail('activity-verification-interrupted', 'Foreground changed during active-page verification');
+  }
+}
+
 export function startWindow(options, runtime = createRuntime()) {
   const browser = options.browser || 'msedge';
+  const activity = options.activity ?? 'active';
+  if (!['active', 'native'].includes(activity)) fail('invalid-activity', '--activity must be active or native');
   const session = options.session || generateSession(browser, runtime.random);
   if (!SESSION_RE.test(session)) fail('invalid-session', 'Invalid Playwright session name');
 
@@ -600,6 +640,7 @@ export function startWindow(options, runtime = createRuntime()) {
       version: STATE_VERSION,
       session,
       browser,
+      activity,
       window: { ...created[0], marker },
       profileName: tokenResult.profile?.name || tokenResult.profile?.dir || null,
       profileDirectory: tokenResult.profile?.dir || null,
@@ -614,7 +655,7 @@ export function startWindow(options, runtime = createRuntime()) {
     const focused = runtime.native.invoke('foreground', browser, state.window);
     if (!focused.focused) fail('foreground-failed', 'The new browser window could not be foregrounded');
 
-    runtime.attach(browser, session, tokenResult.token, tokenResult.profile.dir);
+    runtime.attach(browser, session, tokenResult.token, tokenResult.profile.dir, activity);
     attached = true;
     const attachedWindow = runtime.native.invoke('current', browser);
     if (String(attachedWindow.id) !== String(state.window.id) ||
@@ -636,13 +677,16 @@ export function startWindow(options, runtime = createRuntime()) {
       fail('attachment-binding-failed', 'Playwright attached outside the tracked native browser window');
     }
     runtime.sanitizeSession(session);
+    if (activity === 'active') verifyBackgroundActivity(runtime, state, previous);
     state.attached = true;
     atomicWriteJson(file, state);
+    if (activity === 'active') previous = null;
 
     return {
       ok: true,
       session,
       browser,
+      activity,
       profile: state.profileName,
       profileDirectory: state.profileDirectory,
       windowId: String(state.window.id),

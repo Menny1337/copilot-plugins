@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -121,13 +121,14 @@ function harness(overrides = {}) {
     }),
     playwrightVersion: () => '0.1.19',
     sessionExists: () => false,
-    attach: (browser, session, actualToken, profileDirectory) => {
+    attach: (browser, session, actualToken, profileDirectory, activity) => {
       calls.push({
         type: 'attach',
         browser,
         session,
         token: actualToken,
         profileDirectory,
+        activity,
       });
       attached = true;
     },
@@ -138,6 +139,10 @@ function harness(overrides = {}) {
     sanitizeSession: (session) => {
       calls.push({ type: 'sanitize', session });
       assert.equal(attached, true);
+    },
+    verifyActivity: (session) => {
+      calls.push({ type: 'verify-activity', session });
+      assert.deepEqual(focused, { id: '100', processId: 20 });
     },
     bindSession: (session, requestedMarker) => {
       calls.push({ type: 'bind', session, marker: requestedMarker });
@@ -181,6 +186,7 @@ test('parseArgs defaults start to Edge and accepts explicit Chrome session', () 
     browser: 'msedge',
     profile: null,
     session: null,
+    activity: 'active',
   });
   assert.deepEqual(parseArgs([
     'start', '--browser', 'chrome', '--profile', 'Work Profile', '--session=agent-1',
@@ -189,7 +195,102 @@ test('parseArgs defaults start to Edge and accepts explicit Chrome session', () 
     browser: 'chrome',
     profile: 'Work Profile',
     session: 'agent-1',
+    activity: 'active',
   });
+});
+
+test('activity defaults to active and accepts only explicit supported start modes', () => {
+  assert.equal(parseArgs(['start', '--activity=native']).activity, 'native');
+  assert.throws(() => parseArgs(['start', '--activity', 'background']), { code: 'invalid-activity' });
+  assert.throws(() => parseArgs(['close', '--session=x', '--activity=active']), { code: 'usage' });
+});
+
+test('activity propagates to attachment, state and output without sharing session modes', () => {
+  for (const activity of ['active', 'native']) {
+    const h = harness();
+    const result = startWindow({ session: `mode-${activity}`, activity }, h.runtime);
+    assert.equal(result.activity, activity);
+    assert.equal(h.calls.find((call) => call.type === 'attach').activity, activity);
+    const state = JSON.parse(readFileSync(join(h.stateRoot, 'sessions', `${result.session}.json`)));
+    assert.equal(state.activity, activity);
+    assert.equal(h.calls.some((call) => call.type === 'verify-activity'), activity === 'active');
+  }
+});
+
+test('failed active read-back cleans up the exact window and does not report readiness', () => {
+  const h = harness({
+    verifyActivity: () => {
+      throw Object.assign(new Error('Page is not active'), { code: 'activity-verification-failed' });
+    },
+  });
+  assert.throws(() => startWindow({ session: 'inactive' }, h.runtime),
+    { code: 'activity-verification-failed' });
+  assert.equal(h.isLaunched(), false);
+  assert.equal(h.isAttached(), false);
+  assert.equal(existsSync(join(h.stateRoot, 'sessions', 'inactive.json')), false);
+});
+
+test('active readiness rejects focus moving during read-back and retains failed cleanup state', () => {
+  const h = harness();
+  let verified = false;
+  h.runtime.verifyActivity = () => { verified = true; };
+  const original = h.runtime.native.invoke;
+  h.runtime.native.invoke = (command, ...args) => {
+    if (command === 'current' && verified) return { id: '200', processId: 20 };
+    if (command === 'close') throw new Error('native close failed');
+    return original(command, ...args);
+  };
+  assert.throws(() => startWindow({ session: 'focus-moved' }, h.runtime), (error) => {
+    assert.equal(error.code, 'activity-verification-interrupted');
+    assert.equal(error.cleanupError, 'native close failed');
+    return true;
+  });
+  assert.equal(h.isAttached(), false);
+  assert.equal(existsSync(join(h.stateRoot, 'sessions', 'focus-moved.json')), true);
+});
+
+test('native mode retains best-effort focus restoration while active requires restoration', () => {
+  for (const activity of ['native', 'active']) {
+    const h = harness();
+    const original = h.runtime.native.invoke;
+    h.runtime.native.invoke = (command, ...args) => command === 'restore'
+      ? { restored: false }
+      : original(command, ...args);
+    if (activity === 'native') {
+      assert.equal(startWindow({ session: 'native-restore', activity }, h.runtime).ok, true);
+    } else {
+      assert.throws(() => startWindow({ session: 'active-restore', activity }, h.runtime),
+        { code: 'foreground-restore-failed' });
+      assert.equal(h.isLaunched(), false);
+    }
+  }
+});
+
+test('an incompatible active attachment closes only the marked window and removes state', () => {
+  const h = harness({
+    attach: () => { throw Object.assign(new Error('Unsupported active runtime'), { code: 'activity-unsupported' }); },
+  });
+  assert.throws(() => startWindow({ session: 'incompatible' }, h.runtime), { code: 'activity-unsupported' });
+  assert.equal(h.isLaunched(), false);
+  assert.equal(h.calls.some((call) => call.type === 'verify-activity'), false);
+  assert.equal(existsSync(join(h.stateRoot, 'sessions', 'incompatible.json')), false);
+});
+
+test('attachment enables the focus preload only for active mode on both supported platforms', () => {
+  const root = mkdtempSync(join(tmpdir(), 'browser-activity-windows-'));
+  const application = join(root, 'Google', 'Chrome', 'Application');
+  mkdirSync(application, { recursive: true });
+  writeFileSync(join(application, 'chrome.exe'), '');
+  for (const os of ['darwin', 'win32']) {
+    for (const activity of ['active', 'native']) {
+      const env = extensionAttachEnvironment('chrome', 'Default', token, {
+        os,
+        activity,
+        env: { ProgramFiles: root },
+      });
+      assert.equal(env.COPILOT_PLUGIN_BROWSER_ACTIVITY, activity);
+    }
+  }
 });
 
 test('parseArgs requires a close session and rejects unsafe names', () => {

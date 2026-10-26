@@ -58,6 +58,12 @@ if (process.env.COPILOT_PLUGIN_BROWSER_PROFILE_LAUNCH === '1' && target) {
     stdio: 'ignore',
     windowsHide: true,
     timeout: 5_000,
+    env: { ...process.env, COPILOT_PLUGIN_BROWSER_ACTIVITY: 'native' },
   });
   process.exit(result.status === 0 ? 0 : 1);
+}
+
+if (process.env.COPILOT_PLUGIN_BROWSER_PROFILE_LAUNCH === '1' &&
+    process.env.COPILOT_PLUGIN_BROWSER_ACTIVITY === 'active' && process.argv[1]) {
+  require('./browser-activity.cjs');
 }
