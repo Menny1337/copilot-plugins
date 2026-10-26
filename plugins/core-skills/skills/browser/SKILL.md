@@ -58,7 +58,7 @@ The Outlook driver requires the lifecycle session and never attaches by itself.
 If `playwright-cli` is missing, install it and retry:
 
 ```bash
-npm install -g @playwright/cli@latest
+npm install -g @playwright/cli@0.1.19
 ```
 
 The default `active` mode is verified with CLI 0.1.19 and requires bundled `playwright-core`
