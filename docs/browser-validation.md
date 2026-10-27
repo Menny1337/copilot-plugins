@@ -33,6 +33,12 @@ not erase them or prove every historical cause. The earlier ADO error lost its
 diagnostic text, so the newly observed redirect race cannot conclusively explain
 that older failure.
 
+The first PR validation run failed on Ubuntu: mocked managed-session tests still
+constructed host-native dependencies. The runtime now honors injected native
+adapters and state roots, and routing tests supply their mocked runtime explicitly.
+This keeps lifecycle coverage portable without enabling Linux browser automation
+or adding skips. The existing macOS-only script tests still require macOS.
+
 An intermediate account check remained PARTIAL because the ADO account header
 loads after the project shell. A stricter follow-up also exposed that the account
 menu's wrapper stays visible when collapsed. Neither observation was hidden.

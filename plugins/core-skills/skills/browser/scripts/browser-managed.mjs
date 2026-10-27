@@ -63,9 +63,9 @@ function cli(args, cwd, env) {
   return {status:result.status,stdout:result.stdout || '',timedOut:result.error?.code === 'ETIMEDOUT'};
 }
 export function createManagedRuntime(overrides = {}) {
-  const native = createNativeAdapter();
+  const native = overrides.native || createNativeAdapter();
   return {
-    stateRoot: defaultStateRoot(), cli, processIdentity:ownedProcessIdentity,
+    stateRoot: overrides.stateRoot || defaultStateRoot(), cli, processIdentity:ownedProcessIdentity,
     current: browser => native.invoke(platform() === 'darwin' ? 'current-process' : 'current',browser),
     restore: (browser,previous) => native.invoke('restore',browser,{},previous),
     globalConfigExists: () => existsSync(join(homedir(),'.playwright','cli.config.json')),

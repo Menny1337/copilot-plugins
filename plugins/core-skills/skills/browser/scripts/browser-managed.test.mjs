@@ -17,6 +17,7 @@ function fixture(t, overrides = {}) {
   const fg = {processName:'Test editor',processId:12,id:'21'};
   const runtime = createManagedRuntime({
     stateRoot,
+    native: {invoke: () => assert.fail('Unexpected native adapter call')},
     globalConfigExists: () => false,
     current: () => fg,
     restore: () => ({restored:true}),
@@ -139,8 +140,8 @@ test('CLI routing uses managed by default, stored ownership for close, and Bridg
     closeManaged:session=>{calls.push(['close',session]);return {};},
     hasManagedState:()=>true,
   };
-  await run(['start'],undefined,managed);
-  await run(['close','--session','mine'],undefined,managed);
+  await run(['start'],{},managed);
+  await run(['close','--session','mine'],{},managed);
   const bridge={stateRoot:'/unused',acquireLock:()=>{throw Object.assign(new Error('Reached legacy start'),{code:'bridge-selected'});}};
   await assert.rejects(run(['start','--profile','Default','--activity','native'],bridge,managed),{code:'bridge-selected'});
   assert.equal(calls[0][0],'managed');
