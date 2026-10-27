@@ -1,14 +1,15 @@
 # Outlook on the web (OWA) — one-shot playbook
 
-Read this **before** touching Outlook in a browser. Improvising against OWA is the single
-biggest source of retry loops in this skill: the DOM is dynamic, several controls are
-ambiguous, and two of the obvious "safe" moves silently destroy the user's draft.
+Read before Outlook work. Use the driver for repeated compose actions; it handles
+dynamic controls, quoting, and draft verification.
 
 The fast path is the bundled driver:
 
 ```bash
 node scripts/browser-window.mjs start --session outlook-draft
-node scripts/owa-compose.mjs draft --spec /tmp/mail.json --session outlook-draft
+# Use the returned cwd and absolute driver path for managed sessions.
+cd "<returned-cwd>"
+node "<browser-skill>/scripts/owa-compose.mjs" draft --spec /tmp/mail.json --session outlook-draft
 ```
 
 One command opens the compose, fills To/Cc/Bcc, sets the subject, injects rich HTML,
@@ -51,8 +52,8 @@ Success prints a verification block — read it back to the user rather than cla
 }
 ```
 
-`ok: false` with a non-zero exit means **nothing was silently half-done** — the error names
-the field that failed. Do not retry blindly; read the error, then run `probe` (§7).
+`ok: false` names the failed step. A partially filled draft may remain.
+Inspect it before retrying; do not create a second compose blindly.
 
 ### Command surface
 
@@ -69,19 +70,21 @@ the field that failed. Do not retry blindly; read the error, then run `probe` (�
 | `send --spec <file> --confirm` | Compose and send in one shot. Requires the explicit flag (§5) |
 
 `--session <name>` is required and must be the dedicated session returned by
-`browser-window.mjs start`. Useful flags: `--timeout <ms>` (per `playwright-cli` call,
+`browser-window.mjs start`. For managed sessions, invoke the driver from the returned
+`cwd`, using its absolute script path. Useful flags: `--timeout <ms>` (per `playwright-cli` call,
 default 45000), `--json` (suppress the stderr progress log so stdout is pure JSON).
 
 ---
 
 ## 2. Verified DOM contract
 
-Verified live against `outlook.cloud.microsoft`, **2026-07-25**. If a selector misses, run
-`probe` and update this table with a fresh date rather than guessing.
+Use these selectors, with visible and enabled controls only. If one misses, inspect
+the relevant control instead of guessing. Compose entry and draft fields were
+rechecked on **2026-10-27**.
 
 | Purpose | Selector |
 |---|---|
-| Open compose | `button[aria-label="New mail"]` |
+| Open compose | `button[aria-label="New mail"]`, or the ribbon's `button[aria-label="New"]` whose `customtooltip` starts with `Create a new email message` |
 | To / Cc | `div[aria-label="To"\|"Cc"][contenteditable="true"]` |
 | Bcc | `div[aria-label="Bcc"][contenteditable="true"]` — **absent until revealed**, see §3 |
 | Subject | `input[aria-label="Subject"]` (placeholder "Add a subject") |
@@ -94,6 +97,10 @@ Verified live against `outlook.cloud.microsoft`, **2026-07-25**. If a selector m
 Element **ids are dynamic** (`MSG_<suffix>_SUBJECT`, `fui-InteractionTagSecondary-r4h`,
 recipient ids `"0"`,`"1"`,`"2"` or `"3"`,`"4"`). Never hardcode an id except `#discardCompose`,
 which is stable.
+
+The expanded ribbon labels compose **New**, not **New mail**. Match it inside
+`[role="toolbar"]` and verify the mail tooltip; a generic New button can create
+another item type. The driver accepts either layout and rejects ambiguous matches.
 
 **Host drift:** `outlook.office.com/mail/` redirects to `outlook.cloud.microsoft/mail/`.
 Accept both in any URL assertion.
@@ -120,6 +127,7 @@ Accept both in any URL assertion.
 | **Bcc missing from the DOM** | The field does not exist until revealed. The toggle is a `<button>` whose `textContent` is exactly `"Bcc"` with **no id and no aria-label**, so `getByRole('button',{name:'Bcc'})` fails | Match by exact `textContent` in a DOM eval, then `.click()` |
 | **Two `aria-label="Close"` buttons** | One is an **invisible decoy at (0,0)** | Filter by `getBoundingClientRect().width/height > 0` |
 | **Full-page compose has no Close** | At `/mail/compose/<id>` only Discard exists — clicking "the close button" fails, and Discard would destroy the draft | The draft is already autosaved: **navigate away** to keep it |
+| **Discard leaves a blank editor** | Full-page compose can reset instead of disappearing | Verify the subject/body/recipients reset and no confirmation remains; do not treat the mere presence of a Subject input as failure |
 | **Two `[role=dialog]` nodes** | One is empty | Filter to dialogs that are visible **and** have non-empty `innerText` |
 | **Modal state bricks tooling** | `Tool "browser_evaluate" does not handle the modal state` — one unnoticed dialog (commonly OWA's `beforeunload`) breaks every later call, and with `--raw` the error arrives as a bare `Error: …` line that is easily mistaken for a value | The driver auto-recovers: it clears the dialog and retries once. By hand: `playwright-cli dialog-dismiss` (for `beforeunload` this means "stay", preserving the draft), then `dialog-accept` if it persists |
 | **Shell quoting corruption** | Body HTML with `"`, `$`, backtick, `\` corrupts the eval | Pass argv arrays (no shell) and carry HTML as **base64** |
@@ -191,16 +199,18 @@ Start the lifecycle before invoking the OWA driver:
 
 ```bash
 node scripts/browser-window.mjs start --session outlook-draft
-node scripts/owa-compose.mjs draft --spec /tmp/mail.json --session outlook-draft
+cd "<returned-cwd>"
+node "<browser-skill>/scripts/owa-compose.mjs" draft --spec /tmp/mail.json --session outlook-draft
 ```
 
-The lifecycle helper resolves the Bridge token, creates and targets the dedicated native
-window, verifies the Bridge Welcome-only scope internally, and replaces its credential-bearing
-URL with a safe blank page. The OWA driver consumes that live session; it never launches or
+The default lifecycle creates a fresh managed profile. Use the returned task `cwd` for CLI
+and driver calls. Verify authentication; the normal profile's mailbox session is not copied.
+Only an explicit normal-profile request uses the Bridge fallback, including its native-window
+binding and credential-URL sanitization. The OWA driver consumes that live session; it never launches or
 attaches to whichever browser window happens to be active.
 
-Choose the intended saved account from the request context. If context is unclear, try the
-first saved account and ask only when blocked by MFA, CAPTCHA, passkey, or an authorization
+Choose the intended account from the request context. If context is unclear, ask rather than
+choosing a different identity. Ask when blocked by MFA, CAPTCHA, passkey, or an authorization
 failure. Keep the lifecycle session open while a draft awaits review. Run
 `browser-window.mjs close --session outlook-draft` only when the browser task is actually done.
 
@@ -214,10 +224,11 @@ Microsoft ships OWA UI changes often. When something misses, **do not retry blin
 node scripts/owa-compose.mjs probe --session outlook-draft
 ```
 
-`probe` opens a scratch compose (discarding it afterwards) and dumps the live contract:
-which selectors matched, every visible `contenteditable` with its `aria-label`/`role`/`id`,
-and the relevant buttons. Diff that against §2, fix the selector, and **update the table
-with a new verification date** so the drift is recorded rather than rediscovered.
+`probe` inspects an existing compose, or opens and discards a scratch compose.
+It reports the live contract:
+selector counts, contenteditable labels, and relevant buttons. It never discards
+a compose that was already open. Scratch creation/deletion needs user approval.
+Fix the observed selector and record its verification date.
 
 ---
 
@@ -228,7 +239,10 @@ what keeps hostile characters from corrupting the payload.
 
 ```bash
 S=outlook-draft
+# Compact layout:
 playwright-cli -s=$S click 'button[aria-label="New mail"]'
+# Expanded ribbon: use this INSTEAD, after verifying exactly one visible match.
+# playwright-cli -s=$S click '[role="toolbar"] button[aria-label="New"][customtooltip^="Create a new email message"]'
 
 # recipients: one address at a time, verifying a pill appears
 playwright-cli -s=$S click 'div[aria-label="To"][contenteditable="true"]'

@@ -21,6 +21,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { playwrightInvocation } from './browser-window.mjs';
 
 const DEFAULT_CMD_TIMEOUT_MS = 45_000;
@@ -149,7 +150,18 @@ function sleep(ms) {
 // ---------------------------------------------------------------------------
 
 // Shared prelude injected into every evaluated function.
+export function newMailButtons(root = document) {
+  return [...root.querySelectorAll('button[aria-label="New mail"],[role="toolbar"] button[aria-label="New"]')]
+    .filter(button => {
+      const rect = button.getBoundingClientRect();
+      if (!rect.width || !rect.height || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
+      return button.getAttribute('aria-label') === 'New mail' ||
+        /^Create a new email message\b/i.test(button.getAttribute('customtooltip') || button.getAttribute('title') || '');
+    });
+}
+
 const PRELUDE = `
+  var NEW_MAIL = ${newMailButtons.toString()};
   var CE = function (label) {
     return document.querySelector('div[aria-label="' + label + '"][contenteditable="true"]');
   };
@@ -247,8 +259,12 @@ function ensureOwa({ navigate = true } = {}) {
   }
   // outlook.office.com redirects to outlook.cloud.microsoft; both are accepted.
   log('opening Outlook on the web');
-  pw(['tab-new', OWA_MAIL_URL], { timeout: CMD_TIMEOUT_MS });
-  const w = waitFor(fn(`return !!BTN('New mail').length || !!SUBJ();`), {
+  const navigation = pwGoto(OWA_MAIL_URL, { timeout: CMD_TIMEOUT_MS });
+  if (navigation.timedOut || navigation.spawnError || navigation.code !== 0 ||
+      /^###\s*Error/m.test(navigation.stdout)) {
+    return { ok: false, error: 'owa-navigation', message: 'Could not navigate the working tab to Outlook' };
+  }
+  const w = waitFor(fn(`return NEW_MAIL().length === 1 || !!SUBJ();`), {
     timeout: 30_000,
     label: 'OWA to finish loading',
   });
@@ -280,8 +296,8 @@ function preflight({ navigate = true } = {}) {
 function openCompose() {
   log('opening a new compose');
   const r = pwEval(fn(`
-    var b = BTN('New mail');
-    if (!b.length) return { ok: false, err: 'no New mail button' };
+    var b = NEW_MAIL();
+    if (b.length !== 1) return { ok: false, err: b.length ? 'ambiguous New mail controls' : 'no enabled New mail control' };
     b[0].click();
     return { ok: true };
   `));
@@ -442,12 +458,14 @@ function closeCompose() {
     // The draft is already autosaved, so navigating away is the "keep it" path.
     if (r.value.fullPage) {
       pwGoto(`${OWA_MAIL_URL}inbox`, { timeout: CMD_TIMEOUT_MS });
-      waitFor(fn(`return !SUBJ();`), { timeout: 15_000, label: 'compose to close' });
+      const closed = waitFor(fn(`return !SUBJ();`), { timeout: 15_000, label: 'compose to close' });
+      if (!closed.ok) return { ok: false, error: 'close-timeout', message: 'Compose remained open after navigation' };
       return { ok: true, mode: 'full-page-navigate-away' };
     }
     return { ok: false, error: 'no-close', message: r.value.err };
   }
-  waitFor(fn(`return !SUBJ();`), { timeout: 8_000, label: 'compose to close' });
+  const closed = waitFor(fn(`return !SUBJ();`), { timeout: 8_000, label: 'compose to close' });
+  if (!closed.ok) return { ok: false, error: 'close-timeout', message: 'Compose remained open after closing' };
   return { ok: true, mode: 'compose-tab' };
 }
 
@@ -466,13 +484,20 @@ function discardCompose() {
     return REAL_DIALOGS().some(function (d) { return /discard this draft/i.test(d.innerText || ''); });
   `), { timeout: 6_000, label: 'discard confirmation' });
 
-  pwEval(fn(`
-    var btns = [].slice.call(document.querySelectorAll('[role=dialog] button,[role=alertdialog] button'));
-    var ok = btns.filter(function (b) { return /^ok$/i.test((b.textContent || '').trim()); })[0];
+  const confirmation = pwEval(fn(`
+    var dialogs = REAL_DIALOGS().filter(function (d) { return /discard this draft/i.test(d.innerText || ''); });
+    var btns = dialogs.flatMap(function (d) { return [].slice.call(d.querySelectorAll('button')); });
+    var ok = btns.filter(function (b) { return VISIBLE(b) && /^ok$/i.test((b.textContent || '').trim()); })[0];
     if (ok) { ok.click(); return { confirmed: true }; }
     return { confirmed: false };
   `));
-  waitFor(fn(`return !SUBJ();`), { timeout: 8_000, label: 'compose to close' });
+  if (!confirmation.ok) return confirmation;
+  const closed = waitFor(fn(`
+    if (REAL_DIALOGS().some(function (d) { return /discard this draft/i.test(d.innerText || ''); })) return false;
+    var s = SUBJ(), ed = BODY();
+    return !s || (!s.value && ed && !(ed.innerText || '').trim() && PILLS('To') === 0);
+  `), { timeout: 8_000, label: 'compose to close or reset after discard' });
+  if (!closed.ok) return { ok: false, error: 'discard-timeout', message: 'Draft remained open after discard; deletion was not verified' };
   return { ok: true };
 }
 
@@ -563,7 +588,8 @@ function cmdProbe() {
   const hadCompose = pwEval(fn(`return !!SUBJ();`));
   let opened = false;
   if (!(hadCompose.ok && hadCompose.value === true)) {
-    openCompose();
+    const compose = openCompose();
+    if (!compose.ok) fail(compose.error, compose.message);
     opened = true;
   }
 
@@ -583,6 +609,7 @@ function cmdProbe() {
       url: location.href,
       contract: {
         'button[aria-label="New mail"]': q('button[aria-label="New mail"]'),
+        'supported enabled New mail control': NEW_MAIL().length,
         'div[aria-label="To"][contenteditable="true"]': q('div[aria-label="To"][contenteditable="true"]'),
         'div[aria-label="Cc"][contenteditable="true"]': q('div[aria-label="Cc"][contenteditable="true"]'),
         'div[aria-label="Bcc"][contenteditable="true"]': q('div[aria-label="Bcc"][contenteditable="true"]'),
@@ -599,7 +626,10 @@ function cmdProbe() {
     };
   `));
   if (!r.ok) fail(r.error, r.message || 'probe failed');
-  if (opened) discardCompose();
+  if (opened) {
+    const discarded = discardCompose();
+    if (!discarded.ok) fail(discarded.error, discarded.message);
+  }
   done({ probe: r.value, note: 'Compare against the contract table in references/outlook-web.md' });
 }
 
@@ -888,4 +918,4 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

@@ -239,7 +239,7 @@ function runJson(command, args, options = {}) {
   return parsed;
 }
 
-function createNativeAdapter(os = platform()) {
+export function createNativeAdapter(os = platform(), { run = runJson, wait = sleep } = {}) {
   if (os === 'win32') {
     const script = join(SCRIPT_DIR, 'browser-window-windows.ps1');
     return {
@@ -253,7 +253,7 @@ function createNativeAdapter(os = platform()) {
         if (identity.marker) args.push('-Marker', String(identity.marker));
         if (previous.id) args.push('-PreviousHandle', String(previous.id));
         if (previous.processId) args.push('-PreviousProcessId', String(previous.processId));
-        const value = runJson('powershell.exe', args);
+        const value = run('powershell.exe', args);
         return command === 'list' ? (Array.isArray(value) ? value : [value]) : value;
       },
     };
@@ -262,7 +262,7 @@ function createNativeAdapter(os = platform()) {
     const script = join(SCRIPT_DIR, 'browser-window-macos.applescript');
     return {
       invoke(command, browser, identity = {}, previous = {}) {
-        const value = runJson('osascript', [
+        const args = [
           script,
           command,
           browser,
@@ -271,8 +271,19 @@ function createNativeAdapter(os = platform()) {
           identity.marker || '',
           previous.processName || '',
           previous.id || '',
-        ]);
-        return command === 'list' ? (Array.isArray(value) ? value : [value]) : value;
+        ];
+        for (let attempt = 0; ; attempt++) {
+          const value = run('osascript', args);
+          if (value?.ok !== false) {
+            return command === 'list' ? (Array.isArray(value) ? value : [value]) : value;
+          }
+          if (command === 'list' && value.error === 'native-connection-invalid' &&
+              value.nativeErrorNumber === -609 && attempt < 2) {
+            wait(100);
+            continue;
+          }
+          fail(value.error || 'native-command-failed', value.message || 'Native window operation failed');
+        }
       },
     };
   }
@@ -583,6 +594,7 @@ export function startWindow(options, runtime = createRuntime()) {
   });
   let release;
   let state;
+  let startupWindow;
   let marked = false;
   let attached = false;
   let previous;
@@ -590,7 +602,8 @@ export function startWindow(options, runtime = createRuntime()) {
     release = runtime.acquireLock(lockPath(runtime));
     runtime.playwrightVersion();
     const file = statePath(runtime, session);
-    if (existsSync(file) || runtime.sessionExists(session)) {
+    if (existsSync(file) || existsSync(join(runtime.stateRoot, 'managed', `${session}.json`)) ||
+        runtime.sessionExists(session)) {
       fail('session-exists', `Session "${session}" already exists`);
     }
 
@@ -620,6 +633,7 @@ export function startWindow(options, runtime = createRuntime()) {
     const marker = `agent-${runtime.random(8).toString('hex')}`;
     const before = runtime.native.invoke('list', browser);
     previous = runtime.native.invoke('current', browser);
+    startupWindow = { browser, session, marker, ownershipEstablished: false };
     runtime.launch(browser, tokenResult.profile?.dir, marker);
 
     const beforeIds = new Set(before.map((window) => String(window.id)));
@@ -692,6 +706,9 @@ export function startWindow(options, runtime = createRuntime()) {
       windowId: String(state.window.id),
     };
   } catch (error) {
+    if (startupWindow && !state) {
+      error.details = { ...error.details, startupWindow };
+    }
     if (state) {
       if (attached && ['attachment-target-lost', 'attachment-binding-failed'].includes(error.code)) {
         try {
@@ -769,16 +786,20 @@ export function closeWindow(options, runtime = createRuntime()) {
   }
 }
 
-export function run(argv, runtime = createRuntime()) {
+export async function run(argv, runtime = createRuntime(), managed = null) {
   const args = parseArgs(argv);
-  return args.command === 'start'
-    ? startWindow(args, runtime)
+  managed ||= await import('./browser-managed.mjs');
+  if (args.command === 'start') {
+    return args.profile ? startWindow(args, runtime) : managed.startManaged(args);
+  }
+  return managed.hasManagedState(args.session)
+    ? managed.closeManaged(args.session)
     : closeWindow(args, runtime);
 }
 
-function main() {
+async function main() {
   try {
-    console.log(JSON.stringify(run(process.argv.slice(2))));
+    console.log(JSON.stringify(await run(process.argv.slice(2))));
   } catch (error) {
     const payload = {
       ok: false,

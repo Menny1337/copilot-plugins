@@ -8,6 +8,7 @@ import test from 'node:test';
 import {
   acquireLock,
   closeWindow,
+  createNativeAdapter,
   createRuntime,
   extensionAttachEnvironment,
   generateSession,
@@ -23,6 +24,133 @@ import {
 const requireModule = createRequire(import.meta.url);
 const { connectPageFromArg } = requireModule('./browser-profile-launcher.cjs');
 const token = 'a'.repeat(43);
+
+test('macOS discovery retries only a structured invalid-connection response without relaunching', () => {
+  const calls = [];
+  const waits = [];
+  const adapter = createNativeAdapter('darwin', {
+    run: (command, args) => {
+      calls.push({ command, args });
+      return calls.length === 1
+        ? { ok: false, error: 'native-connection-invalid', message: 'Connection is invalid.', nativeErrorNumber: -609 }
+        : [{ id: '200', processId: 20, title: 'agent-1234567890123456' }];
+    },
+    wait: (ms) => waits.push(ms),
+  });
+  assert.deepEqual(adapter.invoke('list', 'msedge'),
+    [{ id: '200', processId: 20, title: 'agent-1234567890123456' }]);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.command === 'osascript' && call.args[1] === 'list'));
+  assert.deepEqual(waits, [100]);
+});
+
+test('macOS discovery bounds invalid-connection recovery and surfaces the native error', () => {
+  let calls = 0;
+  const adapter = createNativeAdapter('darwin', {
+    run: () => {
+      calls++;
+      return { ok: false, error: 'native-connection-invalid', message: 'Connection is invalid.', nativeErrorNumber: -609 };
+    },
+    wait: () => {},
+  });
+  assert.throws(() => adapter.invoke('list', 'msedge'), {
+    code: 'native-connection-invalid', message: 'Connection is invalid.',
+  });
+  assert.equal(calls, 3);
+});
+
+test('macOS discovery does not retry permission, timeout, malformed output or unknown native errors', () => {
+  for (const code of ['native-command-failed', 'native-command-invalid']) {
+    let calls = 0;
+    const adapter = createNativeAdapter('darwin', {
+      run: () => {
+        calls++;
+        throw Object.assign(new Error('Native operation failed'), { code });
+      },
+      wait: () => assert.fail('Unexpected retry'),
+    });
+    assert.throws(() => adapter.invoke('list', 'msedge'), { code });
+    assert.equal(calls, 1);
+  }
+});
+
+test('macOS native actions and differently numbered errors are never retried', () => {
+  for (const [command, nativeErrorNumber] of [['close', -609], ['foreground', -609], ['list', -1743]]) {
+    let calls = 0;
+    const adapter = createNativeAdapter('darwin', {
+      run: () => {
+        calls++;
+        return { ok: false, error: 'native-connection-invalid', message: 'Native failure', nativeErrorNumber };
+      },
+      wait: () => assert.fail('Unexpected retry'),
+    });
+    assert.throws(() => adapter.invoke(command, 'msedge'), { code: 'native-connection-invalid' });
+    assert.equal(calls, 1);
+  }
+});
+
+test('macOS snapshot rendering serializes paired window property records', {
+  skip: platform() !== 'darwin',
+}, () => {
+  const source = readFileSync(join(import.meta.dirname, 'browser-window-macos.applescript'), 'utf8');
+  const handlers = ['jsonEscape', 'replaceText', 'windowRows'].map(name => {
+    const match = source.match(new RegExp(`^on ${name}\\([^\\n]*\\)[\\s\\S]*?^end ${name}$`, 'm'));
+    assert.ok(match, `Missing production handler: ${name}`);
+    return match[0];
+  }).join('\n\n');
+  const result = spawnSync('osascript', ['-'], {
+    input: `${handlers}
+on run
+  set snapshot to {{id:200, name:"agent-1234567890123456"}, {id:100, name:"User page"}}
+  return my windowRows(snapshot, 20)
+end run
+`,
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.deepEqual(JSON.parse(result.stdout), [
+    { id: '200', processId: 20, title: 'agent-1234567890123456' },
+    { id: '100', processId: 20, title: 'User page' },
+  ]);
+});
+
+test('macOS discovery classifies the actual Apple event number, not its message', {
+  skip: platform() !== 'darwin',
+}, () => {
+  const source = readFileSync(join(import.meta.dirname, 'browser-window-macos.applescript'), 'utf8');
+  const handlers = ['jsonEscape', 'replaceText', 'listWindows'].map(name => {
+    const match = source.match(new RegExp(`^on ${name}\\([^\\n]*\\)[\\s\\S]*?^end ${name}$`, 'm'));
+    assert.ok(match, `Missing production handler: ${name}`);
+    return match[0];
+  }).join('\n\n');
+  const nativeRead = 'tell application appName to set windowProperties to get «property pALL» of windows';
+  assert.equal(handlers.split(nativeRead).length, 2);
+  for (const number of [-609, -1743, -1728]) {
+    // Replace only the Apple event with a numbered failure; execute production error handling.
+    const result = spawnSync('osascript', ['-'], {
+      input: `${handlers.replace(nativeRead, `error "Connection is invalid." number ${number}`)}
+on run
+  return my listWindows("unused", 20)
+end run
+`,
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    if (number === -609) {
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        ok: false,
+        error: 'native-connection-invalid',
+        nativeErrorNumber: -609,
+        message: 'Connection is invalid.',
+      });
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.ok(result.stderr.includes(`(${number})`), result.stderr);
+    }
+  }
+});
 
 for (const [name, input, expected = input] of [
   ['empty text', ''],
@@ -906,6 +1034,31 @@ test('failed marker identification discards only marker-matched candidates', () 
     h.calls.filter((call) => call.type === 'native' && call.command === 'discard').length,
     2,
   );
+});
+
+test('failed discovery preserves the launch marker for diagnosis without claiming ownership', () => {
+  const h = harness();
+  const original = h.runtime.native.invoke;
+  let lists = 0;
+  h.runtime.native.invoke = (command, ...args) => {
+    if (command === 'list' && ++lists > 1) {
+      throw Object.assign(new Error('Connection is invalid.'), { code: 'native-connection-invalid' });
+    }
+    return original(command, ...args);
+  };
+  assert.throws(() => startWindow({ session: 'discovery-failed' }, h.runtime), error => {
+    assert.equal(error.code, 'native-connection-invalid');
+    assert.deepEqual(error.details.startupWindow, {
+      browser: 'msedge',
+      session: 'discovery-failed',
+      marker: 'agent-1212121212121212',
+      ownershipEstablished: false,
+    });
+    return true;
+  });
+  assert.equal(h.calls.filter(call => call.type === 'launch').length, 1);
+  assert.equal(h.calls.some(call => call.type === 'native' && ['close', 'discard'].includes(call.command)), false);
+  assert.equal(existsSync(join(h.stateRoot, 'sessions', 'discovery-failed.json')), false);
 });
 
 test('mark failure discards the marker-titled window instead of trusting an absent property', () => {

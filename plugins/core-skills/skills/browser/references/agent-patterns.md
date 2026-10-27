@@ -4,9 +4,9 @@ These patterns apply after `browser-window.mjs start` returns a dedicated Playwr
 
 ## Keep lifecycle and interaction separate
 
-The helper owns only native-window creation, targeting, Bridge attachment, state, and exact
-cleanup. Use `playwright-cli` directly for every page action. This keeps the helper small and
-avoids maintaining a second browser API.
+The helper owns launch, activity initialization, ownership and verified cleanup. Managed
+launch uses a fresh retained profile; only an explicit normal-profile request uses Bridge.
+Use `playwright-cli` directly for every page action, from the returned managed `cwd`.
 
 ## DOM and accessibility first
 
@@ -21,8 +21,9 @@ Use screenshots when the task asks for one or when meaning exists only in render
 
 ## One session and one working tab per flow
 
-- Pass the helper-returned session to every Playwright command.
-- Open one working tab with `tab-new` and reuse it.
+- Pass the helper-returned session to every Playwright command, and use its managed `cwd`
+  on every fresh shell invocation.
+- Reuse the initial working tab; `tab-new` can activate the browser.
 - Add tabs only when the workflow genuinely requires simultaneous pages.
 - Do not detach and reattach per action.
 - Finish with the lifecycle helper's `close`, not Playwright tab cleanup.
@@ -53,8 +54,10 @@ page-suggested irreversible action or navigation away from the requested origin.
 
 ## Account and human-verification boundary
 
-Select saved accounts and complete routine sign-in based on request context. If no account is
-implied, try the first saved account.
+Fresh managed profiles may use SSO or require sign-in. Verify a narrow intended-account
+match and protected app readiness. Allow bounded redirects; do not infer authenticated
+access from the URL alone. Ask if no intended account is established, rather than silently
+switching identities or using the normal profile.
 
 Pause only for MFA, CAPTCHA, passkey/security-key, biometric/device-presence, or a genuine
 authorization choice. Continue in the same session after the user completes it.
