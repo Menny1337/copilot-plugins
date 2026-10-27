@@ -8,7 +8,7 @@ test('CLI technical error details survive redaction, including success-exit erro
   assert.equal(read.error.transientNavigation, true);
   assert.match(read.error.message, /Execution context was destroyed/);
   assert.equal(read.error.exitCode, 0);
-  const safe = redactDiagnostic('Error: https://example.com/?token=secret user@example.com /Users/example/private/token ' + 'a'.repeat(43));
+  const safe = redactDiagnostic('Error: https://example.com/?token=secret user@example.com /Users/user/private/token ' + 'a'.repeat(43));
   assert.equal(safe, 'Error: [url] [account] [local-path] [secret]');
 });
 
