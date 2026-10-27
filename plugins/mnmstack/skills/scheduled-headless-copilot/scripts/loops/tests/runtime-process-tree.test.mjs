@@ -445,16 +445,21 @@ test("runGroup redacts secret values from stdout/stderr before they ever reach t
 
 test("stopGroup confirms the group is actually gone after SIGKILL before reporting 'killed' — TERM-ignoring descendant", async () => {
   const dir = makeScratchDir("stopgroup-term-ignoring");
+  let child;
   try {
     // Installs a SIGTERM handler that does nothing, forcing stopGroup all the way through
     // its TERM-wait-then-KILL sequence. SIGKILL itself cannot be ignored, so the group must
     // end up confirmed dead — this exercises the real TERM -> (still alive) -> KILL ->
     // confirmed-dead path end to end, not just the "already dead" fast path.
-    const child = spawnGroup({
+    const ready = path.join(dir, "ready");
+    child = spawnGroup({
       command: process.execPath,
-      args: ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"],
+      args: [
+        "-e",
+        `process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => {}, 1000);`,
+      ],
     });
-    await sleep(50); // let it install the handler before we ever signal it
+    assert.ok(await waitUntil(() => fs.existsSync(ready)), "child must install its SIGTERM handler before shutdown");
     assert.equal(isGroupAlive(child.pid), true);
 
     const start = Date.now();
@@ -465,6 +470,7 @@ test("stopGroup confirms the group is actually gone after SIGKILL before reporti
     assert.equal(isGroupAlive(child.pid), false, "stopGroup must not report 'killed' unless the group is actually confirmed dead");
     assert.ok(elapsed < 5000, `teardown should still be bounded overall, took ${elapsed}ms`);
   } finally {
+    if (child?.pid) await stopGroup(child.pid, { termWaitMs: 300 });
     cleanupScratch(dir);
   }
 });

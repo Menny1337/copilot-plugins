@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2026-10-27
+
+_patch release._
+
+- fix(loops): wait for SIGTERM handler readiness in shutdown test
+
 ## [1.0.1] - 2026-10-27
 
 _patch release._
