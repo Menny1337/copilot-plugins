@@ -2,5 +2,5 @@ node_modules/
 .DS_Store
 __pycache__/
 *.pyc
-plugins/meta/skills/scheduled-skill-review/scripts/menubar-app/.build/
-plugins/meta/skills/scheduled-headless-copilot/scripts/loops-app/.build/
+plugins/mnmstack/skills/scheduled-skill-review/scripts/menubar-app/.build/
+plugins/mnmstack/skills/scheduled-headless-copilot/scripts/loops-app/.build/
