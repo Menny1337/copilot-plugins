@@ -111,6 +111,13 @@ For a new or substantive revision:
 5. Use `multi-model-review` for routing, schema, security, or system-wide
    changes. It owns reviewer selection and synthesis.
 
+Use the shared [outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion)
+for artifact/state readbacks, repeated critical cases, and case-level
+regressions. When comparing a subagent with a skill in the main loop, keep
+external authority and safety constraints unchanged. Measure completion first,
+then latency, context loss, and available cost data. Do not infer success from
+routing accuracy or a specialist's self-report.
+
 For a non-behavioural edit, run the existing frontmatter/reference checks and
 affected generators. Do not add an unrelated test suite. A validator does not
 prove runtime routing, and a simulated walkthrough does not prove execution.

@@ -7,6 +7,7 @@ unrelated full-suite run.
 ## Contents
 
 - Define cases before drafting
+- Verify task completion
 - Compare the relevant alternatives
 - Structural checks
 - Context and outcome checks
@@ -30,6 +31,43 @@ For spelling or other non-behavioural changes, use the applicable structural
 checks. Explain when behavioural coverage is unavailable; do not claim it from
 a clean linter or a critic's opinion.
 
+## Verify task completion
+
+Make verified task completion the primary measure. For each outcome case,
+record the requested result, required constraints, forbidden actions, and the
+evidence that would establish success before running it. For a substantive
+change, select affected cases from the shared end-to-end set and the owning
+skills' focused cases. Suite maintainers can start with around ten examples
+covering cross-skill chains and recovery, not only isolated subtasks. Creating
+or running the whole suite is not a gate on every edit. Keep private inputs
+and outputs out of shipped examples.
+
+Check the resulting artifact or authoritative system state, not just the final
+message, chosen route, tool exit code, or review score. Use a scoped readback:
+a draft must contain the intended content; shutdown must leave the owned
+process absent; a publication must exist at the returned destination. Check
+persistence when the task requires it. Verification must not introduce new
+mutations, broaden data access, or bypass approvals merely to produce evidence.
+
+Record each case as pass, fail, partial, blocked, or not run, with its evidence.
+A pass requires the outcome and constraints to hold; missing evidence is not
+a pass. Repeat critical cases at least twice and retain failed attempts.
+Inspect the trajectory for omitted steps, lost constraints, unauthorized
+actions, and cleanup, including when the final answer looks correct.
+
+Keep the evidence record compact:
+
+| Field | Record |
+| --- | --- |
+| Case and attempt | Task, expected state, forbidden actions, baseline or held-out status |
+| Conditions | Source revision, model/effort, tools, relevant environment, and input |
+| Result | Status, artifact/state readback, constraint violations, and evidence pointer |
+| Overhead | Elapsed time, agent calls/handoffs, tokens or cost when available |
+
+Use redacted summaries in durable records and authorized private artifacts for
+details. Mark unavailable measurements explicitly. A shared suite needs a named
+maintainer and one integrated result; local skill scores cannot stand in for it.
+
 ## Compare the relevant alternatives
 
 For a substantive revision, compare old and new definitions on the same cases.
@@ -41,6 +79,15 @@ Keep model, effort, tools, inputs, and success criteria comparable. Record any
 differences. Test the critical cases on the intended models available to the
 run, including a different family or tier when the skill is shared. Mark
 unexercised targets as untested.
+
+For an agent-to-skill migration, compare the existing delegated path with the
+main loop loading the skill and tools. Change one capability at a time. Include
+each dependent chain and must-not-break rule, then inspect individual
+pass-to-fail and fail-to-pass changes. A better average or faster run does not
+clear a failed requirement. Retain the old source and a rollback path until the
+replacement is verified; record unresolved tradeoffs rather than claiming
+equivalence. Use [loop design](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary)
+to choose what to compare.
 
 Observe the execution, not just the answer: chosen skill, loaded references,
 tool calls, output artifact, approval compliance, and completion. A written

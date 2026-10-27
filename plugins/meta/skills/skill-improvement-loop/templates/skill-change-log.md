@@ -24,6 +24,8 @@ Copy this block for each new cycle.
 - **Approved by:** <human> on <date>   _(loop applies changes only after approval)_
 - **Applied:** <yes/no, date> · validation: <passed/failed>
 - **Expected effect / metric:** <which signal should drop, and how it's measured>
+- **Outcome check:** <expected artifact/state, readback evidence, forbidden actions; shared evaluation contract>
+- **Comparison cases:** <baseline and held-out IDs, repeated critical attempts, conditions, private evidence pointers>
 - **Baseline window:** <start>..<change-date> (pre-change hits: <n>)
 - **Confounders to watch:** <model/version, agent used, repo changes, other edits, task-mix shift, store coverage>
 - **Review-due date:** <YYYY-MM-DD>
@@ -31,6 +33,8 @@ Copy this block for each new cycle.
 #### Re-review (<review date>)
 - **Post-change window:** <change-date>..<now> (post-change hits: <n>, samples: <n>)
 - **Confounders observed:** <...>
+- **Verified outcomes:** <pass/fail/partial/blocked/not-run counts and denominators; unknown evidence stays unknown>
+- **Case regressions / overhead:** <pass-to-fail cases, constraint violations, latency/handoffs and available tokens/cost>
 - **Verdict:** consistent-with-improvement | no-clear-change | possible-regression | insufficient-evidence | invalid-hypothesis
 - **Action:** keep | revert | follow-up patch (new cycle) | extend review window
 - **Lesson distilled to memory:** <yes/no — link or summary, redacted>

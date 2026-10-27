@@ -40,6 +40,8 @@ than hiding them in assumed context.
 Choose observable success criteria before drafting. For substantive changes,
 retain the previous definition and reserve a held-out case. Do not treat a
 model upgrade or an article as evidence that a particular instruction can go.
+Define how the resulting artifact or system state will be checked; final-answer
+quality and correct skill selection alone do not establish task completion.
 
 ### 2. Load the relevant guidance
 

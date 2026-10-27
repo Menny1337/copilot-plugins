@@ -35,6 +35,11 @@ For a small body edit, inspect the affected role and boundaries; do not require
 an unrelated schema refresh. For a new agent, choose its responsibility and
 representative tasks before adding instructions.
 
+Keep dependent work in the main loop with skills and conditional references.
+Justify separate contexts by independent parallel work, isolation, verification,
+or measured performance, not a specialist title. Use the advanced-topics route
+for that decision.
+
 ### 2. Select the relevant reference
 
 | Task | Read |
@@ -79,6 +84,9 @@ For new or substantively changed agents, use the behavioural checks in
 `references/authoring.md`: positive/near-miss cases, an executed outcome,
 previous-profile comparison, and a held-out case. Use `multi-model-review`
 for routing, schema, security, or system-wide changes.
+Verify the actual artifact or system state and required constraints using the
+shared [outcome contract](../skill-crafting/references/evaluation.md#verify-task-completion);
+a successful handoff or convincing answer is not completion evidence.
 
 ## Completion
 

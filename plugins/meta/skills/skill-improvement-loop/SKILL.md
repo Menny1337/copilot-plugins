@@ -142,6 +142,10 @@ rule: do not edit the skill for an agent-layer problem.
   for procedure or orchestration changes.
 - Run the repository's available behavioral evaluations in addition to structural validation.
   For units intended to work across model families or tiers, test each supported target.
+- Use the shared [outcome contract](../skill-crafting/references/evaluation.md#verify-task-completion):
+  check the artifact or authoritative state against the task and forbidden actions.
+  Correct routing, adherence, or a favorable critic score is not a completed outcome.
+  Repeat critical cases and inspect individual regressions, not only aggregate gains.
 - Use independent fresh-context review for routing, security, or governance changes — the
   `multi-model-review` skill owns panel sizing, lens assignment, and synthesis. Skill
   descriptions require the different-vendor critique in `skill-crafting`; agent descriptions
@@ -188,6 +192,9 @@ live sessions only exercise the change after deployment.
    post-change queries in the relevant reference file).
 2. Compare against the **pre-change baseline window** recorded in the entry; record
    sample counts on both sides.
+   Include verified task outcomes and constraint violations alongside routing/adherence
+   signals. Use comparable denominators; unavailable outcome evidence stays unknown.
+   Check for newly failing cases even when the target signal or average improves.
 3. **Record confounders** that could explain the difference instead of your edit:
    model/version changes, which agent ran, major repo changes, other edited skills or
    agents, a shift in task mix, and session-store coverage limits.

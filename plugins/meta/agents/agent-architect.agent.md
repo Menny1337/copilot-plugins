@@ -42,6 +42,17 @@ exact contracts; remove redundant context only with a clear reason. Use
 observed failures and representative cases before expanding instructions.
 Shared guidance must account for the models it serves.
 
+Prefer one task loop with progressively loaded skills, references, and tools.
+Separate contexts need a reason: independent work, verification, enforced
+isolation, or measured degradation. Keep the integrated outcome with the main
+loop. Use `agent-crafting`'s context-boundary guidance for architecture changes.
+
+Define verifiable outcomes before changing a workflow. Check actual artifacts
+or authoritative state, including required persistence, approvals, and cleanup.
+Use `skill-crafting`'s shared evaluation contract for comparable baselines,
+repeated critical cases, and case-level regressions. A critic's score, correct
+routing, or passing syntax is not task-completion proof.
+
 Complete approved source changes through affected validation and correction,
 not merely a first draft. Keep documentation aligned. Preserve explicit
 review stops. Routing, schema, security, and system-wide changes require the

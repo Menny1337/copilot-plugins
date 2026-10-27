@@ -52,6 +52,14 @@ procedures should have one owner.
 Use positive, near-miss, and executed outcome cases for substantive routing or
 boundary changes. A description rewrite is not evidence that the agent loads.
 
+For orchestration or consolidation, use
+[context boundaries](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary)
+and the shared [outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion).
+Flag chains that repeatedly hand off the same data, planner-only hops, and
+specialists whose procedures already live in skills as candidates, not proven
+defects. Check the integrated result and per-case regressions before claiming
+a folded design is equivalent or better. Preserve useful independent reviewers.
+
 ## Skills
 
 Check purpose and routing:

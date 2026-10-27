@@ -13,6 +13,8 @@ these signals when the reviewed unit is an agent.
 | **Tool-permission mismatch** | The agent attempts tools it does not have, lacks tools needed for its declared job, or repeatedly fails because its tool list does not match its responsibilities. |
 | **Conflicting-instructions** | The agent body contradicts a skill, another instruction, or itself; sessions show hesitation, oscillation, contradictory plans, or repeated restarts. |
 | **Persona/identity drift** | Responses do not match the declared role, such as a reviewer editing code, an implementer only advising, or a specialist acting as a generic assistant. |
+| **Handoff loss / overhead** | Repeated summaries omit constraints, dependent specialists redo the same lookup, or routing adds calls without an independently useful result. |
+| **Unverified completion** | The agent reports success without artifact/state readback, or passes a local subtask while the user's integrated outcome, approvals, or cleanup fail. |
 
 ## Diagnosing the agent layer
 
@@ -32,3 +34,9 @@ Use the same grading discipline as skill reviews: direct, strong-inferred, or
 weak-inferred. Agent attribution from `events.jsonl` can be ambiguous, so treat it as
 best-effort and record uncertainty. Make one change per cycle, and redact sensitive
 prompts, customer data, credentials, and proprietary snippets from durable records.
+
+Do not count complexity alone as evidence that delegation was needed. Use
+[context-boundary guidance](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary)
+and the [shared outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion)
+to compare alternatives. Record observed state and available overhead, not
+assumed savings; a missing readback is unknown rather than a successful outcome.

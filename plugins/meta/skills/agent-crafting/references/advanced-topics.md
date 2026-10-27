@@ -4,6 +4,50 @@
 Read this when designing an agent that will be dispatched as a subagent, tuning parallel
 execution, or wiring hooks around the agent lifecycle.
 
+## Contents
+
+- Choose the context boundary
+- Subagents and parallel execution
+- Plan mode
+- Hooks and agents
+
+## Choose the context boundary
+
+Prefer one main loop for planning, execution, and dependent follow-ups. Load
+procedures through skills, conditional facts through references or lookups,
+and tool schemas through deferred discovery. Do not replace several subagents
+with one eagerly loaded prompt containing all their instructions.
+
+Keep tightly coupled steps together: they share data, constraints, or earlier
+decisions that a summary could lose. A specialist title or team boundary alone
+does not justify another context. Consider a subagent for independent parallel
+work, fresh-context verification, measured context/tool-selection problems, or
+a genuinely enforced permission boundary. A separate prompt is not a security
+boundary; verify host/tool restrictions before relying on isolation.
+
+When delegating, provide the bounded objective, required inputs and constraints,
+ownership, and a stop condition. Require a compact result with evidence pointers,
+uncertainty, failures, and cleanup state. The main loop remains responsible for
+checking that result and integrating the user's outcome; a handoff summary is
+not proof. Transfer the conversation only when direct specialist interaction
+is actually needed.
+
+Put reusable judgment and sequencing in skills; keep mechanical payloads and
+validation in tools. Enforce permissions, approval gates, and budgets in the
+host or tools where supported. Preserve instruction-level safeguards until
+the corresponding enforcement exists and is verified.
+
+When deciding whether to change a context boundary, compare task outcomes and
+overhead using the shared [evaluation contract](../../skill-crafting/references/evaluation.md#verify-task-completion).
+Routine edits do not require re-justifying every existing subagent.
+Migrate one capability at a time and preserve authority, memory scope, recovery,
+and discovery. Removing an agent definition does not require removing useful
+independent verification.
+
+Design source: [Anthropic, When to fold subagents into your main agent loop](https://claude.com/resources/articles/building-agents-when-to-fold-subagents-into-your-main-agent-loop).
+Its deployment results motivate experiments, not guaranteed improvements for
+this library or permission to retire units without approval.
+
 ## Subagents and parallel execution
 
 A custom agent can run as a **subagent**: the main agent dispatches work to it (via the
