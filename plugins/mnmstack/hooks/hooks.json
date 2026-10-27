@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "./hooks/lint-memory-advisory.sh",
+        "powershell": ". ./hooks/lint-memory-advisory.ps1",
+        "timeoutSec": 15
+      },
+      {
+        "type": "command",
+        "bash": "./hooks/detect-tools.sh",
+        "powershell": ". ./hooks/detect-tools.ps1",
+        "timeoutSec": 15
+      },
+      {
+        "type": "command",
+        "bash": "./hooks/link-commands.sh",
+        "powershell": ". ./hooks/link-commands.ps1",
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": "./hooks/ado-sync-advisory.sh",
+        "powershell": ". ./hooks/ado-sync-advisory.ps1",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

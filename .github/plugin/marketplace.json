@@ -1,7 +1,7 @@
 {
   "name": "menny1337-plugins",
   "metadata": {
-    "description": "Public Copilot CLI plugin marketplace: reusable agents and skills organized by domain (core, meta, presentation, docs, ui, duty).",
+    "description": "Public Copilot plugin marketplace: mnmstack default skills, presentation, docs, UI, and duty workflows.",
     "version": "4.0.1"
   },
   "owner": {
@@ -10,18 +10,18 @@
   },
   "plugins": [
     {
-      "name": "core-skills",
-      "description": "Broadly-useful, standalone skills: memory, browser, research-methodology, prompt-builder (situation → engineered AI-agent prompt), multi-model-review (adversarial cross-vendor review panel with synthesis), az (Azure CLI domain reference), narrate (doc/text → spoken-audio MP3), create-image (gpt-image-2 image generation/editing on Azure AI Foundry), grok-search (zero-cost real-time X/Twitter + web search via Grok in a logged-in browser).",
-      "version": "4.0.0",
-      "source": "./plugins/core-skills",
+      "name": "mnmstack",
+      "description": "Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.",
+      "version": "1.0.0",
+      "source": "./plugins/mnmstack",
       "author": {
         "name": "Menny1337",
         "email": "noreply@github.com"
       },
-      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/core-skills",
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/mnmstack",
       "repository": "https://github.com/Menny1337/copilot-plugins",
       "license": "MIT",
-      "category": "core",
+      "category": "productivity",
       "keywords": [
         "memory",
         "research",
@@ -39,49 +39,15 @@
         "gpt-image",
         "grok",
         "x",
-        "real-time-search"
-      ]
-    },
-    {
-      "name": "core-agents",
-      "description": "Broadly-useful agents and supporting skills: assistant (notes, tasks, reminders, briefings, Teams messaging, optional ADO or GitHub session sync), researcher (citation-driven reports), and azure-ops (Azure CLI and DevOps operations).",
-      "version": "2.6.1",
-      "source": "./plugins/core-agents",
-      "author": {
-        "name": "Menny1337",
-        "email": "noreply@github.com"
-      },
-      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/core-agents",
-      "repository": "https://github.com/Menny1337/copilot-plugins",
-      "license": "MIT",
-      "category": "core",
-      "keywords": [
+        "real-time-search",
         "assistant",
         "notes",
         "tasks",
         "reminders",
-        "research",
-        "azure",
         "devops",
         "teams",
         "messaging",
-        "m365"
-      ]
-    },
-    {
-      "name": "meta",
-      "description": "Meta-tooling for creating, auditing, packaging, scheduling, and continuously improving Copilot agents, skills, hooks, plugins, and workflows.",
-      "version": "1.17.2",
-      "source": "./plugins/meta",
-      "author": {
-        "name": "Menny1337",
-        "email": "noreply@github.com"
-      },
-      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/meta",
-      "repository": "https://github.com/Menny1337/copilot-plugins",
-      "license": "MIT",
-      "category": "meta",
-      "keywords": [
+        "m365",
         "meta",
         "agent-authoring",
         "skill-authoring",

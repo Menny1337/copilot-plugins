@@ -23,7 +23,8 @@ node scripts/catalog.mjs
 node scripts/plugin-readme.mjs
 node scripts/catalog.mjs --check
 node scripts/plugin-readme.mjs --check
-node --test plugins/meta/skills/scheduled-headless-copilot/scripts/loops/tests/*.test.mjs
+node --test scripts/mnmstack.test.mjs
+node --test plugins/mnmstack/skills/scheduled-headless-copilot/scripts/loops/tests/*.test.mjs
 node scripts/version.mjs plan
 ```
 
@@ -32,7 +33,7 @@ the checkout:
 
 ```bash
 VERSION_TEST_ARTIFACT_DIR=/absolute/path/to/approved/artifacts \
-  node --test scripts/version.test.mjs plugins/meta/skills/scheduled-skill-review/scripts/integration-docs.test.mjs
+  node --test scripts/version.test.mjs plugins/mnmstack/skills/scheduled-skill-review/scripts/integration-docs.test.mjs
 ```
 
 `SKILL_REVIEW_TEST_ARTIFACT_DIR` remains an alias. Tests create synthetic Git
@@ -42,6 +43,6 @@ fallback.
 On macOS, also run the Copilot Loops Swift contract harness and bundle build:
 
 ```bash
-(cd plugins/meta/skills/scheduled-headless-copilot/scripts/loops-app && swift run CopilotLoopsContractTests)
-bash plugins/meta/skills/scheduled-headless-copilot/scripts/loops-build.sh
+(cd plugins/mnmstack/skills/scheduled-headless-copilot/scripts/loops-app && swift run CopilotLoopsContractTests)
+bash plugins/mnmstack/skills/scheduled-headless-copilot/scripts/loops-build.sh
 ```

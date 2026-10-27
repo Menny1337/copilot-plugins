@@ -2,8 +2,8 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { managedEnvironment } from '../plugins/core-skills/skills/browser/scripts/browser-managed.mjs';
-import { newMailButtons } from '../plugins/core-skills/skills/browser/scripts/owa-compose.mjs';
+import { managedEnvironment } from '../plugins/mnmstack/skills/browser/scripts/browser-managed.mjs';
+import { newMailButtons } from '../plugins/mnmstack/skills/browser/scripts/owa-compose.mjs';
 
 const sites = {
   ado: 'https://dev.azure.com/microsoft/DefenderCommon',
