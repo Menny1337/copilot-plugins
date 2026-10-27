@@ -122,6 +122,7 @@ switch ($Command) {
         Write-Json @{
             id = $windowHandle.ToInt64().ToString()
             processId = $id
+            processName = if ($id -gt 0) { (Get-Process -Id $id -ErrorAction Stop).ProcessName } else { "" }
         }
     }
 

@@ -43,28 +43,45 @@ end processIdFor
 
 on windowExists(appName, windowId)
 	tell application appName
-		repeat with candidate in windows
-			if (id of candidate as text) is windowId then return true
-		end repeat
+		return exists window id (windowId as integer)
 	end tell
-	return false
 end windowExists
 
 on windowHasMarker(appName, windowId, expectedMarker)
 	if expectedMarker is "" then return false
 	tell application appName
-		repeat with candidate in windows
-			if (id of candidate as text) is windowId then
-				repeat with candidateTab in «class CrTb» of candidate
-					try
-						if («class URL » of candidateTab as text) contains expectedMarker then return true
-					end try
-				end repeat
-			end if
-		end repeat
+		if not (exists window id (windowId as integer)) then return false
+		set tabURLs to get «class URL » of every «class CrTb» of window id (windowId as integer)
 	end tell
+	repeat with tabURL in tabURLs
+		if (tabURL as text) contains expectedMarker then return true
+	end repeat
 	return false
 end windowHasMarker
+
+on windowRows(windowProperties, browserProcessId)
+	set rows to {}
+	repeat with candidate in windowProperties
+		set end of rows to "{\"id\":\"" & (id of candidate as text) & "\",\"processId\":" & browserProcessId & ",\"title\":\"" & my jsonEscape(name of candidate as text) & "\"}"
+	end repeat
+	set AppleScript's text item delimiters to ","
+	set payload to rows as text
+	set AppleScript's text item delimiters to ""
+	return "[" & payload & "]"
+end windowRows
+
+on listWindows(appName, browserProcessId)
+	try
+		-- One Apple event freezes IDs and titles before Chromium can reorder its windows.
+		tell application appName to set windowProperties to get «property pALL» of windows
+	on error errorMessage number errorNumber
+		if errorNumber is -609 then
+			return "{\"ok\":false,\"error\":\"native-connection-invalid\",\"nativeErrorNumber\":-609,\"message\":\"" & my jsonEscape(errorMessage) & "\"}"
+		end if
+		error errorMessage number errorNumber
+	end try
+	return my windowRows(windowProperties, browserProcessId)
+end listWindows
 
 on identityMatches(appName, processName, windowId, expectedProcessId, expectedMarker)
 	set actualProcessId to my processIdFor(processName)
@@ -80,7 +97,7 @@ on run argv
 	if (count of argv) < 2 then return my errorJson("invalid-arguments", "Expected command and browser")
 	set commandName to item 1 of argv
 	set browserKey to item 2 of argv
-	if commandName is not in {"list", "current", "mark", "foreground", "restore", "inspect", "discard", "close"} then
+	if commandName is not in {"list", "current", "current-process", "mark", "foreground", "restore", "inspect", "discard", "close"} then
 		return my errorJson("unknown-command", "Unknown command: " & commandName)
 	end if
 	set appName to my browserName(browserKey)
@@ -88,24 +105,23 @@ on run argv
 	set appProcess to appName
 	if commandName is "restore" then
 		if (count of argv) < 7 then return my errorJson("invalid-arguments", "restore requires window and previous-foreground identity")
-	else if commandName is not "list" and commandName is not "current" then
+	else if commandName is not "list" and commandName is not "current" and commandName is not "current-process" then
 		if (count of argv) < 5 then return my errorJson("invalid-arguments", commandName & " requires window identity")
 	end if
 
 	if commandName is "list" then
-		set rows to {}
 		set browserProcessId to my processIdFor(appProcess)
 		if browserProcessId is 0 then return "[]"
-		tell application appName
-			repeat with candidate in windows
-				set candidateTitle to name of candidate as text
-				set end of rows to "{\"id\":\"" & (id of candidate as text) & "\",\"processId\":" & browserProcessId & ",\"title\":\"" & my jsonEscape(candidateTitle) & "\"}"
-			end repeat
+		return my listWindows(appName, browserProcessId)
+	end if
+
+	if commandName is "current-process" then
+		-- Read scalar values directly: a returned process reference can resolve a namesake.
+		tell application "System Events"
+			set {frontNames, frontPids} to get {name, unix id} of (application processes whose frontmost is true)
 		end tell
-		set AppleScript's text item delimiters to ","
-		set payload to rows as text
-		set AppleScript's text item delimiters to ""
-		return "[" & payload & "]"
+		if (count of frontPids) is not 1 then return my errorJson("foreground-ambiguous", "Expected one foreground process")
+		return "{\"processName\":\"" & my jsonEscape(item 1 of frontNames) & "\",\"processId\":" & (item 1 of frontPids) & ",\"id\":\"\"}"
 	end if
 
 	if commandName is "current" then
