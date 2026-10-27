@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-10-27
+
+_patch release._
+
+- feat(mnmstack)!: consolidate the default stack into skills
+
 ## [1.0.0] - 2026-10-27
 
 - Replace core-skills, core-agents, and meta with one skill-first plugin.

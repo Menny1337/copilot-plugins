@@ -2,7 +2,7 @@
   "name": "menny1337-plugins",
   "metadata": {
     "description": "Public Copilot plugin marketplace: mnmstack default skills, presentation, docs, UI, and duty workflows.",
-    "version": "4.0.1"
+    "version": "5.0.0"
   },
   "owner": {
     "name": "Menny1337",
@@ -12,7 +12,7 @@
     {
       "name": "mnmstack",
       "description": "Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "source": "./plugins/mnmstack",
       "author": {
         "name": "Menny1337",
@@ -61,7 +61,7 @@
     {
       "name": "presentation",
       "description": "Presentation-designer agent and supporting skills for PPTX and HTML decks, structured presentation workflows, critique, and image generation.",
-      "version": "2.2.0",
+      "version": "3.0.0",
       "source": "./plugins/presentation",
       "author": {
         "name": "Menny1337",
