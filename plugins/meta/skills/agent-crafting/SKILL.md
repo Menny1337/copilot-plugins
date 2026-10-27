@@ -6,90 +6,62 @@ user-invocable: false
 
 # Create and configure agents
 
-Define an agent's role, ownership, and boundaries. Put reusable procedures in
-skills when the target host supports them.
-
 ## When to Use
 
-- Create or revise an agent definition.
-- Change its tools, model configuration, persona, or invocation behaviour.
-- Diagnose a definition that fails to load or selects the wrong tasks.
+Create, revise, or troubleshoot an agent definition, including its role,
+tools, model settings, and invocation behaviour.
 
 ## When to Skip
 
-- Skill definitions: use `skill-crafting`.
-- Lifecycle hooks: use `hooks-crafting`.
-- Plugin or marketplace packaging: use `plugin-crafting`.
-- Structural reviews: use `agent-skill-audit`.
-- Application code: use the relevant domain agent.
+Use `skill-crafting` for skills, `hooks-crafting` for hooks, `plugin-crafting`
+for packaging, and `agent-skill-audit` for structural reviews.
+Application work belongs to its domain tools or agent.
 
 ## Procedure
 
-### 1. Define the intended change
+### 1. Set the scope
 
-Read the current definition, applicable repository instructions, and affected
-dependencies. Identify the target host, role, file ownership, authority, and
-observable completion criteria. Reuse the available skill inventory.
+Read the current definition, repository instructions, and affected dependencies.
+Identify the target host, role, owned artifacts, authority, and expected result.
+Check available skills before adding procedures to an agent.
 
-For a small body edit, inspect the affected role and boundaries; do not require
-an unrelated schema refresh. For a new agent, choose its responsibility and
-representative tasks before adding instructions.
+Keep dependent work in the main loop. Use the context-boundary reference
+when considering delegation or folding an agent into skills.
 
-Keep dependent work in the main loop with skills and conditional references.
-Justify separate contexts by independent parallel work, isolation, verification,
-or measured performance, not a specialist title. Use the advanced-topics route
-for that decision.
-
-### 2. Select the relevant reference
+### 2. Read the needed guidance
 
 | Task | Read |
 | --- | --- |
-| New agent, persona, ownership, or body structure | [Authoring](references/authoring.md) |
-| Frontmatter, tool configuration, discovery, or invocation controls | [Frontmatter](references/frontmatter.md) |
-| Choosing an archetype | [Agent patterns](references/agent-patterns.md) |
-| Definition fails to load or route | [Troubleshooting](references/troubleshooting.md) |
-| Subagents, fleet, model/effort/context tuning, plan mode, or subagent hooks | [Advanced topics](references/advanced-topics.md) |
-| A version-sensitive CLI claim changes | The affected section of [the feature baseline](../agent-skill-audit/references/cli-feature-baseline.md) |
+| Role, ownership, or body | [Authoring](references/authoring.md) |
+| Fields, tools, discovery, or invocation | [Frontmatter](references/frontmatter.md) |
+| Archetype examples | [Agent patterns](references/agent-patterns.md) |
+| Loading or routing failure | [Troubleshooting](references/troubleshooting.md) |
+| Context boundaries, subagents, model tuning, plan mode, or hooks | [Advanced topics](references/advanced-topics.md) |
+| Version-sensitive CLI claim | Relevant [feature baseline](../agent-skill-audit/references/cli-feature-baseline.md) section |
 
-For a new agent, read frontmatter and authoring together; batch independent
-reads when the host supports it. An existing body-only edit needs no
-frontmatter reference unless configuration also changes.
+New agents need authoring and frontmatter. A body-only edit needs no schema
+refresh unless configuration changes. Verify changed platform claims using
+supported documentation/help and the target runtime. Keep shell, session,
+and baseline versions distinct.
 
-Verify changed platform claims against the target runtime and supported
-documentation. Keep shell CLI, session runtime, and baseline versions distinct.
-Do not refresh an entire baseline from partial evidence.
+### 3. Rewrite within scope
 
-### 3. Author within the established boundaries
+State the role, skill routes, ownership, and approval boundaries plainly.
+Keep reusable procedures in skills; agent-only hosts must supply any missing
+procedure. Replace duplicate instructions rather than adding another copy.
 
-Keep one responsibility, a concise role statement, conditional skill routes,
-and explicit normal/approval-required/forbidden actions. Do not copy a skill's
-procedure into the agent body. In agent-only environments, include the
-commands and domain procedures the host otherwise cannot supply.
+Retain least privilege, tested workarounds, and user review stops.
+Do not remove safeguards based on a model's advertised capabilities.
+Let the agent finish authorized edit/check/fix work; preserve plan-only
+requests and workflow approval gates.
 
-Retain justified compatibility safeguards and least-privilege tool choices.
-Do not remove an approval gate, a user review stop, or a tested workaround
-because a newer model is expected to need less guidance.
+### 4. Verify and finish
 
-Define the requested result and permit in-scope implementation/check/fix cycles
-through completion. Leave safe method choices open. An explicit plan-only
-request or workflow approval gate still takes precedence.
+Use the shared [evaluation contract](../skill-crafting/references/evaluation.md)
+for outcome evidence, baseline comparisons, and held-out cases.
+Run frontmatter/reference checks and affected generators. Fix failures within
+scope. Routing, schema, security, and system-wide changes also require
+`multi-model-review`.
 
-### 4. Complete the change
-
-Run the existing frontmatter validator and check referenced skills/resources.
-Regenerate affected, owned documentation. Fix failures caused by the approved
-change without restarting unrelated checks.
-
-For new or substantively changed agents, use the behavioural checks in
-`references/authoring.md`: positive/near-miss cases, an executed outcome,
-previous-profile comparison, and a held-out case. Use `multi-model-review`
-for routing, schema, security, or system-wide changes.
-Verify the actual artifact or system state and required constraints using the
-shared [outcome contract](../skill-crafting/references/evaluation.md#verify-task-completion);
-a successful handoff or convincing answer is not completion evidence.
-
-## Completion
-
-The source definition implements the requested role or configuration change,
-its affected checks pass, and any unavailable behavioural coverage is stated.
-Commit, version, release, and installation refresh remain separate approvals.
+State untested behaviour and blockers. Commit, version, publication, and
+installation refresh remain separate approvals.

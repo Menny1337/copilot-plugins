@@ -1,62 +1,36 @@
-# Agent/Skill Change Log
+# Agent/skill change log
 
-Hypothesis log for the **skill-improvement-loop**. One entry per cycle (one unit, one
-root-cause layer, one patch). Keep entries summarized and redacted — no raw prompts,
-secrets, customer data, or proprietary code. Store this file in a durable location
-independent of the reviewed unit (e.g. `~/.copilot/memory/skill-improvement-loop.md` or a
-repo-local reviewed file).
-
-## Entry template
-
-Copy this block for each new cycle.
+Keep one entry per unit, root-cause layer, and patch. Store it outside the
+reviewed unit in an authorized `~/.copilot/memory/skill-improvement-loop.md`
+or repo-local reviewed file. Use redacted summaries and private evidence
+pointers; never store raw prompts, secrets, customer data, or proprietary code.
+Follow the [shared outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion).
 
 ```markdown
-### <YYYY-MM-DD> — <target-unit-name>
+### <YYYY-MM-DD>: <unit>
 
-- **Status:** open | closed
-- **Target type:** agent | skill
-- **Target unit:** `<plugin>/agents/<name>` | `<plugin>/skills/<name>`
-- **Observed signal:** <what went wrong> (counts: <N sessions / M hits>)
-- **Evidence grade:** direct | strong-inferred | weak-inferred
-- **Coverage note:** <local-only? cloud available? date range, repo, sessions scanned>
-- **Root-cause layer:** discovery | procedure | agent-orchestration | tool/platform | structural
-- **Proposed change:** <one targeted edit; what and where>
-- **Approved by:** <human> on <date>   _(loop applies changes only after approval)_
-- **Applied:** <yes/no, date> · validation: <passed/failed>
-- **Expected effect / metric:** <which signal should drop, and how it's measured>
-- **Outcome check:** <expected artifact/state, readback evidence, forbidden actions; shared evaluation contract>
-- **Comparison cases:** <baseline and held-out IDs, repeated critical attempts, conditions, private evidence pointers>
-- **Baseline window:** <start>..<change-date> (pre-change hits: <n>)
-- **Confounders to watch:** <model/version, agent used, repo changes, other edits, task-mix shift, store coverage>
-- **Review-due date:** <YYYY-MM-DD>
+- Status: open | closed
+- Target: agent | skill; `<plugin>/agents/<name>` | `<plugin>/skills/<name>`
+- Signal: <failure, hits/relevant sessions>
+- Evidence: direct | strong-inferred | weak-inferred; <private pointers>
+- Coverage: <source availability, dates, repo, scanned/relevant counts>
+- Layer: discovery | procedure | agent-orchestration | tool/platform | structural
+- Hypothesis/patch: <one edit, expected effect and metric>
+- Authority: <named human/date, or explicit scheduled AUTO-DEPLOY/AUTO-REVERT authorization>
+- Applied/validation: <yes/no, date, revision, passed/failed checks>
+- deployed_at: <actual plugins-update time; pending if not live>
+- Comparison: <same-case baseline/held-out IDs, critical attempts, conditions>
+- Outcome readback: <expected artifact/state, evidence, forbidden actions>
+- Baseline: <window, failures/denominator, outcome statuses>
+- Confounders: <model/version, agent, repo/other edits, task mix, coverage>
+- Review due: <YYYY-MM-DD>
 
-#### Re-review (<review date>)
-- **Post-change window:** <change-date>..<now> (post-change hits: <n>, samples: <n>)
-- **Confounders observed:** <...>
-- **Verified outcomes:** <pass/fail/partial/blocked/not-run counts and denominators; unknown evidence stays unknown>
-- **Case regressions / overhead:** <pass-to-fail cases, constraint violations, latency/handoffs and available tokens/cost>
-- **Verdict:** consistent-with-improvement | no-clear-change | possible-regression | insufficient-evidence | invalid-hypothesis
-- **Action:** keep | revert | follow-up patch (new cycle) | extend review window
-- **Lesson distilled to memory:** <yes/no — link or summary, redacted>
-```
-
-## Worked example
-
-```markdown
-### 2026-05-29 — narrate
-
-- **Status:** open
-- **Target type:** skill
-- **Target unit:** `core-skills/skills/narrate`
-- **Observed signal:** users re-asked for an "audio summary" and the skill did not engage (4 sessions)
-- **Evidence grade:** strong-inferred
-- **Coverage note:** local store only (cloud 404); last 30 days; 1,704 sessions scanned
-- **Root-cause layer:** discovery
-- **Proposed change:** add "audio summary", "listenable version", "read this to me" to the description triggers
-- **Approved by:** <reviewer> on <date>
-- **Applied:** yes, 2026-05-29 · validation: passed
-- **Expected effect / metric:** drop in sessions where "audio summary" appears with no narrate invocation
-- **Baseline window:** 2026-04-29..2026-05-29 (pre-change hits: 4)
-- **Confounders to watch:** model version, task-mix shift toward docs work
-- **Review-due date:** 2026-06-03
+#### Re-review <date>
+- Post-deploy: <window, samples, failures/denominator, comparable conditions>
+- Verified outcomes: <pass/fail/partial/blocked/not-run counts; missing evidence unknown>
+- Regressions/overhead: <case failures, violations, time/handoffs, available tokens/cost>
+- Confounders observed: <details>
+- Verdict: consistent-with-improvement | no-clear-change | possible-regression | insufficient-evidence | invalid-hypothesis
+- Action: keep | revert | follow-up (new cycle) | extend window; <authority/new due date>
+- Lesson: <authorized redacted memory path/summary, or none>
 ```

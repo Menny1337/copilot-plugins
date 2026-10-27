@@ -1,8 +1,7 @@
 <!-- validate:allow-user-paths -->
 # Subagents, parallel execution, and hooks
 
-Read this when designing an agent that will be dispatched as a subagent, tuning parallel
-execution, or wiring hooks around the agent lifecycle.
+Use this for context boundaries, subagent configuration, plan mode, and hooks.
 
 ## Contents
 
@@ -13,117 +12,87 @@ execution, or wiring hooks around the agent lifecycle.
 
 ## Choose the context boundary
 
-Prefer one main loop for planning, execution, and dependent follow-ups. Load
-procedures through skills, conditional facts through references or lookups,
-and tool schemas through deferred discovery. Do not replace several subagents
-with one eagerly loaded prompt containing all their instructions.
+Keep planning, execution, and dependent follow-ups in one main loop. Shared
+data and earlier decisions can be lost in summaries. Load procedures through
+skills, conditional facts through references, and tool schemas through deferred
+discovery; avoid eagerly loading every former specialist's instructions.
 
-Keep tightly coupled steps together: they share data, constraints, or earlier
-decisions that a summary could lose. A specialist title or team boundary alone
-does not justify another context. Consider a subagent for independent parallel
-work, fresh-context verification, measured context/tool-selection problems, or
-a genuinely enforced permission boundary. A separate prompt is not a security
-boundary; verify host/tool restrictions before relying on isolation.
+Use separate contexts for independent parallel work, independent verification,
+measured context or tool-selection problems, or enforced isolation. A title
+alone does not justify a boundary. A separate prompt provides no security
+boundary: verify host and tool restrictions before relying on isolation.
 
-When delegating, provide the bounded objective, required inputs and constraints,
-ownership, and a stop condition. Require a compact result with evidence pointers,
-uncertainty, failures, and cleanup state. The main loop remains responsible for
-checking that result and integrating the user's outcome; a handoff summary is
-not proof. Transfer the conversation only when direct specialist interaction
-is actually needed.
+Give each delegate a bounded objective, inputs, constraints, ownership, and stop
+condition. Require evidence pointers, uncertainty, failures, and cleanup state.
+The parent checks the result and owns the integrated outcome. Transfer the
+conversation only when direct specialist interaction is needed.
 
-Put reusable judgment and sequencing in skills; keep mechanical payloads and
-validation in tools. Enforce permissions, approval gates, and budgets in the
-host or tools where supported. Preserve instruction-level safeguards until
-the corresponding enforcement exists and is verified.
+Keep reusable judgment in skills and mechanical payloads and validation in tools.
+Enforce permissions, approvals, and budgets in the host or tools where supported.
+Keep instruction safeguards until replacement enforcement is verified.
 
-When deciding whether to change a context boundary, compare task outcomes and
-overhead using the shared [evaluation contract](../../skill-crafting/references/evaluation.md#verify-task-completion).
-Routine edits do not require re-justifying every existing subagent.
-Migrate one capability at a time and preserve authority, memory scope, recovery,
-and discovery. Removing an agent definition does not require removing useful
-independent verification.
+Before changing a context boundary, measure outcomes and overhead using the
+shared [evaluation contract](../../skill-crafting/references/evaluation.md#verify-task-completion).
+Routine edits need not re-justify existing agents. Migrate one capability at a
+time, preserving scope, authority, memory, recovery, discovery, and rollback.
+Keep useful independent verification.
 
 Design source: [Anthropic, When to fold subagents into your main agent loop](https://claude.com/resources/articles/building-agents-when-to-fold-subagents-into-your-main-agent-loop).
-Its deployment results motivate experiments, not guaranteed improvements for
-this library or permission to retire units without approval.
+Treat its claims as hypotheses to test here. They do not authorize retiring
+units without approval.
 
 ## Subagents and parallel execution
 
-A custom agent can run as a **subagent**: the main agent dispatches work to it (via the
-`agent`/Task tool) in its own isolated context window. `/fleet` runs multiple subagents in
-**parallel** to speed up decomposable tasks, and `@agent-name` inside a fleet/prompt targets a
-specific custom agent. `/tasks` monitors running subagents. There is **no** `fleet` frontmatter
-key — an agent is eligible for auto-dispatch simply by leaving `disable-model-invocation` unset.
+The `agent`/Task tool dispatches a custom agent in a separate context. `/fleet`
+runs parallel subagents; `@agent-name` targets one and `/tasks` monitors them.
+There is no `fleet` frontmatter key. Leave `disable-model-invocation` unset to
+allow auto-dispatch; set it to `true` to block it. `user-invocable: false` blocks
+manual selection.
 
-What you control from the agent profile and settings:
+Use [agent frontmatter](../../agent-skill-audit/references/cli-feature-baseline.md#agent-frontmatter)
+for supported versions and fields, including:
 
-| Goal | Where | How |
-|------|-------|-----|
-| Block auto-dispatch as a subagent | frontmatter | `disable-model-invocation: true` |
-| Block manual selection | frontmatter | `user-invocable: false` |
-| Pick this agent's model or effort | frontmatter | `model: <model-id>` or `model: [<primary>, <fallback>]`, plus `reasoning-effort: <level>` |
-| Keep model changes on the configured list | frontmatter | `model-policy: required` (CLI 1.0.83+) |
-| Per-subagent model / effort / context tier | `~/.copilot/settings.json` | `subagents.agents.<name>` = `{ model, effortLevel, contextTier }`; each field accepts the literal `"inherit"` (managed by `/subagents`, alias `/agents`) |
-| Limit nested delegation | `~/.copilot/settings.json` | `subagents.maxDepth`; default lowered from 6 to 4 in CLI 1.0.71, and usage-based-billing users can raise it up to 128 |
-| Prevent agents from being dispatched | `~/.copilot/settings.json` | Exclude or restrict custom and built-in agents for selection, tasks, and subagents (CLI 1.0.66 and 1.0.71) |
-| Defer large tool surfaces | frontmatter / MCP | `deferred-tool-loading: true`; MCP servers configured in agent frontmatter also honour `deferTools` |
+- `model: <model-id>` or `model: [<primary>, <fallback>]`
+- `model-policy: required` to constrain later changes to that list
+- `reasoning-effort: <level>` for a profile's effort requirement
+- `deferred-tool-loading: true`; frontmatter MCP servers also honour `deferTools`
 
-Subagents default to a **low-cost model** unless overridden by the `model` frontmatter field
-or a `subagents.agents.<name>.model` setting. A `model` array is tried in order until one is
-available. Add `model-policy: required` when later model changes must stay within that list;
-without it, the list provides startup fallback rather than a permanent policy boundary. Use
-`reasoning-effort` in frontmatter when the agent itself always needs a different effort
-level; use `/subagents` when the parent orchestrator should decide per child.
-(`/sidekicks` is not documented in the public CLI reference — don't author against it.)
+An ordered model list alone controls startup fallback, not later model changes.
+The baseline records the SDK's narrower `CustomAgentConfig` shape (`model?: string`,
+no `modelPolicy`); do not assume CLI array syntax works programmatically.
 
-The bundled 1.0.83-5 SDK's programmatic `CustomAgentConfig` still accepts only
-`model?: string` and has no `modelPolicy` field. Treat ordered models and
-`model-policy` as CLI frontmatter features until the SDK declarations catch up.
+Use [subagent settings](../../agent-skill-audit/references/cli-feature-baseline.md#subagent-settings)
+for per-child model/effort/context overrides, `"inherit"`, depth defaults, and
+built-in agent restrictions. Configure overrides with `/subagents` (alias
+`/agents`); do not author against the undocumented `/sidekicks`. Keep nesting
+shallow and explain any higher depth requirement.
 
-The lower `subagents.maxDepth` default matters for orchestrators that delegate to agents
-that delegate again. Keep the delegation graph shallow by default, and document when a
-workflow genuinely needs a higher depth.
-
-Nested delegation cannot escape tool restrictions. Subagent sessions inherit parent tool
-restrictions (CLI 1.0.67), and custom agents keep their own tool filters in nested
-subagents (CLI 1.0.68). If a parent cannot use edit or execute tools, delegating will
-not restore them.
-
-Built-in agents can be excluded from selection and restricted for tasks and subagents.
-Use this when an orchestrator should avoid a built-in path because of cost, policy, or
-domain ownership.
+Children inherit parent tool restrictions and retain their own filters.
+Delegating cannot restore forbidden edit or execute access.
 
 ## Plan mode
 
-In CLI 1.0.71 and later, plan mode hard-blocks built-in mutating tools: file edits,
-mutating shell commands, and opening pull requests. MCP and external tools are still
-allowed. Since 1.0.74 the restriction is scoped rather than absolute — planning
-artifacts written inside the session folder are permitted, while clear file mutations
-outside it stay blocked. `/model plan` (or `/model --plan`) selects a model used only
-while planning; pass `off` to clear it.
-
-Agents intended for plan mode should produce analysis, options, specifications,
-and handoff steps, keeping any interim artifacts in the session folder.
+Plan mode blocks built-in workspace mutators, including opening pull requests,
+but allows MCP and external tools. Keep planning artifacts in the session
+folder; mutations outside it remain blocked. See the baseline's
+[subagent settings](../../agent-skill-audit/references/cli-feature-baseline.md#subagent-settings)
+for version scope and `/model plan` (`/model --plan`, `off` to clear).
 
 ## Hooks and agents
 
-The specialized [GitHub hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference#agent-scoped-hooks)
-documents **Copilot CLI-only** agent-scoped hooks in a frontmatter `hooks` event map.
-The general custom-agent configuration table does not list this field; do not
-treat either page as proof of support in every host or installed CLI.
+The [GitHub hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference#agent-scoped-hooks)
+documents CLI-only frontmatter `hooks`; the general agent table omits it.
+Neither establishes support in every host or installed CLI.
 
-Agent-crafting owns profile placement and host compatibility. Use `hooks-crafting`
-and its [scoped-hook contract](../../hooks-crafting/references/hooks-reference.md#agent-scoped-hooks-cli-only)
-for event, payload, command/HTTP, and trust semantics. Verify the exact target
-runtime in an authorized isolated fixture before prescribing an executable
-configuration; documentation alone is not an enablement instruction.
+Agent-crafting owns profile placement and host compatibility. Use
+`hooks-crafting`'s [scoped-hook contract](../../hooks-crafting/references/hooks-reference.md#agent-scoped-hooks-cli-only)
+for events, payloads, command/HTTP handlers, and trust. Validate the target runtime
+in an authorized isolated fixture before enabling executable configuration.
 
-The documented map is nested YAML, outside this marketplace's scalar-only
-frontmatter schema. Authoring such profiles here requires a separate approved
-schema/governance change; do not add scoped hooks to an agent or relax validation
-as part of a documentation correction.
+The documented nested YAML map fails this repository's scalar-only parser.
+Adding it requires separate schema/governance approval; do not relax validation
+as a documentation fix.
 
-Session-level `subagentStart` (can prepend `additionalContext`) and `subagentStop`
-(can `block` to force another turn) remain separate lifecycle events. The built-in
-`general-purpose` agent does **not** emit these events.
+Session events `subagentStart` (prepends `additionalContext`) and `subagentStop`
+(`block` forces another turn) are separate. The built-in `general-purpose` agent
+does not emit them.

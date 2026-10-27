@@ -1,8 +1,7 @@
 # Author an agent body
 
-Read when creating an agent or changing its role, ownership, or instructions.
-New agents also need the root's frontmatter route. Existing body-only edits
-need that route only when configuration changes.
+Use this when creating or changing an agent body. Follow the root's frontmatter
+route for new agents or configuration changes.
 
 ## Contents
 
@@ -14,13 +13,12 @@ need that route only when configuration changes.
 
 ## Establish the role
 
-Choose one responsibility and the files or artifacts the agent owns. Identify
-the reusable skills it needs and the actions requiring approval. Define
-representative tasks and completion criteria before adding detailed rules.
+Choose one responsibility, owned artifacts, required skills, and actions needing
+approval. Define representative tasks and completion criteria before adding rules.
 
-An agent describes who acts, with what authority. A skill describes how a
-reusable workflow runs. In an agent-only host, include the otherwise missing
-procedures; do not copy them into both layers when skills are available.
+An agent defines the actor and its authority; skills own reusable procedures.
+Include necessary procedures in agent-only hosts, without duplicating them
+when skills are available.
 
 ## Body template
 
@@ -52,72 +50,47 @@ You are a <specialist role> responsible for <bounded outcome>.
 - Never: <actions outside the role or trust boundary>.
 ```
 
-Keep reusable commands, checklists, and verification mechanics in their owning
-skills. Add memory guidance only when it is part of the role and the run has
-authorized access. State what may be recorded and preserve privacy boundaries.
+Keep commands, checklists, and verification mechanics in their owning skills.
+Add memory duties only with authorized access; state what may be recorded and
+preserve privacy boundaries.
 
 ## Section applicability
 
-| Section | Specialist | Orchestrator | Meta | Reviewer |
-| --- | --- | --- | --- | --- |
-| Role and task boundary | required | required | required | required |
-| Skill routes | when available | when available | when available | when available |
-| File ownership | owned files | delegated ownership | customization files | read scope |
-| Conventions | domain-specific | handoff constraints | authoring constraints | review criteria |
-| Memory | if authorized | if authorized | if authorized | optional and authorized |
-| Completion | task outcomes | integrated outcome | valid definitions | supported findings |
-| Approval | explicit tiers | explicit tiers | explicit tiers | read-only unless authorized |
+Every role needs a task boundary, ownership, completion criteria, approval tiers,
+and routes to available skills. Add conventions only where they affect the work.
 
-Research agents specialize the reviewer pattern: define authorized evidence
-sources, citation requirements, uncertainty, and report completion. Limit
-writes to authorized report artifacts rather than the product under study.
+- Specialists own bounded artifacts; orchestrators own delegated boundaries and
+  the integrated result.
+- Meta agents own customization files and authoring constraints.
+- Reviewers define read scope and supported findings; writes require authorization.
+  Researchers also define allowed evidence sources, citations, uncertainty, and
+  report completion. Limit writes to authorized reports, not the product studied.
 
-Use `agent-patterns.md` for archetype examples, not as an additional mandatory
-read for every body edit.
-
-Check the modified body's character count against the target host's limit.
-The [recorded Copilot limit](../../agent-skill-audit/references/cli-feature-baseline.md#agent-frontmatter)
-is 30,000 characters. Do not assume the repository frontmatter validator
-enforces body length.
+Use `agent-patterns.md` for examples when needed. Check body length against the
+[host limit](../../agent-skill-audit/references/cli-feature-baseline.md#agent-frontmatter)
+(recorded Copilot limit: 30,000 characters); the frontmatter validator may not
+enforce it.
 
 ## Context and autonomy
 
-Replace broad "read all documentation first" rules with task-specific pointers.
-State non-obvious repository facts rather than a full repository map. Keep
-skill references short; their descriptions already explain the capability.
+Use task-specific pointers and non-obvious repository facts. Avoid mandatory
+full-documentation reading, repository maps, and repeated skill descriptions.
 
-Give the agent an observable definition of done. Allow local, authorized
-edit/check/fix cycles until it reaches that result. Preserve explicit review
-stops, access limits, destructive-action approvals, and release gates.
-Precise completion criteria should prevent both premature stopping and
-unbounded work.
+Allow authorized edit/check/fix cycles until observable completion. Keep review
+stops, access limits, destructive-action approvals, and release gates. Bound the
+work so it neither stops at a first draft nor continues indefinitely.
 
-Share constraints across models unless an evaluated difference justifies
-conditional guidance. Do not assume a frontier model's performance applies to
-every contributor's model, or remove safeguards based on that assumption.
+Share constraints across models unless evaluation supports conditional guidance.
+One model's performance does not justify removing safeguards for other models.
+Use [context-boundary guidance](advanced-topics.md#choose-the-context-boundary)
+when deciding whether work needs a separate context.
 
 ## Verify the changed behaviour
 
-For a new or substantive revision:
+Use the shared [evaluation reference](../../skill-crafting/references/evaluation.md#verify-task-completion)
+for routing cases, executed outcomes, comparisons, model coverage, and independent
+review. Check agent loading, tool choice, handoffs, and authority boundaries in
+the target host; valid source alone does not establish runtime behaviour.
 
-1. Define at least two should-select prompts and two close near-misses for an
-   auto-routed agent.
-2. Execute a representative task in a fresh context. Inspect tool choice,
-   handoffs, boundary compliance, and the actual artifact.
-3. Compare previous and revised profiles on the same tasks. Retain a held-out
-   case that did not shape the wording.
-4. Exercise critical cases on intended model families/tiers available to the
-   run. Record unavailable coverage without claiming a pass.
-5. Use `multi-model-review` for routing, schema, security, or system-wide
-   changes. It owns reviewer selection and synthesis.
-
-Use the shared [outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion)
-for artifact/state readbacks, repeated critical cases, and case-level
-regressions. When comparing a subagent with a skill in the main loop, keep
-external authority and safety constraints unchanged. Measure completion first,
-then latency, context loss, and available cost data. Do not infer success from
-routing accuracy or a specialist's self-report.
-
-For a non-behavioural edit, run the existing frontmatter/reference checks and
-affected generators. Do not add an unrelated test suite. A validator does not
-prove runtime routing, and a simulated walkthrough does not prove execution.
+For non-behavioural edits, run existing frontmatter/reference checks and affected
+generators. Do not add unrelated suites.

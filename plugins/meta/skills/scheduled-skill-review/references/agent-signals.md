@@ -1,42 +1,33 @@
-# Agent Review Signals
+# Agent review signals
 
-Skills are reviewed for discovery and procedure. Agents are reviewed for orchestration,
-scope, and delegation. The `skill-improvement-loop` harvest and diagnose phases use
-these signals when the reviewed unit is an agent.
+Use these signals in the improvement loop's harvest and diagnosis phases.
 
-| Signal | What it looks like in events.jsonl / sessions |
-|--------|-----------------------------------------------|
-| **primary-agent-used** | The target agent is the active responder or named agent for the session/turns being evaluated; otherwise attribution is weak or out of scope. |
-| **Sub-agent delegation** | The agent delegates to an appropriate specialist, over-delegates simple work, delegates to the wrong agent, or handles complex cross-cutting work without delegation. |
-| **ignored-skill-reference** | The agent body references a skill or procedure, but the session shows no corresponding skill invocation, procedure steps, or tool pattern. |
-| **Scope-boundary failure** | The agent performs work outside its declared scope, refuses work that fits its scope, or routes in-scope work away without a clear reason. |
-| **Tool-permission mismatch** | The agent attempts tools it does not have, lacks tools needed for its declared job, or repeatedly fails because its tool list does not match its responsibilities. |
-| **Conflicting-instructions** | The agent body contradicts a skill, another instruction, or itself; sessions show hesitation, oscillation, contradictory plans, or repeated restarts. |
-| **Persona/identity drift** | Responses do not match the declared role, such as a reviewer editing code, an implementer only advising, or a specialist acting as a generic assistant. |
-| **Handoff loss / overhead** | Repeated summaries omit constraints, dependent specialists redo the same lookup, or routing adds calls without an independently useful result. |
-| **Unverified completion** | The agent reports success without artifact/state readback, or passes a local subtask while the user's integrated outcome, approvals, or cleanup fail. |
+| Signal | Evidence in sessions/events.jsonl |
+| --- | --- |
+| primary-agent-used | Target is the active responder or named agent; otherwise attribution is uncertain or outside scope. |
+| Sub-agent delegation | Wrong specialist, unnecessary delegation, or a missed useful context boundary. Complexity alone does not require subagents. |
+| ignored-skill-reference | Referenced skill/procedure has no matching invocation, steps, or tool pattern. |
+| Scope-boundary failure | Out-of-scope work, refusal of suitable work, or unjustified routing away. |
+| Tool-permission mismatch | Responsibilities and declared tools conflict; attempts or recurring failures expose the mismatch. |
+| Conflicting-instructions | Contradictory guidance produces oscillation, conflicting plans, or restarts. |
+| Persona/identity drift | Behavior conflicts with the role, such as a reviewer editing or an implementer only advising. |
+| Handoff loss / overhead | Summaries drop constraints, specialists repeat lookups, or routing adds calls without useful results. |
+| Unverified completion | No artifact/state readback, or local success hides failed integrated outcomes, approvals, or cleanup. |
 
-## Diagnosing the agent layer
+## Choose the owner
 
-Map the strongest signal to one fix target:
+Fix description/tools frontmatter for selection, declared scope, or tool
+availability problems. Fix body scope/skill references for ignored guidance or
+crossed boundaries. Adjust delegation guidance for observed routing failures.
+Keep tool/platform blockers separate from unit failures.
 
-- **Frontmatter description/tools:** fix discoverability, declared scope, agent summary,
-  or tool availability when sessions show the wrong agent is selected or needed tools
-  are missing.
-- **Body scope and skill references:** clarify boundaries, required procedures, and when
-  to invoke referenced skills when the agent ignored relevant guidance or crossed scope.
-- **Delegation guidance:** add or narrow routing instructions when the agent
-  over-delegates, under-delegates, or chooses the wrong specialist.
+Use the loop's direct, strong-inferred, and weak-inferred grades. Record uncertain
+agent attribution and redacted evidence. A missed trigger is direct only with an
+explicit user statement; keywords alone never justify edits. Keep one unit,
+layer, and patch per cycle.
 
-## Evidence & caution
-
-Use the same grading discipline as skill reviews: direct, strong-inferred, or
-weak-inferred. Agent attribution from `events.jsonl` can be ambiguous, so treat it as
-best-effort and record uncertainty. Make one change per cycle, and redact sensitive
-prompts, customer data, credentials, and proprietary snippets from durable records.
-
-Do not count complexity alone as evidence that delegation was needed. Use
-[context-boundary guidance](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary)
-and the [shared outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion)
-to compare alternatives. Record observed state and available overhead, not
-assumed savings; a missing readback is unknown rather than a successful outcome.
+For delegation choices, use
+[context-boundary guidance](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary).
+The [shared outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion)
+owns comparative runs and integrated artifact/state checks. Record observed
+overhead, not assumed savings; missing readback stays unknown.

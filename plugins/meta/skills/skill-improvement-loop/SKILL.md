@@ -5,231 +5,158 @@ user-invocable: false
 compatibility: "Requires Copilot session history and session_store_sql; local deep validation expects Copilot session-state event logs."
 ---
 
-# Skill Improvement Loop
+# Skill improvement loop
 
-A closed, evidence-based loop for evolving a single agent or skill: mine already-happened
-sessions for where it underperformed, **propose** one targeted change, log a
-hypothesis, and **re-review the change later** to confirm it helped or revert it.
-
-This is empirical (what real sessions show), not structural. It complements static
-review — it does not replace it.
-
-> **Governance first.** This loop proposes changes and applies them only after human
-> approval. It never silently rewrites agents or skills. Observational session data is treated
-> as evidence with uncertainty, never as proof.
-
-## Autonomous mode (scheduled-skill-review)
-
-When driven by the `scheduled-skill-review` daemon, the Phase C human-approval gate
-is replaced by validated AUTO-DEPLOY followed by post-deploy Phase E review:
-
-- "Applied" means committed on the unit's branch, then merged to `main`, pushed, and
-  made live with `plugins-update` after validation passes.
-- AUTO-REVERT handles regressions by reverting the deployed commit, pushing `main`,
-  and running `plugins-update` again.
-- The safety net is git-tracked reversibility plus durable cycle records and
-  notifications, not a pre-apply human yes/no.
-- All other governance still holds: one change per unit per cycle, evidence grading,
-  non-causal verdicts, and redaction/privacy.
+Use observed sessions to propose a change, record its hypothesis, and review it
+after deployment. Each empirical cycle covers one unit, one root-cause layer,
+and one patch.
 
 ## When to Use
 
-- You want to learn from sessions that already happened and improve an agent or skill from that evidence
-- A unit seems to underperform: it did not trigger when it should have, its procedure was ignored, or its output was wrong
-- Recurring tool errors, retries, or user corrections ("no, do X instead") point at a unit
-- You made an earlier agent or skill edit and a review is now due to check whether it helped
+- Investigate triggering, adherence, or outcome problems in an agent or skill.
+- Follow recurring errors or user corrections to their owner.
+- Re-review a deployed change when its review date arrives.
 
 ## When to Skip
 
-- **Broad Agent Architect self-maintenance** across instructions, references, memory, and update duties — use `agent-architect-self-audit`; it may call this skill for a scoped behavioral finding.
-- **Static structural quality** (frontmatter validity, inventory, duplication, split/merge/retire, quality scoring) — use `agent-skill-audit` instead
-- **Creating a brand-new skill** or editing frontmatter mechanics — use `skill-crafting`
-- **Creating a brand-new agent or fixing one without session evidence** — use `agent-crafting`
-- You have no access to session history, or fewer than ~3 relevant sessions exist — there is not enough signal; keep monitoring
-- Application code, tests, or config work — out of scope
+- Broad architect maintenance: use `agent-architect-self-audit`.
+- Static quality, overlap, inventory, or split/merge/retire decisions: use `agent-skill-audit`.
+- New skills or frontmatter mechanics: use `skill-crafting`.
+- New agents or agent fixes without session evidence: use `agent-crafting`.
+- Application code, tests, and configuration are outside this loop.
+- Without authorized session access or the Phase C evidence threshold, keep monitoring.
 
-## Core Principles
+## Procedure
 
-- **One unit, one layer, one patch per cycle.** Bundled edits cannot be evaluated later.
-- **Uncertainty is first-class.** Session mining is observational, not a controlled experiment. Use candidate signals, evidence grades, and non-causal verdicts.
-- **Propose, then apply on approval.** Avoid low-quality agent or skill drift from weak inference.
-- **Generalize, don't overfit.** A change must help inputs you have not seen — not just the one session that revealed the problem.
-- **Not every failure belongs to the reviewed unit.** The fix may belong to another unit, the tooling, or the system structure (see Phase B).
-- **Privacy.** Persist only summarized signals, counts, and redacted excerpts — never raw prompts, secrets, customer data, or proprietary code.
+Apply changes only after explicit approval from a named human. An explicitly
+authorized `scheduled-skill-review` run may instead use validated AUTO-DEPLOY
+and AUTO-REVERT. Evidence never grants deployment or rollback authority.
 
-## The Loop
+In scheduled mode, deployment means committing on the unit branch, merging to
+`main`, pushing, and running `plugins-update`. AUTO-REVERT reverts the deployed
+commit, pushes `main`, and runs `plugins-update` again. Keep durable cycle
+records and notifications so deployments remain traceable and reversible.
 
+### Phase A: Harvest signals
+
+Use `session_store_sql` and adapt the queries in
+[session-signal-queries.md](references/session-signal-queries.md). For agents,
+also read [agent signals](../scheduled-skill-review/references/agent-signals.md).
+Look for missed or excessive activation, ignored procedures, incorrect outcomes,
+retry clusters, and user corrections.
+
+Grade each finding:
+
+- Direct: observed actions or explicit feedback. A missed trigger is direct only
+  when the user explicitly says the unit should have been used.
+- Strong-inferred: task meaning matches the description/examples, the unit's
+  procedure or tools are absent, and the outcome shows the missing behavior.
+- Weak-inferred: keyword similarity alone. Inspect it; never edit from this alone.
+
+Record source availability, date range, repository filter, sessions scanned,
+and relevant sample counts. Label local-only coverage. The local store lacks
+tool-level `events` and `tool_requests` tables. Where access is authorized,
+validate candidate sessions against complete
+`~/.copilot/session-state/<id>/events.jsonl` logs before downgrading evidence.
+Follow the reference's "Local deep-validation via `events.jsonl`" and "Backend
+availability & dialect" sections. Tool calls can establish direct action/error
+evidence; they cannot make an inferred missed trigger direct. If logs are
+unavailable or inconclusive, retain weak inference for unverified candidates.
+
+Persist only counts, summaries, and redacted excerpts. Exclude raw prompts,
+secrets, names/customer identifiers, and proprietary code.
+
+### Phase B: Diagnose the root-cause layer
+
+| Layer | Owner and action |
+| --- | --- |
+| Discovery | Description frontmatter. Propose clearer triggers/boundaries; use `skill-crafting`'s description critique for skills. |
+| Skill procedure | Skill body, references, or scripts. Repair the unclear, missing, or wrong step. |
+| Agent orchestration | Agent body. Use `agent-crafting` for scope, skill references, delegation, or instruction conflicts. |
+| Tool/platform | External tooling, permissions, limits, or outages. Log the blocker; do not edit the unit. |
+| Structural ecosystem | System overlap or duplication. Hand off to `agent-skill-audit`. |
+
+Report or hand off findings outside the current unit. Edit the owning agent only
+in a separately authorized agent cycle; do not patch a skill to compensate.
+Gather more evidence when the responsible layer is unclear. Tool failures alone
+are not unit failures.
+
+### Phase C: Propose one patch (apply on approval)
+
+Require roughly three relevant sessions or a clearly repeated pattern; a single
+anecdote is insufficient. Present
+counts, evidence grade, root cause, proposed diff, rationale, and expected
+effect with its metric. Prefer reasoned guidance over blanket rules.
+
+Preserve the current definition as a baseline. Follow the
+[shared outcome contract](../skill-crafting/references/evaluation.md#verify-task-completion)
+for artifact/state readback, forbidden actions, same-case and held-out comparisons,
+repeated critical runs, and individual regressions. Include discovery near-misses
+or procedure/orchestration trajectories as appropriate. Run available behavioral
+evaluations and structural checks; cover supported model families/tiers and
+record untested coverage.
+
+Use `multi-model-review` for independent fresh-context review of routing,
+security, or governance changes. It owns panel selection and synthesis.
+Skill descriptions need `skill-crafting`'s different-vendor critique; agent
+descriptions follow `agent-crafting`'s behavioral and independent-review guidance.
+
+After approval, apply and validate frontmatter with the repository validator.
+In scheduled mode, run this sequence before committing the content:
+
+```bash
+node scripts/catalog.mjs
+node scripts/plugin-readme.mjs
+node scripts/validate.mjs
+node scripts/catalog.mjs --check
+node scripts/plugin-readme.mjs --check
 ```
-A. Harvest signals → B. Diagnose root-cause layer → C. Propose one patch (apply on approval)
-→ D. Log hypothesis (+ review-due date) → [days later] E. Re-review → F. Distill lesson
-```
 
-### Phase A — Harvest Signals
+Any generator/check failure stops publication. Report it without committing the
+failed change. Use accurate Conventional Commit types: `feat` selects minor;
+`fix`, `docs`, `refactor`, `chore`, and other nonbreaking types select patch;
+`!` or a `BREAKING CHANGE:` footer selects major. In versioned repositories,
+run the version tool separately on a clean tree after the content commit
+(for example, `node scripts/version.mjs apply`). Never hand-edit release versions
+or release changelogs. The daemon handles this at integration.
 
-Query the session history to find where the target behavior went wrong. Use the
-`session_store_sql` tool. Representative queries live in
-`references/session-signal-queries.md` — read that file and adapt the queries. When reviewing
-an agent, also read `../scheduled-skill-review/references/agent-signals.md` for agent-specific
-routing and orchestration signals.
+### Phase D: Log the hypothesis
 
-Signal types to look for:
+Use [the entry template](templates/skill-change-log.md) in a durable location
+outside the reviewed unit: authorized shared memory at
+`~/.copilot/memory/skill-improvement-loop.md`, or a repo-local reviewed file.
+Do not assume an agent-specific workspace. Record the hypothesis, baseline,
+approval/deployment state, uncertainties, and review-due date. Keep evidence
+pointers private and stored content redacted.
 
-| Signal | What it looks like |
-|--------|--------------------|
-| **Missed-trigger candidate** | Task matched an agent or skill, but that unit or its procedure was never used |
-| **Over-trigger / near-miss** | Unit activated for an adjacent task where another unit or no specialization was appropriate |
-| **Adherence gap** | Unit selected, but its instructions or procedure were not followed |
-| **Correctness gap** | Procedure followed, but the outcome was still wrong |
-| **Error/retry cluster** | Repeated failed tool calls or retries around a task type |
-| **User correction** | User pushed back ("no", "that's wrong", "you should have…", "why didn't you…") |
+### Phase E: Re-review on the due date
 
-**Missed-trigger detection is the hardest signal — there is no log line for a unit
-that never fired.** Treat it as a *candidate*, not a proven miss, and grade the evidence:
+Reopen the entry and compare relevant post-deployment sessions with its baseline.
+Start the window at `deployed_at`, when the actual `plugins-update` made the
+change live, never at commit or merge time.
 
-- **Direct** — user explicitly says the agent or skill should have been used. Trustworthy.
-- **Strong-inferred** — task text matches the unit's description/examples, there is no trace of its instructions, procedure, or tools, and the outcome shows the missing behavior. Reasonable basis for a proposal.
-- **Weak-inferred** — keyword similarity only. Inspect manually; never edit from this alone.
+Record samples and comparable denominators, verified outcomes, constraint
+violations, and new failures under the shared outcome contract. Missing outcome
+evidence stays unknown. Note confounders: model/version, active agent, repository
+changes, other edited units, task mix, and coverage limits.
 
-**Record an evidence-coverage note** for the harvest: source (local store only / cloud
-available?), date range, repository filter, and number of sessions scanned. If the
-cloud session store is unavailable, you are seeing local history only — say so. The
-`session_store_sql` local store lacks tool-level tables (`events`, `tool_requests`), **but
-the full per-session event log lives on disk** at
-`~/.copilot/session-state/<id>/events.jsonl` (assistant turns, every tool call + its
-arguments, success/failure). **Before downgrading any signal to weak-inferred, deep-validate
-the candidate sessions against `events.jsonl`** — tool-error and "what the agent did" signals
-become **direct** evidence, a missed-trigger can reach **strong-inferred** (direct only if the
-user explicitly said the unit should have been used), and it catches false positives that
-keyword text would miscount. Validate the log is complete first, and cap at weak-inferred only
-when `events.jsonl` is unavailable or inconclusive. See the *Local deep-validation via
-`events.jsonl`* and *Backend availability & dialect* sections of
-`references/session-signal-queries.md`.
-
-### Phase B — Diagnose the Root-Cause Layer
-
-Classify each problem. The layer determines the fix — and whether the fix even belongs
-in the reviewed unit:
-
-| Root cause | Fix target | Action |
-|------------|-----------|--------|
-| **Discovery** — agent or skill didn't trigger when it should | `description` frontmatter | Propose clearer triggers and boundaries; for skills, run the description critique in `skill-crafting` |
-| **Skill procedure** — skill triggered but steps are unclear, incomplete, or wrong | skill body / `references/` / `scripts/` | Propose a targeted procedure edit |
-| **Agent orchestration** — wrong scope, missing skill reference, bad delegation, conflicting instructions | agent body | Propose a targeted agent edit (see `agent-crafting`); do not misattribute it to a reviewed skill |
-| **Tool / platform** — failures from tool limits, permissions, outages, rate limits | external | Do not edit the unit; log the blocker |
-| **Structural ecosystem** — overlap, duplication, should split/merge/retire | the system | Hand off to `agent-skill-audit` |
-
-Misdiagnosing the layer produces the wrong fix. If the evidence is ambiguous between
-two layers, stop and gather more signal rather than guessing.
-
-When the reviewed unit is an agent, agent-orchestration findings are actionable here
-as edits to that agent file, guided by `scheduled-skill-review`'s
-`references/agent-signals.md`. When the reviewed unit is a skill, keep the existing
-rule: do not edit the skill for an agent-layer problem.
-
-### Phase C — Propose One Patch (apply on approval)
-
-- Require a **minimum signal threshold** before proposing: roughly **≥3 relevant
-  sessions** or one clearly repeated pattern. A single anecdote is not enough.
-- Draft exactly **one** change addressing **one** layer.
-- Present: the observed signal (with counts), the root-cause layer, the proposed diff,
-  the rationale, and the **expected effect** (which signal should drop, and how you'll
-  measure it).
-- Prefer reasoned guidance over rigid `ALWAYS`/`NEVER` rules — agents follow reasoned
-  instructions more reliably.
-- Preserve the current unit as a baseline. Test the proposal on the same representative
-  cases plus held-out sessions or prompts that did not shape the diagnosis. Include
-  semantically close near-misses for discovery changes, and inspect trajectories/tool calls
-  for procedure or orchestration changes.
-- Run the repository's available behavioral evaluations in addition to structural validation.
-  For units intended to work across model families or tiers, test each supported target.
-- Use the shared [outcome contract](../skill-crafting/references/evaluation.md#verify-task-completion):
-  check the artifact or authoritative state against the task and forbidden actions.
-  Correct routing, adherence, or a favorable critic score is not a completed outcome.
-  Repeat critical cases and inspect individual regressions, not only aggregate gains.
-- Use independent fresh-context review for routing, security, or governance changes — the
-  `multi-model-review` skill owns panel sizing, lens assignment, and synthesis. Skill
-  descriptions require the different-vendor critique in `skill-crafting`; agent descriptions
-  follow the behavioral and independent-review guidance in `agent-crafting`.
-- **Apply only after explicit human approval.** After applying, run frontmatter
-  validation (the repo validator if available, e.g. `node scripts/validate.mjs`). In
-  autonomous mode, "apply" means commit on the unit's branch; the daemon merges and
-  deploys only after both `node scripts/catalog.mjs` and
-  `node scripts/plugin-readme.mjs` succeed, followed by
-  `node scripts/validate.mjs`, `node scripts/catalog.mjs --check` and
-  `node scripts/plugin-readme.mjs --check`. A generator or check failure stops
-  publication; the reviewer reports failure without committing the failed change.
-- **Mind version governance.** If the repo versions its content (e.g. per-plugin
-  `plugin.json` + a marketplace manifest + per-plugin `CHANGELOG.md`, gated in CI),
-  the version bump follows the content commit — do **not** hand-edit version/changelog
-  files. Use an accurate Conventional Commit *type*, since the bump level is derived
-  from it (`feat` → minor; `fix`/`docs`/`refactor`/`chore`/… → patch; `!` or a
-  `BREAKING CHANGE:` footer → major). Apply the bump separately on a clean tree after
-  the content commit (e.g. `node scripts/version.mjs apply`); under the daemon this is
-  done automatically at integration.
-
-### Phase D — Log the Hypothesis
-
-Append an entry to a durable changelog stored independently of the reviewed unit using
-`templates/skill-change-log.md`. Preferred locations:
-
-- Shared memory for cross-session continuity: `~/.copilot/memory/skill-improvement-loop.md`
-- Or a repo-local reviewed file if the project wants versioned governance
-
-Do not assume or hard-code a specific agent's workspace. Each entry records: target
-unit and type, date, observed signal + counts, evidence grade + coverage note, root-cause
-layer, the change (or proposal), expected effect/metric, confounders to watch, and a
-**review-due date** (the "few days later" checkpoint). Store summarized, redacted
-signals only.
-
-### Phase E — Re-Review on the Due Date
-
-When the review-due date arrives, reopen the changelog entry and judge honestly. When
-driven by the daemon, the re-review window opens at the change's DEPLOY time
-(`deployed_at` = when `plugins-update` made it live), not at commit/merge time, because
-live sessions only exercise the change after deployment.
-
-1. Pull sessions **since the change** that exercised the target unit (see the
-   post-change queries in the relevant reference file).
-2. Compare against the **pre-change baseline window** recorded in the entry; record
-   sample counts on both sides.
-   Include verified task outcomes and constraint violations alongside routing/adherence
-   signals. Use comparable denominators; unavailable outcome evidence stays unknown.
-   Check for newly failing cases even when the target signal or average improves.
-3. **Record confounders** that could explain the difference instead of your edit:
-   model/version changes, which agent ran, major repo changes, other edited skills or
-   agents, a shift in task mix, and session-store coverage limits.
-4. Assign a verdict using **non-causal language** — never claim the edit "caused" the
-   result:
+Require about 3-5 relevant post-change samples before judging, except for a clear,
+severe regression. Use noncausal verdicts:
 
 | Verdict | Meaning |
-|---------|---------|
-| **Consistent with improvement** | Enough post-change samples; target signal decreased; no obvious confounder explains it |
-| **No clear change** | Enough samples, no measurable difference |
-| **Possible regression** | Target or an adjacent failure increased |
-| **Insufficient evidence** | Too few relevant sessions — keep monitoring, set a new due date |
-| **Invalid hypothesis** | Root cause turned out to be another unit, tool, or task-mix rather than the reviewed unit |
+| --- | --- |
+| Consistent with improvement | Enough samples; verified outcomes satisfy constraints, target signal decreased, no regression or obvious confounder. |
+| No clear change | Enough samples and required outcome evidence; no measurable difference. |
+| Possible regression | Target or adjacent failures increased; takes precedence over signal or cost gains. |
+| Insufficient evidence | Too few relevant samples or missing required artifact/state evidence; extend the window and set a new due date. |
+| Invalid hypothesis | Evidence points to another unit, tool, or task mix. |
 
-Require a **minimum post-change sample** (≈3–5 relevant sessions) before any verdict
-other than a clear, severe regression. On *possible regression*, propose a revert or a
-follow-up patch (new cycle). On *insufficient evidence*, extend the review window.
+For possible regression, propose a revert or follow-up patch in a new cycle.
+Apply it through the approval workflow above; authorized scheduled AUTO-REVERT
+remains the exception. Do not claim the edit caused the observed result.
 
-### Phase F — Distill the Lesson
+### Phase F: Distill the lesson
 
-For confirmed, durable lessons only, write a concise pattern into `~/.copilot/memory/`
-(see the `memory` skill): the failure mode, the fix that helped, and why. **Redact**
-names, secrets, customer identifiers, and proprietary snippets before persisting. Mark
-the changelog entry closed.
-
-## Anti-Patterns
-
-- Editing an agent or skill from a single session or weak-inferred similarity
-- Claiming the edit "fixed" something a few days later (causal language) — use the verdict taxonomy
-- Bundling multiple changes so the result can't be attributed
-- Editing the reviewed unit when the real problem is another unit, the tooling, or system structure
-- Copying raw session text, prompts, or secrets into the changelog or memory
-- Treating local-only session history as if it were the complete record
-
-## References
-
-- `references/session-signal-queries.md` — adaptable `session_store_sql` queries for harvest and re-review
-- `templates/skill-change-log.md` — agent-or-skill hypothesis/changelog entry template
+For durable, supported lessons, use the `memory` skill within authorized
+`~/.copilot/memory/` access. Save a redacted failure pattern, helpful change,
+and rationale. Close the changelog entry.
