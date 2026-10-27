@@ -3,6 +3,22 @@
 All notable changes to the `core-skills` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.0.0] - 2026-10-27
+
+_major release._
+
+- feat(core-skills)!: simplify browser sessions with owned profiles
+- **Migration:** default browser starts now use a fresh, agent-owned profile.
+  Run CLI and site-driver commands from the returned `cwd`, with its explicit session.
+  To use an existing normal profile, pass `--profile <name>` to select Bridge.
+- Managed sessions support active pages only. Native activity requires
+  `start --profile <name> --activity native`.
+- Profiles remain on disk after verified shutdown; deleting them requires user approval.
+- Shorten the root browser workflow, retain exact ownership checks, and fix Outlook's
+  renamed compose control and full-page discard verification.
+- Add scoped authentication diagnostics, regression coverage in CI, and validation notes
+  in `docs/browser-validation.md`.
+
 ## [3.4.0] - 2026-10-26
 
 _minor release._
