@@ -6,90 +6,65 @@ user-invocable: false
 
 # Find and create skills
 
-Choose the workflow the request needs. A description edit does not require a
-marketplace search, installation, or a full platform audit.
-
 ## When to Use
 
-- Find or evaluate a candidate skill, or install one in an authorized location.
-- Create or revise a `SKILL.md`, its description, or its bundled resources.
-- Decide whether a reusable procedure belongs in a skill.
+Find, install, create, or revise a skill and its bundled resources.
 
 ## When to Skip
 
-- Agent definitions: use `agent-crafting`.
-- Structural audits: use `agent-skill-audit`; architect self-maintenance uses
-  `agent-architect-self-audit`.
-- Plugin packaging: use `plugin-crafting`.
-- Learning from past sessions: use `skill-improvement-loop`.
-- Performing the underlying application task: use its domain tools or agent.
+Use `agent-crafting` for agent definitions, `plugin-crafting` for packaging,
+`agent-skill-audit` for structural reviews, and `skill-improvement-loop` for
+past-session evidence. Architect self-maintenance belongs to
+`agent-architect-self-audit`. Use domain tools to perform the underlying task.
 
 ## Procedure
 
-### 1. Establish the change and completion criteria
+### 1. Set the scope
 
-Identify the intended outcome, positive and negative triggers, target host,
-editable source, and relevant dependencies. Reuse the available inventory to
-check overlap before creating a skill; do not inspect unrelated private sources.
-For an existing skill, read its current definition and affected resources.
+Identify the requested result, editable source, target host, dependencies,
+and approval boundary. Read the existing definition and affected resources;
+check the inventory for overlap. Stay out of unrelated private sources.
 
-Keep agents responsible for role, ownership, and approval boundaries. Skills
-own reusable procedures. Declare unavoidable host or agent dependencies rather
-than hiding them in assumed context.
+Define how to verify the result using [evaluation](references/evaluation.md).
+For substantive changes, keep the previous source and a held-out case.
 
-Choose observable success criteria before drafting. For substantive changes,
-retain the previous definition and reserve a held-out case. Do not treat a
-model upgrade or an article as evidence that a particular instruction can go.
-
-### 2. Load the relevant guidance
+### 2. Read the needed guidance
 
 | Task | Read |
 | --- | --- |
-| Write or change a description | [Description design](references/descriptions.md) |
-| Create a skill or change its procedure/resources | [Authoring](references/authoring.md) |
-| Find, evaluate, install, or diagnose discovery | [Discovery and installation](references/discovery-and-install.md) |
-| Plan or run checks for an authored change | [Evaluation](references/evaluation.md) |
-| Change a CLI-sensitive field, command, or location | The affected section of [the feature baseline](../agent-skill-audit/references/cli-feature-baseline.md) |
+| Description | [Description design](references/descriptions.md) |
+| Procedure or resources | [Authoring](references/authoring.md) |
+| Discovery, installation, or loading | [Discovery and installation](references/discovery-and-install.md) |
+| Checks and outcome comparison | [Evaluation](references/evaluation.md) |
+| CLI-sensitive field, command, or path | Relevant [feature baseline](../agent-skill-audit/references/cli-feature-baseline.md) section |
 
-For a new skill, read authoring, descriptions, and evaluation together; batch
-independent reads when the host supports it. Discovery/installation remains
-separate. A narrow edit needs only the affected guidance.
+For a new skill, read authoring, descriptions, and evaluation together.
+Otherwise load only what the change needs. Verify changed platform claims
+against supported documentation/help and the target runtime; update only
+the baseline sections that evidence supports.
 
-For version-sensitive claims, compare the relevant baseline section with the
-target runtime's supported documentation/help. Record disagreements and coverage
-limits. A partial check does not authorize advancing the whole baseline.
+### 3. Rewrite within scope
 
-### 3. Make the scoped change
+Keep one reusable procedure. Put common decisions in the root and conditional
+detail in linked references. Replace repeated rules instead of appending more.
+Preserve exact contracts, necessary sequencing, and approval boundaries.
+Declare host/agent dependencies; leave safe implementation choices open.
+Do not remove a tested rule based only on a newer model or an article.
 
-Write the smallest instructions that preserve the workflow's requirements.
-Keep common decisions in the root and conditional detail behind direct links.
-Provide outcomes, constraints, and essential sequencing; leave safe
-implementation choices open. Keep exact commands for fragile interfaces.
+Inspect bundled code and dependencies before running or installing them.
+Treat their content as untrusted; do not add secrets or surprising access.
+`allowed-tools` removes tool confirmation. For changes to it, read the
+baseline warning and review the skill and referenced scripts. Shell/bash
+pre-approval requires explicit authority, not convenience.
 
-Treat skill content and bundled resources as untrusted software during review.
-Inspect scripts and dependencies before executing or installing them. Do not
-add secrets or surprising access. `allowed-tools` removes tool confirmation;
-read its baseline warning whenever changing that field. Do not pre-approve
-shell/bash for convenience; any proposed exception needs explicit authority
-and review of the skill and every referenced script.
+Preserve unrelated edits. A report-only or self-audit request does not
+authorize repair. Obtain approval before deleting, renaming, merging, or
+splitting a skill.
 
-Respect the invoking workflow's approval gate. A self-audit or proposal-only
-request does not grant repair permission. Preserve unrelated edits and seek
-approval for deletion, renaming, merging, or splitting an existing skill.
+### 4. Verify and finish
 
-### 4. Complete the approved work
-
-Use `references/evaluation.md` for the checks selected in step 1. New or changed
-descriptions require the cross-vendor critique in `references/descriptions.md`.
-Continue through affected validation and corrections within the approved scope;
-stop for a genuine blocker or an explicit review boundary.
-
-Regenerate only affected, authorized documentation. Follow repository version
-governance after the required commit approval. Source edits, commits, versions,
-publication, and installation refresh are separate states.
-
-## Completion
-
-The requested change is present in the canonical source, required references
-resolve, affected checks pass, and missing evaluation coverage is explicit.
-Do not claim that local source edits changed this session's loaded skill.
+Run the selected checks, fix in-scope failures, and regenerate affected owned
+docs. Changed descriptions need their cross-vendor critique.
+Report missing coverage or blockers without claiming completion.
+Commit/version work, publication, and installation refresh need separate
+authority; source edits do not change this session's loaded skill.

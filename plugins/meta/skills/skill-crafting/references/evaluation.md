@@ -1,118 +1,97 @@
-# Evaluate a skill change
+# Evaluate a skill or agent change
 
-Read when planning or completing checks for an authored skill. Select checks
-by the changed behaviour and risk; do not turn a prose correction into an
-unrelated full-suite run.
-
-## Contents
-
-- Define cases before drafting
-- Compare the relevant alternatives
-- Structural checks
-- Context and outcome checks
-- Independent review
-- Optional quality scorecard
-- Finish or report the blocker
+Choose checks for the behaviour being changed. A wording fix needs source
+checks; a workflow change also needs executed tasks. Record unavailable
+coverage instead of claiming a pass.
 
 ## Define cases before drafting
 
-For a new skill or substantive revision, include at least:
+For a new or substantially changed unit, keep the old source and prepare:
 
-- two prompts that should trigger it
-- two semantically close prompts that should use another skill or no skill
-- two outcome tasks with explicit success criteria
+- two prompts that should select it and two close prompts that should not
+- two tasks with an observable result and clear approval boundaries
+- a held-out case that does not shape the rewrite
 
-Keep the previous definition as a baseline and reserve a held-out case that
-does not shape the edit. Use synthetic data when private evidence is outside
-scope. Existing published examples are regression cases, not held-out evidence.
+Use synthetic inputs when private data is outside scope. Published examples
+are regression cases, not held-out cases.
 
-For spelling or other non-behavioural changes, use the applicable structural
-checks. Explain when behavioural coverage is unavailable; do not claim it from
-a clean linter or a critic's opinion.
+Select affected cases from the shared end-to-end suite and local skill tests.
+Suite owners can start with about ten examples, including cross-skill chains,
+recovery, and forbidden actions. Each edit does not need a new full suite.
+
+## Verify task completion
+
+Define the expected artifact or system state before running each task.
+Inspect that result, including persistence and cleanup where required.
+For example, read back a saved draft's content or verify that the owned
+browser process is absent. Stay within the task's data access and approvals.
+
+Record pass, fail, partial, blocked, or not run with an evidence pointer.
+A pass requires both the result and its constraints. A good answer, successful
+tool call, correct route, or review score cannot establish that alone.
+Inspect tool calls for omitted steps, lost constraints, and unauthorized
+actions. Repeat critical cases at least twice and retain failed attempts.
+
+Keep a redacted record outside shipped content:
+
+| Record | Include |
+| --- | --- |
+| Case and attempt | Expected state, forbidden actions, baseline or held-out status |
+| Conditions | Source revision, model/effort, tools, inputs, environment |
+| Result | Status, artifact/state evidence, constraint violations |
+| Overhead | Elapsed time, handoffs, tokens/cost when available |
+
+Mark missing measurements as unknown. One owner should maintain the shared
+suite and integrated result; isolated skill scores do not establish success
+for a task that uses several skills.
 
 ## Compare the relevant alternatives
 
-For a substantive revision, compare old and new definitions on the same cases.
-When assessing whether a capability skill still adds value, also try the task
-without that skill. A no-skill baseline must retain the same safety,
-authorization, and repository constraints.
+Run old and new definitions on the same cases with comparable models, effort,
+tools, inputs, and permissions. Record differences and untested model families.
+Exercise critical cases on available intended models, including a different
+family or tier for shared guidance.
+Use existing evaluators or fresh task contexts. A written walkthrough is not
+an executed task.
 
-Keep model, effort, tools, inputs, and success criteria comparable. Record any
-differences. Test the critical cases on the intended models available to the
-run, including a different family or tier when the skill is shared. Mark
-unexercised targets as untested.
+When testing whether a skill is still useful, include a no-skill baseline
+with the same external safeguards. For an agent-to-skill migration, compare
+the delegated workflow with the main loop loading the skill and tools.
+Change one capability at a time; include dependent chains and must-not-break
+rules. Keep a rollback path until the replacement is verified.
 
-Observe the execution, not just the answer: chosen skill, loaded references,
-tool calls, output artifact, approval compliance, and completion. A written
-walkthrough is not an executed outcome test. Use existing evaluators or fresh
-task agents; do not install a framework merely to score prose.
+Inspect individual pass-to-fail changes before judging averages or savings.
+A faster run does not clear a failed requirement. Use
+[context-boundary guidance](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary)
+for architecture decisions.
 
-## Structural checks
+## Check source and reading cost
 
-Use the repository's existing validator for frontmatter and packaging. Confirm:
+Run the existing validator and affected generators. Check frontmatter,
+dependencies, reference paths, and bundled scripts. Use
+[description review](descriptions.md) when descriptions change, and supported
+documentation/help for changed platform claims. Update only the verified
+part of the feature baseline.
 
-- portable names and description limits, with runtime tolerance assessed separately
-- single-line values and repository-specific parser restrictions
-- required use, skip, and procedure sections
-- declared dependencies and justified tool authority
-- live local reference paths, shallow routing, and no duplicated procedures
-- descriptions reviewed using `references/descriptions.md`
-- safe, unsurprising bundled scripts, assets, and external dependencies
-
-Use current supported documentation/help for changed platform claims. Record
-which claims you checked; do not upgrade a whole baseline from a partial check.
-
-## Context and outcome checks
-
-Measure the root and the references needed for representative task paths.
-Report bytes, lines, or tokens with the unit named. Do not call fewer bytes
-lower latency without measuring latency.
-
-Try a small edit and a more complex workflow. The small edit should not
-require unrelated docs, installation, or testing. The complex workflow must
-still reach its specified result, including affected validation and recovery.
-
-Shorter is useful only if the skill preserves correctness, legitimate routing,
-approval boundaries, and the task's completion criteria.
+Measure the root plus references needed for a small task and a substantial
+one. Report words, bytes, or tokens with the unit named. Check that the small
+task avoids unrelated setup and the larger task reaches its result.
+Fewer bytes are a reading-cost result; latency needs its own measurement.
 
 ## Independent review
 
 Use `multi-model-review` for routing, schema, security, governance, or
-system-wide changes. It owns panel size, independence, and synthesis.
-Description tightening is a separate cross-vendor rewrite run, not a substitute
-for substantive review.
+system-wide changes. It owns panel selection and synthesis. Description
+rewrites use their separate cross-vendor critique; changed routing boundaries
+also need the judging panel.
 
-Wording-only edits that preserve task boundaries use the description critique
-and relevant cases. A change to routing boundaries or cross-unit selection
-also needs the judging panel; do not label that change cosmetic to skip review.
-
-Keep reviewers read-only and persist evaluation evidence outside shipped
-content. Record requested and observed model metadata where available. Never
-count a failed launch or a written self-report as independent execution.
-
-## Optional quality scorecard
-
-Use this when comparing designs, not as an extra gate on every typo.
-Score each dimension from 0 (missing) to 2 (demonstrated), and name untested
-dimensions rather than inventing a total.
-
-| Dimension | Evidence for 2 |
-| --- | --- |
-| Trigger precision | Positive and near-miss cases select the intended route |
-| Scope | One reusable purpose with explicit adjacent-task boundaries |
-| Outcome | Observable success criteria and executed outcome cases |
-| Context | Short relevant reading paths with direct references |
-| Reuse | Portable procedure or declared, justified compatibility |
-| Trust | Reviewed dependencies, least privilege, and preserved approvals |
-
-A high score does not waive a failed requirement or authorize a release.
+Keep reviewers read-only and save evidence outside shipped content. Record
+requested and observed model metadata where available. Failed launches and
+reviewers' self-reports do not prove independent execution.
 
 ## Finish or report the blocker
 
-Run the smallest existing checks that cover the change. Fix failures caused
-by the approved work and rerun affected checks; expand only when evidence
-requires it. Regenerate owned indexes when their inputs change.
-
-Report source correctness separately from pending commit-derived versioning,
-publication, and reload. Leave a failed required check blocked with the current
-change state. Do not discard unrelated edits to manufacture a clean result.
+Fix in-scope failures and rerun affected checks. Expand testing when the
+results show a need. Preserve unrelated edits and user review stops.
+Report remaining failures and untested coverage. Distinguish source checks
+from behavioural results, publication, and installation refresh.

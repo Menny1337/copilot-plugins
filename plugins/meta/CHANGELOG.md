@@ -3,6 +3,12 @@
 All notable changes to the `meta` plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.17.2] - 2026-10-27
+
+_patch release._
+
+- docs(meta): verify task outcomes and evaluate context boundaries
+
 ## [1.17.1] - 2026-10-26
 
 _patch release._

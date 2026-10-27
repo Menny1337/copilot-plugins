@@ -12,88 +12,71 @@ Read only the sections relevant to the units under review.
 
 ## Common checks
 
-Use the existing repository validator first. Check frontmatter, manifest
-agreement, referenced files, and generated documentation for the scoped units.
-Classify a reproducible contract violation as a verified defect, while
-separating repository governance from the host's runtime acceptance.
+Run the existing repository validator for scoped units. Check frontmatter,
+manifest agreement, references, and generated documentation. A reproducible
+contract violation is a verified defect; distinguish repository governance
+from host acceptance.
 
-Use `cli-feature-baseline.md` for versioned fields and semantics, and the
-matching authoring skill for implementation guidance. Do not maintain another
-hard-coded platform schema in this checklist. Unknown or disputed fields need
-evidence from the intended host, not removal based on an old list.
+Use [the feature baseline](cli-feature-baseline.md) for versioned syntax and
+semantics, and the matching authoring skill for repairs. Resolve disputed fields
+with target-host evidence before removing them.
 
-Scope and permission checks apply to inspection too. Do not read private
-memory, logs, or configuration merely because an example mentions their path.
+Inspection also requires permission. Example paths do not authorize reading
+private memory, logs, or configuration.
 
 ## Agents
 
-Assess these properties:
+Check:
 
-- one clear role with a task boundary
-- short, conditional routes to available skills
-- ownership and explicit normal, approval-required, and forbidden actions
-- justified tool authority and preserved compatibility exceptions
-- no reusable procedure duplicated from a skill
-- description consistent with tools, permissions, and actual capabilities
-- observable completion and appropriate handoffs
-- authorized memory duties where applicable
+- one bounded role, owned artifacts, observable completion, and handoffs
+- conditional routes to available skills
+- normal, approval-required, and forbidden actions; justified tool authority
+- description consistent with permissions and actual capabilities
+- preserved tested compatibility exceptions and authorized memory duties
+- reusable procedures owned by skills, except where an agent-only host needs them
 
-For frontmatter, check required description, filename/name conventions,
-single-line repository syntax, and supported attributes against the baseline's
-agent section. Include version-specific fields such as `model-policy` when
-the target supports them. Do not restrict tool entries to aliases when the
-host also supports namespaced tools.
+Check required description, filename/name conventions, scalar-only single-line
+repository syntax, and supported attributes against
+[agent frontmatter](cli-feature-baseline.md#agent-frontmatter). Retain supported
+namespaced tool entries and version-specific fields such as `model-policy`.
+Inspect `skills:` for deliberate eager loading and clear selection; roster size
+alone does not prove a defect.
 
-Check `skills:` for deliberate eager loading. A long roster is not itself a
-defect; ambiguous selection or needless loading is. In agent-only hosts,
-necessary commands in the body are valid; in skill-backed hosts, reusable
-procedures should have one owner.
-
-Use positive, near-miss, and executed outcome cases for substantive routing or
-boundary changes. A description rewrite is not evidence that the agent loads.
+For boundary changes, use
+[context guidance](../../agent-crafting/references/advanced-topics.md#choose-the-context-boundary).
+Repeated handoffs, planner-only hops, or procedures already owned by skills
+suggest candidates for measurement, not proven defects. Preserve independent
+verification. Routine edits need not re-justify existing architecture.
 
 ## Skills
 
-Check purpose and routing:
+Check:
 
-- the description names the task rather than an entire adjacent domain
-- use/skip sections clarify the boundary without repeating keyword lists
-- neighbouring skills do not compete for the same task without a distinction
+- description names a specific task; use/skip/procedure sections distinguish
+  neighbouring skills without repeated keyword lists
 - procedure and outputs match the advertised capability
-- dependencies are absent or declared and justified
+- required name/description and frontmatter meet host and repository restrictions
+- dependencies are declared and justified when present
+- scripts, assets, dependencies, and external URLs stay within the task's trust scope
+- no hidden persona or missing workflow supplied only by an agent body
+- references resolve; important conditional resources have direct root links
+- common rules stay in the root; workflow details load when needed
+- examples teach decisions; fragile interfaces retain exact commands
+- completion covers the actual artifact and relevant recovery
 
-Check structure and trust:
-
-- required name/description and use/skip/procedure sections
-- frontmatter follows the intended host and repository restrictions
-- scripts, assets, dependencies, and external URLs stay within the stated task
-- no hidden persona or reliance on an agent body for missing workflow steps
-- references resolve and important conditional resources have direct root links
-
-For portable authoring, enforce the specification's name form and folder
-match. For third-party runtime review, consult the baseline's recorded
-tolerance and verify loading separately. A mismatch is not automatically a
-proven trigger failure.
-
-Check context and outcomes:
-
-- common rules stay in the root; unrelated workflow detail loads conditionally
-- root length under 500 lines does not substitute for measuring a reading path
-- examples teach a needed decision rather than an arbitrary sequence
-- exact commands remain where the interface is fragile
-- completion criteria include the actual artifact and relevant recovery
-- new/substantive changes have positive, near-miss, baseline, and held-out cases
-
-Use `skill-crafting` for edits and its evaluation reference for model and
-baseline comparisons. A no-skill baseline retains all external safeguards.
+For portable authoring, enforce specification naming and folder matching. For
+third-party reviews, consult [recorded runtime tolerance](cli-feature-baseline.md#skill-frontmatter)
+and verify loading separately; a naming mismatch alone does not prove trigger
+failure. A root under 500 lines still needs reading-path measurement. Use
+`skill-crafting` for repairs.
 
 ## Hooks
 
-Invoke `hooks-crafting` when authoring a repair. Use its event reference and
-the feature baseline for the target host's event names, payloads, decision
-schemas, supported types, and exit-code behaviour.
+Use `hooks-crafting` for repairs and its event reference plus
+[hook semantics](cli-feature-baseline.md#hook-semantics-that-changed) for host
+payloads, decisions, types, and exit behaviour.
 
-Check these source properties:
+Check:
 
 - valid version, hook container, event names, and handler types
 - required fields supported by the host and the repository validator
@@ -104,26 +87,29 @@ Check these source properties:
 - secrets are not exposed through output, logs, or broad environment forwarding
 - payloads are parsed, validated, and quoted rather than interpolated into commands
 
-Exercise the relevant success, denial, error, and timeout paths using synthetic
-payloads where possible. Check the exact event's failure behaviour; do not
-assume every hook fails open or that a timeout behaves like a process error.
-Verify stdout and exit status, not merely that a script ran.
+Exercise relevant success, denial, error, and timeout paths with synthetic
+payloads where possible. Verify stdout and exit status against the exact event;
+failures do not universally fail open, and timeouts can differ from process errors.
 
-Hooks do not replace the host's security boundary. Permission-granting
-responses, HTTPS requirements, and allowed environment variables deserve
-explicit inspection. Do not trigger live integrations as an audit side effect.
+Inspect permission-granting responses, HTTPS requirements, and allowed environment
+variables. Hooks do not replace host security. Do not trigger live integrations
+as an audit side effect.
 
 ## Instructions and completion
 
-Inspect always-loaded instructions alongside the scoped definitions:
+Inspect scoped, always-loaded instructions alongside definitions:
 
 - use task-specific documentation pointers rather than mandatory full-repo reading
 - keep non-obvious domain facts and remove duplicate procedure copies
 - let routine in-scope work finish without artificial first-draft stops
 - retain requested review stops, approval tiers, and access restrictions
 - run affected checks, expanding only when failures or coupling require it
-- evaluate model-specific changes on intended targets; state coverage limits
+- keep authority and trust boundaries when removing or moving instructions
 
-Do not treat fewer rules as inherently better. For each proposed cut, explain
-what requirement remains, who owns it, or which evidence shows it is no longer
-needed.
+Use the shared [outcome contract](../../skill-crafting/references/evaluation.md#verify-task-completion)
+for substantive changes: routing and loading checks alone do not prove completion.
+It owns baseline/held-out cases, model coverage, integrated results, and readbacks.
+Comparisons retain external safeguards.
+
+For each cut, identify the surviving requirement, its owner, or evidence that it
+is no longer needed. Fewer instructions alone do not establish improvement.
