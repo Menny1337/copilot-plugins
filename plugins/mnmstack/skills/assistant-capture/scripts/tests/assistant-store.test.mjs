@@ -9,11 +9,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, utimesSync, statSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, utimesSync, statSync, symlinkSync, lstatSync, realpathSync } from 'node:fs';
 import { tmpdir, hostname, platform } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   StoreError, resolveStoreDir, acquireLock, withLock, storePaths,
@@ -85,6 +85,103 @@ test('regression (defect 1): the script is directly executable (mode 0755, corre
     assert.ok(existsSync(join(store, 'tasks.md')));
   } finally {
     rmSync(store, { recursive: true, force: true });
+  }
+});
+
+function assertHelp(res) {
+  assert.ifError(res.error);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stderr, '');
+  assert.notEqual(res.stdout.trim(), '', 'CLI must emit the help envelope, not silently exit');
+  const out = JSON.parse(res.stdout);
+  assert.match(out.opId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.deepEqual(out, {
+    ok: true, op: 'help', opId: out.opId, changedPaths: [],
+    result: { usage: 'assistant-store <init|create-note|task|reminder|import> ...  (see file header for full usage)' },
+    error: null,
+  });
+  assert.equal(res.stdout, `${JSON.stringify(out)}\n`, 'exactly one JSON line');
+}
+
+test('entrypoint: generated executable symlink emits help and persists a synthetic task', { skip: platform() === 'win32' }, () => {
+  const fixture = makeStore();
+  const home = join(fixture, 'home');
+  const store = join(fixture, 'store');
+  const env = {
+    ...process.env, HOME: home, COPILOT_HOME: join(home, '.copilot'),
+    COPILOT_CACHE_HOME: join(home, 'cache'), XDG_CACHE_HOME: join(home, '.cache'),
+    COPILOT_PLUGIN_ASSISTANT_STORE: store,
+  };
+  try {
+    const hook = fileURLToPath(new URL('../../../../hooks/link-commands.sh', import.meta.url));
+    const linked = spawnSync('/bin/bash', [hook], { encoding: 'utf8', env });
+    assert.ifError(linked.error);
+    assert.equal(linked.status, 0, linked.stderr);
+    const command = join(home, '.local', 'bin', 'assistant-store');
+    assert.ok(lstatSync(command).isSymbolicLink());
+    assert.equal(realpathSync(command), realpathSync(SCRIPT));
+    assertHelp(spawnSync(command, ['--help'], { encoding: 'utf8', env }));
+    assert.equal(existsSync(store), false, 'help must not initialize a store');
+
+    const added = spawnSync(command, ['--store', store, 'task', 'add', '--title', 'Synthetic symlink task'], { encoding: 'utf8', env });
+    assert.ifError(added.error);
+    assert.equal(added.status, 0, added.stderr);
+    assert.equal(added.stderr, '');
+    const out = JSON.parse(added.stdout);
+    assert.equal(out.ok, true);
+    assert.equal(out.op, 'task.add');
+    assert.deepEqual(out.changedPaths, [join(store, 'tasks.md')]);
+    const tasks = readFileSync(join(store, 'tasks.md'), 'utf8');
+    validateTasksMd(tasks);
+    const row = tasks.split('\n').find(line => line.includes('Synthetic symlink task'));
+    assert.equal(parseTaskLine(row).title, 'Synthetic symlink task');
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('entrypoint: direct Node, executable and symlink invocation handle URL-encoded paths', { skip: platform() === 'win32' }, () => {
+  const fixture = makeStore();
+  try {
+    const directory = join(fixture, 'plugin space # % ü');
+    mkdirSync(directory);
+    const script = join(directory, 'assistant store # %.mjs');
+    const command = join(directory, 'assistant-store');
+    copyFileSync(SCRIPT, script);
+    symlinkSync(script, command);
+    const env = { ...process.env, HOME: join(fixture, 'home'), COPILOT_PLUGIN_ASSISTANT_STORE: join(fixture, 'store') };
+    for (const [file, args] of [
+      [process.execPath, [script, '--help']],
+      [script, ['--help']],
+      [command, ['--help']],
+    ]) assertHelp(spawnSync(file, args, { encoding: 'utf8', env }));
+    assert.equal(existsSync(env.COPILOT_PLUGIN_ASSISTANT_STORE), false);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('entrypoint: importing exports does not execute the CLI with or without an entry script', () => {
+  const fixture = makeStore();
+  try {
+    const store = join(fixture, 'store');
+    const runner = join(fixture, 'importer.mjs');
+    const source = `import { run } from ${JSON.stringify(pathToFileURL(SCRIPT).href)};\nif (typeof run !== 'function') throw new Error('missing export');\nprocess.stdout.write('import-only\\n');\n`;
+    writeFileSync(runner, source);
+    const env = { ...process.env, HOME: join(fixture, 'home'), COPILOT_PLUGIN_ASSISTANT_STORE: store };
+    for (const args of [
+      [runner, '--store', store, 'init'],
+      ['--input-type=module', '--eval', source],
+    ]) {
+      const res = spawnSync(process.execPath, args, { encoding: 'utf8', env });
+      assert.ifError(res.error);
+      assert.equal(res.status, 0, res.stderr);
+      assert.equal(res.stderr, '');
+      assert.equal(res.stdout, 'import-only\n');
+      assert.equal(existsSync(store), false, 'import must not initialize a store or run main');
+    }
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
   }
 });
 

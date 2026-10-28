@@ -1,6 +1,6 @@
 {
   "name": "mnmstack",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.",
   "hooks": "hooks/hooks.json"
 }

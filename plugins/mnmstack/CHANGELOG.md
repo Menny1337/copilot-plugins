@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.3] - 2026-10-28
+
+_patch release._
+
+- fix(assistant-store): run CLI through generated symlinks
+
 ## [1.0.2] - 2026-10-27
 
 _patch release._

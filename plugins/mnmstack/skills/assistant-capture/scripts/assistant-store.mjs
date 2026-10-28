@@ -55,12 +55,13 @@
 
 import {
   mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, statSync,
-  openSync, closeSync, writeSync, fsyncSync, renameSync, readdirSync,
+  openSync, closeSync, writeSync, fsyncSync, renameSync, readdirSync, realpathSync,
 } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
 // ── Errors ───────────────────────────────────────────────────────────────
 
@@ -951,7 +952,9 @@ function main() {
   }
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// Startup links this script onto PATH; compare resolved paths, not the symlink spelling.
+const isMain = process.argv[1]
+  && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 if (isMain) main();
 
 export {
