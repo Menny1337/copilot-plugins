@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.1] - 2026-11-03
+
+_patch release._
+
+- fix(publish-html): refine manager sorting and sticky details
+
 ## [1.1.0] - 2026-11-03
 
 _minor release._

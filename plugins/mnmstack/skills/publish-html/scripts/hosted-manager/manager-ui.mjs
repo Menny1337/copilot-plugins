@@ -1,10 +1,21 @@
 import { readResponse, responseFailure, transportFailure, uncertainFailure, ClientError, thumbnailUrl, sameThumbnail } from './client-protocol.mjs';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,249}\.html$/;
-export function visiblePages(pages, query, sort) {
-  return pages.filter(page => page.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) =>
-    sort === 'size' ? b.size - a.size : sort === 'modified' ?
-      (Date.parse(b.modifiedAt) || 0) - (Date.parse(a.modifiedAt) || 0) : a.name.localeCompare(b.name));
+const modifiedTime = value => typeof value === 'string' && value.trim() ? Date.parse(value) : NaN;
+const compareNames = (a, b) => {
+  const left = a.name.toLowerCase(), right = b.name.toLowerCase();
+  return left < right ? -1 : left > right ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+};
+export function visiblePages(pages, query, sort = 'modified', direction = sort === 'name' ? 'ascending' : 'descending') {
+  const sign = direction === 'ascending' ? 1 : -1;
+  return pages.filter(page => page.name.toLowerCase().includes(query.trim().toLowerCase())).sort((a, b) => {
+    if (sort === 'name') return sign * compareNames(a, b);
+    const left = sort === 'size' ? a.size : modifiedTime(a.modifiedAt);
+    const right = sort === 'size' ? b.size : modifiedTime(b.modifiedAt);
+    const leftKnown = Number.isFinite(left), rightKnown = Number.isFinite(right);
+    if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+    return (leftKnown ? sign * (left - right) : 0) || compareNames(a, b);
+  });
 }
 export function mutationRequest(action, name, inventory, { htmlBase64 = null, backup = null } = {}) {
   if (!NAME.test(name) || !inventory.mutationsEnabled) throw new Error('Invalid filename or mutations are disabled.');
@@ -36,9 +47,11 @@ export async function verifyResult(request, result, expectedThumbnail = undefine
 if (typeof document !== 'undefined') {
   const $ = id => document.getElementById(id);
   const date = value => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Unknown';
-  const size = value => `${(value / 1024).toFixed(1)} KiB`;
+  const size = value => !Number.isFinite(value) || value < 0 ? 'Unknown' :
+    value < 1024 ? `${value} B` : value < 1024 * 1024 ? `${(value / 1024).toFixed(1)} KiB` : `${(value / (1024 * 1024)).toFixed(1)} MiB`;
   const node = (tag, text) => { const result = document.createElement(tag); if (text !== undefined) result.textContent = text; return result; };
   let inventory = null, busy = false, fresh = false, pending = null, pendingThumbnail = null, selectedName = null, selectedBackupId = null, lastKnown = null, returnFocus = null;
+  let sortKey = 'modified', sortDirection = 'descending';
   const status = (text, error = false) => { $('status').textContent = text; $('status').className = error ? 'status error' : 'status'; };
   const canMutate = () => !busy && fresh && inventory?.mutationsEnabled === true;
   const pageButtons = new Map(), backupButtons = new Map();
@@ -108,6 +121,11 @@ if (typeof document !== 'undefined') {
   }
   function button(label, work, mutation = false) {
     const result = node('button', label); result.disabled = mutation ? !canMutate() : busy;
+    if (mutation) {
+      result.setAttribute('aria-describedby', 'read-only');
+      if (result.disabled) result.title = !fresh ? 'Refresh inventory before making a change.' :
+        busy ? 'Wait for the current operation.' : 'Hosted mutations are disabled pending approved activation.';
+    }
     result.addEventListener('click', () => { if (!result.disabled) { try { work(result); } catch (error) { status(error.message, true); } } });
     return result;
   }
@@ -188,7 +206,18 @@ if (typeof document !== 'undefined') {
   }
   function render() {
     $('pages').replaceChildren(); pageButtons.clear();
-    const pages = visiblePages(inventory?.pages ?? [], $('search').value, $('sort').value);
+    const pages = visiblePages(inventory?.pages ?? [], $('search').value, sortKey, sortDirection);
+    const labels = { name: 'Filename', modified: 'Modified', size: 'Size' };
+    for (const key of Object.keys(labels)) {
+      const active = sortKey === key;
+      $('heading-' + key).setAttribute('aria-sort', active ? sortDirection : 'none');
+      const control = $('sort-' + key);
+      control.textContent = labels[key];
+      const indicator = node('span', active ? sortDirection === 'ascending' ? ' ↑' : ' ↓' : ' ↕');
+      indicator.setAttribute('aria-hidden', 'true'); control.append(indicator);
+      const next = active ? sortDirection === 'ascending' ? 'descending' : 'ascending' : key === 'name' ? 'ascending' : 'descending';
+      control.setAttribute('aria-label', `${labels[key]}, sort ${next}`);
+    }
     for (const page of pages) {
       const row = node('tr'), name = node('td'), cell = node('div'); cell.className = 'page-cell';
       row.className = page.name === selectedName ? 'selected' : '';
@@ -204,9 +233,26 @@ if (typeof document !== 'undefined') {
       const remove = button('Delete', trigger => review('delete', page.name, trigger), true); remove.className = 'danger';
       remove.setAttribute('aria-label', `Delete ${page.name}`);
       wrap.append(link, remove); actions.append(wrap);
-      row.append(name, node('td', date(page.modifiedAt)), node('td', size(page.size)), actions); $('pages').append(row);
+      const modified = node('td'); modified.className = 'modified-cell';
+      if (Number.isFinite(modifiedTime(page.modifiedAt))) {
+        const time = node('time', new Date(page.modifiedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }));
+        time.setAttribute('datetime', page.modifiedAt); time.title = date(page.modifiedAt);
+        const clock = node('span', new Date(page.modifiedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }));
+        clock.className = 'time-of-day'; time.append(clock); modified.append(time);
+      } else modified.textContent = 'Unknown';
+      const bytes = node('td', size(page.size)); bytes.className = 'size-cell';
+      if (Number.isFinite(page.size)) bytes.title = `${page.size.toLocaleString()} bytes`;
+      row.append(name, modified, bytes, actions); $('pages').append(row);
     }
-    $('summary').textContent = inventory ? `${inventory.pages.length} HTML pages` : 'Inventory unavailable';
+    $('summary').textContent = inventory ? `${pages.length} of ${inventory.pages.length} HTML pages` : 'Inventory unavailable';
+    const order = sortKey === 'modified' ? sortDirection === 'descending' ? 'newest first' : 'oldest first' :
+      sortKey === 'size' ? sortDirection === 'descending' ? 'largest first' : 'smallest first' :
+        sortDirection === 'ascending' ? 'A-Z' : 'Z-A';
+    const unknownDates = pages.filter(page => !Number.isFinite(modifiedTime(page.modifiedAt))).length;
+    $('view-status').textContent = `${labels[sortKey]}: ${order}.` +
+      (sortKey === 'modified' && unknownDates ? ` ${unknownDates} unknown date${unknownDates === 1 ? '' : 's'} last.` : '') +
+      (selectedName && !pages.some(page => page.name === selectedName) ? ' Selected page is not in this view; its details remain available.' : '');
+    $('clear-search').hidden = !$('search').value;
     $('read-only').textContent = inventory && (!fresh || !inventory.mutationsEnabled) ?
       !fresh ? 'Displayed inventory is last-known only. Refresh before another change.' : 'Read-only. Hosted mutations are disabled pending approved activation.' : '';
     $('empty').textContent = inventory ? pages.length ? '' : 'No matching HTML pages.' : 'Inventory unavailable. Refresh before any action.';
@@ -218,7 +264,7 @@ if (typeof document !== 'undefined') {
         !result.access || !Array.isArray(result.access.allowedGroupIds) || result.origin !== location.origin) throw new Error('Invalid inventory response.');
     for (const version of [...result.pages, ...result.backups]) thumbnailUrl(version);
     inventory = result; fresh = true;
-    if (!selectedName) selectedName = result.pages[0]?.name ?? result.backups[0]?.name ?? null;
+    if (!selectedName) selectedName = visiblePages(result.pages, '', sortKey, sortDirection)[0]?.name ?? result.backups[0]?.name ?? null;
     const current = result.pages.find(page => page.name === selectedName);
     if (current) lastKnown = current;
     fields($('policy'), [['Tenant', result.access.tenantId], ['Reader groups', result.access.allowedGroupIds.join(', ') || 'Unknown'],
@@ -235,7 +281,13 @@ if (typeof document !== 'undefined') {
     } finally { setBusy(false); }
   }
   $('refresh').addEventListener('click', refresh);
-  $('search').addEventListener('input', render); $('sort').addEventListener('change', render);
+  $('search').addEventListener('input', render);
+  $('clear-search').addEventListener('click', () => { $('search').value = ''; render(); $('search').focus(); });
+  for (const key of ['name', 'modified', 'size']) $('sort-' + key).addEventListener('click', () => {
+    sortDirection = sortKey === key ? sortDirection === 'ascending' ? 'descending' : 'ascending' :
+      key === 'name' ? 'ascending' : 'descending';
+    sortKey = key; render();
+  });
   $('backup-page').addEventListener('change', () => select($('backup-page').value));
   function dismiss() {
     pending = null; $('confirmation').close();
