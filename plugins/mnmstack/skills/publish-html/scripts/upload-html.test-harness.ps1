@@ -176,6 +176,9 @@ if ($Scenario -eq 'azure-wrapper') {
                 'overwrite-refusal' { $script:remote = $script:oldBytes }
                 'overwrite' { $script:remote = $script:oldBytes; $script:Overwrite = $true }
                 'deploy-failure' { $script:remote = $script:oldBytes; $script:Overwrite = $true }
+                'manager-active' { $script:settings += @{ name = 'HTML_MANAGER_MUTATIONS_ENABLED'; value = 'true' } }
+                'legacy-frozen' { $script:settings += @{ name = 'HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN'; value = 'true' } }
+                'manager-invalid' { $script:settings += @{ name = 'HTML_MANAGER_MUTATIONS_ENABLED'; value = 'invalid' } }
             }
             if ($Scenario -eq 'lock') {
                 $held = [IO.File]::Open("$Config.lock", 'OpenOrCreate', 'ReadWrite', 'None')
@@ -190,6 +193,7 @@ if ($Scenario -eq 'azure-wrapper') {
                 $script:web.scmIpSecurityRestrictions = @(@{ ipAddress = 'CorpNetPublic'; action = 'Allow'; tag = 'ServiceTag' })
                 Expect-Error { Invoke-Publisher } 'Unfinished upload'
                 $script:Recover = $true
+                $script:settings += @{ name = 'HTML_MANAGER_MUTATIONS_ENABLED'; value = 'true' }
                 Invoke-Publisher | Out-Null
                 Assert ($script:patches -eq 1) 'Recovery closes SCM only'
             } elseif ($Scenario -eq 'restore-failure') {
@@ -204,10 +208,13 @@ if ($Scenario -eq 'azure-wrapper') {
                     'drift' = 'drifted'; 'auth-drift' = 'drifted'; 'overwrite-refusal' = 'Destination exists'
                     'deploy-failure' = 'deployment failure'; 'hash-mismatch' = 'SHA-256'; 'read-failure' = 'read failure'
                     'open-failure' = 'opening failure'
+                    'manager-active' = 'Hosted manager mutations are enabled.*Use the reviewed own-API'
+                    'legacy-frozen' = 'Publishing is paused.*hosted mutations are not enabled'
+                    'manager-invalid' = 'Publishing is paused because cutover flags are invalid'
                 }
                 if ($expectedError.ContainsKey($Scenario)) { Expect-Error { Invoke-Publisher } $expectedError[$Scenario] }
                 else { $publisherOutput = @(Invoke-Publisher) }
-                if ($Scenario -in @('drift', 'auth-drift')) {
+                if ($Scenario -in @('drift', 'auth-drift', 'manager-active', 'legacy-frozen', 'manager-invalid')) {
                     Assert ($script:patches -eq 0 -and $script:deploys -eq 0) 'Drift refused without writes'
                 } else {
                     Assert ($script:patches -eq 2) 'SCM restored on success and failure'

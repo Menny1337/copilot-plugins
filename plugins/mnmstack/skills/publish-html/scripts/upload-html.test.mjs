@@ -7,14 +7,14 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 const infra = path.dirname(fileURLToPath(import.meta.url));
-const root = mkdtempSync(path.join(homedir(), '.publish-html-tests-'));
+const root = mkdtempSync(path.join(process.env.PUBLISH_HTML_TEST_ARTIFACT_DIR ?? homedir(), '.publish-html-tests-'));
 test.after(() => rmSync(root, { recursive: true, force: true }));
 
 for (const scenario of [
   'azure-wrapper', 'missing-config', 'validation', 'init', 'unsafe-host', 'unsafe-auth', 'unsafe-readers',
   'basic-auth', 'upload', 'overwrite-refusal', 'overwrite', 'drift', 'auth-drift',
   'open-failure', 'read-failure', 'deploy-failure', 'hash-mismatch', 'restore-failure',
-  'recovery', 'lock',
+  'recovery', 'lock', 'manager-active', 'legacy-frozen', 'manager-invalid',
 ]) {
   test(`uploader: ${scenario}`, () => {
     const work = path.join(root, scenario);
