@@ -99,7 +99,21 @@ function Get-ApprovedPolicy {
     if ($basic.allow -cne $false) { throw 'SCM basic publishing must already be disabled; this helper only permits Entra deployment authentication.' }
     $settings = Invoke-Azure @('webapp', 'config', 'appsettings', 'list', '--resource-group', $script:Publisher.resourceGroup,
         '--name', $script:Publisher.appName, '--query',
-        "[?name=='TENANT_ID' || name=='ALLOWED_GROUP_IDS' || name=='OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID']", '--output', 'json')
+        "[?name=='TENANT_ID' || name=='ALLOWED_GROUP_IDS' || name=='OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID' || name=='HTML_MANAGER_MUTATIONS_ENABLED' || name=='HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN']", '--output', 'json')
+    $cutover = @{}
+    foreach ($key in @('HTML_MANAGER_MUTATIONS_ENABLED', 'HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN')) {
+        $values = @($settings | Where-Object name -CEQ $key)
+        if ($values.Count -gt 1 -or ($values.Count -eq 1 -and $values[0].value -cnotin @('true', 'false'))) {
+            throw 'Publishing is paused because cutover flags are invalid. Ask the host owner to inspect activation; do not use Kudu or assume own-API publishing is enabled.'
+        }
+        $cutover[$key] = $values.Count -eq 1 -and $values[0].value -ceq 'true'
+    }
+    if ($cutover.HTML_MANAGER_MUTATIONS_ENABLED) {
+        throw 'Hosted manager mutations are enabled. Use the reviewed own-API publisher; no Kudu fallback is allowed.'
+    }
+    if ($cutover.HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN) {
+        throw 'Publishing is paused: legacy publishers are frozen and hosted mutations are not enabled. Wait for approved activation; no publisher fallback is allowed.'
+    }
     $tenant = @($settings | Where-Object name -eq 'TENANT_ID').value
     $groups = @((@($settings | Where-Object name -eq 'ALLOWED_GROUP_IDS').value -split ',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Sort-Object)
     $identity = @($settings | Where-Object name -eq 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID').value

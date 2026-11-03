@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.0] - 2026-11-03
+
+_minor release._
+
+- feat(publish-html): add hosted page manager and version-linked previews
+
 ## [1.0.3] - 2026-10-28
 
 _patch release._

@@ -1,8 +1,8 @@
 ---
 name: publish-html
-description: "Publishes and replaces trusted HTML reports on an existing entitlement-protected Azure host, returning a shareable link, with recovery for interrupted uploads."
-compatibility: "Windows, PowerShell 7.2+, standard Azure CLI MSI installation on PATH, corporate connectivity, Azure deployment permissions, and an approved host matching the bundled helper's access-policy contract."
-argument-hint: "<report.html> [replace|recover]"
+description: "Publishes, lists, replaces, deletes and restores trusted HTML reports on an existing entitlement-protected Azure host. Use for report publishing, hosted page management or interrupted-upload recovery, not application deployment."
+compatibility: "Legacy uploader: Windows, PowerShell 7.2+, standard Azure CLI MSI and approved host access. Hosted manager and own-API CLI: POSIX Node.js 24, Azure CLI and separately approved host deployment/OBO configuration."
+argument-hint: "<report.html> [list|replace|delete|restore|recover]"
 ---
 
 # Publish HTML
@@ -16,7 +16,7 @@ checkout, session, or installed-plugin path.
 
 ## When to use
 
-Use for publishing an existing HTML report, explicitly replacing a hosted
+Use for publishing or listing existing HTML reports, explicitly replacing or deleting a hosted
 report, restoring its backup, or closing deployment access after an
 interrupted upload.
 
@@ -39,7 +39,10 @@ interrupted upload.
 - Keep normal JavaScript enabled. Do not sanitize, rewrite, or add a sandbox.
   Same-origin scripts have application privileges, including access to
   authentication endpoints; only publish trusted first-party content.
-- Use `scripts/upload-html.ps1` for all routine uploads. Do not fall back to
+- Before hosted cutover, use `scripts/upload-html.ps1` for routine uploads.
+  After approved cutover, use the own-API publisher described in
+  [hosted-manager.md](references/hosted-manager.md), never a direct Kudu writer.
+  Do not fall back to
   publishing passwords, alternate endpoints, broader network access, or
   hand-written deployment commands when the helper refuses a request.
 - Preserve the tenant, identity, group allowlist, and corporate-only reader
@@ -51,10 +54,25 @@ interrupted upload.
   `-Overwrite` only when the user explicitly requested that replacement.
 - Coordinate one publisher per host. The helper's lock covers only processes
   using the same local config, not other machines or administrators.
+- A hosted manager requires a separate application deployment, verified OBO,
+  private durable storage and a freeze/migration of all legacy/manual writers.
+  It is not enabled by installing this skill or requesting a report upload.
+  Same-origin report JavaScript has the signed-in user's manager privileges.
 
 ## Procedure
 
 ### 1. Resolve the file and host
+
+For an already migrated hosted manager, read
+[hosted-manager.md](references/hosted-manager.md) and use its automated own-API
+protocol for upload, replacement, deletion or restore. Never start, deploy or
+activate the host application as part of a routine upload. The remaining steps
+describe the historical single-file helper while hosted mutations are disabled
+and legacy publishing is not frozen. Its `-Recover` remains valid after cutover.
+For an explicitly requested hosted thumbnail, follow that reference's
+publisher-only PNG capture/supply procedure. Review the real image and bind
+it to the exact HTML SHA-256; a requested image failure is not an HTML-only
+success. The browser manager has no upload or replace form.
 
 Identify the user-selected HTML file and whether this is a new upload,
 replacement, rollback, or recovery. Use the existing local config by default:
@@ -165,3 +183,5 @@ by its own organization's policy does not prove this app denied it.
 | `references/evaluations.json` | Routing and outcome evaluation cases |
 | `scripts/upload-html.test.mjs` | Offline helper scenarios, using the bundled PowerShell harness |
 | `scripts/upload-html.test-harness.ps1` | Mock Azure and Kudu operations for offline tests |
+| `scripts/hosted-manager/` | Generic hosted server, dashboard, own-API CLI and offline tests |
+| `references/hosted-manager.md` | Conditional manager protocol, configuration, migration and activation gates |

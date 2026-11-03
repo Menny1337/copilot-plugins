@@ -5,6 +5,16 @@ Use `scripts/upload-html.ps1` with an existing approved host. Resolve the path f
 This POC is supported on Windows with PowerShell 7.2 or later, the standard Azure CLI MSI installation on PATH, an Azure sign-in, corporate connectivity, and deployment permissions.
 Keep the config, recovery files and backups in a private local directory.
 
+This is the legacy publishing path. After a separately approved hosted-manager
+cutover, use [hosted-manager.md](hosted-manager.md) and its own-API CLI.
+`HTML_MANAGER_MUTATIONS_ENABLED=true` or
+`HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN=true` makes this helper refuse publishing
+before it opens SCM. Freeze alone means publishing is paused; hosted own-API
+publishing is not yet enabled. Only an active hosted-mutations flag recommends
+the own-API publisher. Invalid cutover flags also pause publishing and fail closed. `-Recover` can still
+close SCM after cutover. Never run old/direct Kudu publishers concurrently with
+hosted mutations; the host-owner freeze/migration applies to all copies.
+
 ## Set up once
 
 Run this after the host owner approves its tenant, registration and group allowlist:
