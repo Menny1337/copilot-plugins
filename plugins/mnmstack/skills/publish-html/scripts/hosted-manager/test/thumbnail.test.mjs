@@ -5,12 +5,12 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { fork } from 'node:child_process';
 import { writeFile, readFile, rename, readdir, symlink, unlink, open } from 'node:fs/promises';
-import { PageStore } from './store.mjs';
-import { createServer } from './server.mjs';
-import { runPublisher } from './publish.mjs';
-import { readResponse } from './client-protocol.mjs';
-import { pngInfo, MAX_PNG } from './png.mjs';
-import { digest } from './common.mjs';
+import { PageStore } from '../store.mjs';
+import { createServer } from '../server.mjs';
+import { runPublisher } from '../publish.mjs';
+import { readResponse } from '../client-protocol.mjs';
+import { pngInfo, MAX_PNG } from '../png.mjs';
+import { digest } from '../common.mjs';
 import { fixture, manager, other, origin, html, png, thumbnail, request, principal, graphFetch } from './test-support.mjs';
 
 const page = async store => (await store.list()).pages[0];

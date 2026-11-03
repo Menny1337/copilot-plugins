@@ -371,7 +371,7 @@ From the repository root, set `PUBLISH_HTML_TEST_ARTIFACT_DIR` to an approved
 existing artifact directory outside the checkout, then run:
 
 ```text
-node --test plugins/mnmstack/skills/publish-html/scripts/hosted-manager/*.test.mjs plugins/mnmstack/skills/publish-html/scripts/upload-html.test.mjs
+node --test plugins/mnmstack/skills/publish-html/scripts/hosted-manager/test/*.test.mjs plugins/mnmstack/skills/publish-html/scripts/upload-html.test.mjs
 ```
 
 Tests use synthetic keys/users, injected auth transport, isolated private state,

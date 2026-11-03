@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readResponse, responseFailure, transportFailure, MAX_RESPONSE_BYTES } from './client-protocol.mjs';
+import { readResponse, responseFailure, transportFailure, MAX_RESPONSE_BYTES } from '../client-protocol.mjs';
 import { json } from './test-support.mjs';
 
 test('client preserves allowlisted definite denial codes with fixed non-secret remediation', () => {

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { authorize, verifyOwnApi, easyAuthIdentity } from './auth.mjs';
-import { loadConfig } from './config.mjs';
+import { authorize, verifyOwnApi, easyAuthIdentity } from '../auth.mjs';
+import { loadConfig } from '../config.mjs';
 import { configEnv, tenant, manager, group, client, cli, other, identity, principal, json, graphFetch } from './test-support.mjs';
 
 const config = loadConfig(configEnv('/synthetic'));

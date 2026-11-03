@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { azureToken, parseArgs, runPublisher } from './publish.mjs';
+import { azureToken, parseArgs, runPublisher } from '../publish.mjs';
 import { fixture, tenant, client, manager, origin, html, json } from './test-support.mjs';
-import { digest } from './common.mjs';
+import { digest } from '../common.mjs';
 
 test('CLI captures own-API scope token in memory, never token argv/files', async () => {
   let invocation;

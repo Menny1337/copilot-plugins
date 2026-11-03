@@ -1,4 +1,4 @@
-import { PageStore } from './store.mjs';
+import { PageStore } from '../store.mjs';
 process.once('message', async ({ config, request, actor, pause }) => {
   try {
     const store = await new PageStore(config, {

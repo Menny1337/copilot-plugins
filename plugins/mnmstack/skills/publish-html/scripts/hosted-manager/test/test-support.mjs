@@ -1,10 +1,10 @@
 import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { loadConfig } from './config.mjs';
-import { PageStore } from './store.mjs';
+import { loadConfig } from '../config.mjs';
+import { PageStore } from '../store.mjs';
 import { deflateSync } from 'node:zlib';
-import { crc32 } from './png.mjs';
-import { digest } from './common.mjs';
+import { crc32 } from '../png.mjs';
+import { digest } from '../common.mjs';
 
 export const tenant = '11111111-1111-4111-8111-111111111111';
 export const manager = '22222222-2222-4222-8222-222222222222';

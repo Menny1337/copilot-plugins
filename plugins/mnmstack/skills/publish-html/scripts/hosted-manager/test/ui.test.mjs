@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
 import { readFile } from 'node:fs/promises';
 import { origin, html, json } from './test-support.mjs';
-import { digest } from './common.mjs';
-import { pngInfo } from './png.mjs';
+import { digest } from '../common.mjs';
+import { pngInfo } from '../png.mjs';
 import { png } from './test-support.mjs';
-import { verifyResult } from './manager-ui.mjs';
+import { verifyResult } from '../manager-ui.mjs';
 
 class Element {
   constructor(tag = 'div') { this.tag = tag; this.children = []; this.events = {}; this.value = ''; this.disabled = false; this.textContent = ''; this.attributes = {}; }
@@ -68,7 +68,7 @@ async function dom(t, changes = {}) {
     if (url.endsWith('inventory')) return json(state.inventory);
     return state.mutate(JSON.parse(options.body));
   };
-  await import(`./manager-ui.mjs?offline-dom=${serial++}`);
+  await import(`../manager-ui.mjs?offline-dom=${serial++}`);
   for (let i = 0; i < 5; i++) await setImmediate();
   const confirm = async (name = page.name) => { get('confirm-name').value = name; await get('confirm-name').fire('input'); await get('confirm').click(); };
   return { get, calls, state, confirm, posts: () => calls.filter(call => call.options.method === 'POST') };
@@ -275,8 +275,8 @@ test('real PNG elements bind current, selected backup, confirmation and restored
     sha256: backup.sha256, thumbnail: current.thumbnail }, backup.thumbnail), error => error.outcome === 'uncertain' && error.transactionId === id);
 });
 test('UI shell keeps compact accessible columns, expandable IDs, responsive rail and no publishing controls or report embedding', async () => {
-  const source = await readFile(new URL('./manager-ui.mjs', import.meta.url), 'utf8');
-  const ui = await readFile(new URL('./manager.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../manager-ui.mjs', import.meta.url), 'utf8');
+  const ui = await readFile(new URL('../manager.html', import.meta.url), 'utf8');
   assert.match(ui, /<th scope="col">Page<\/th><th scope="col">Modified<\/th><th scope="col">Size<\/th><th scope="col">Actions<\/th>/);
   assert.match(ui, /<details id="technical"/); assert.match(ui, /<details id="backup-technical"/);
   assert.match(ui, /@media\(max-width:800px\)/); assert.match(ui, /grid-template-columns:1fr/);

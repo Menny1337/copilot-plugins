@@ -4,12 +4,12 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createServer, contentName, MIME_TYPES } from './server.mjs';
+import { createServer, contentName, MIME_TYPES } from '../server.mjs';
 import { fixture, principal, graphFetch, other, html, png, request, origin } from './test-support.mjs';
-import { visiblePages, mutationRequest, pageUrl } from './manager-ui.mjs';
+import { visiblePages, mutationRequest, pageUrl } from '../manager-ui.mjs';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { runPublisher } from './publish.mjs';
-import { digest } from './common.mjs';
+import { runPublisher } from '../publish.mjs';
+import { digest } from '../common.mjs';
 import { tenant, manager, group, client, cli, json } from './test-support.mjs';
 
 async function host(t, overrides = {}, fetchImpl = graphFetch(), storeDependencies = {}) {
@@ -144,8 +144,8 @@ test('UI request helpers bind exact selected file/version and safe same-origin o
   assert.equal(pageUrl(origin, 'a.html', origin), origin + '/a.html');
 });
 test('manager source never executes/embeds remote HTML; metadata is text-only', async () => {
-  const source = await readFile(new URL('./manager-ui.mjs', import.meta.url), 'utf8');
-  const ui = await readFile(new URL('./manager.html', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../manager-ui.mjs', import.meta.url), 'utf8');
+  const ui = await readFile(new URL('../manager.html', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(/);
   assert.match(source, /textContent/);
   assert.match(source, /credentials: 'same-origin'/);

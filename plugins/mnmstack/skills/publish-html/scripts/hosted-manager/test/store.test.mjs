@@ -5,8 +5,8 @@ import { writeFile, readFile, mkdir, rename, readdir, symlink, link, chmod, lsta
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { PageStore } from './store.mjs';
-import { digest, MAX_HTML, syncDirectory } from './common.mjs';
+import { PageStore } from '../store.mjs';
+import { digest, MAX_HTML, syncDirectory } from '../common.mjs';
 import { fixture, manager, html, request } from './test-support.mjs';
 
 async function page(store) { return (await store.list()).pages[0]; }

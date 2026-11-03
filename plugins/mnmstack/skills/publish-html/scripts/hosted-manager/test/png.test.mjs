@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import path from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
-import { pngInfo, MAX_PNG, thumbnailInput, crc32 } from './png.mjs';
-import { thumbnailUrl, sameThumbnail } from './client-protocol.mjs';
+import { pngInfo, MAX_PNG, thumbnailInput, crc32 } from '../png.mjs';
+import { thumbnailUrl, sameThumbnail } from '../client-protocol.mjs';
 import { png, pngChunk, html, thumbnail, fixture } from './test-support.mjs';
-import { digest } from './common.mjs';
-import { parseRenderArgs, renderThumbnail } from './render-thumbnail.mjs';
+import { digest } from '../common.mjs';
+import { parseRenderArgs, renderThumbnail } from '../render-thumbnail.mjs';
 
 test('PNG parser validates signature, CRC, bounded dimensions, IDAT inflate/filter and terminal IEND', () => {
   const image = png();
