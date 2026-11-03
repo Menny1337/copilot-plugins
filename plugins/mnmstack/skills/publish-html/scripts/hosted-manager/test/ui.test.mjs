@@ -6,7 +6,7 @@ import { origin, html, json } from './test-support.mjs';
 import { digest } from '../common.mjs';
 import { pngInfo } from '../png.mjs';
 import { png } from './test-support.mjs';
-import { verifyResult } from '../manager-ui.mjs';
+import { verifyResult, visiblePages } from '../manager-ui.mjs';
 
 class Element {
   constructor(tag = 'div') { this.tag = tag; this.children = []; this.events = {}; this.value = ''; this.disabled = false; this.textContent = ''; this.attributes = {}; }
@@ -39,7 +39,6 @@ async function dom(t, changes = {}) {
   t.after(() => { for (const [key, value] of saved) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; } });
   const elements = new Map(), calls = [];
   const get = name => { if (!elements.has(name)) elements.set(name, new Element()); return elements.get(name); };
-  get('sort').value = 'name';
   const state = {
     inventory: { pages: [{ ...page }], backups: [backupA, backupB], missingVersions: {}, origin, mutationsEnabled: true,
       checkedAt: '2026-01-03', unmanagedEntries: 2,
@@ -80,6 +79,11 @@ test('compact DOM library has selection/search/sort, truthful detail fields and 
   assert.equal(Object.hasOwn(calls[0].options, 'referrerPolicy'), false);
   assert.equal(Object.hasOwn(calls[0].options, 'referrer'), false);
   assert.equal(get('pages').children.length, 2);
+  assert.equal(get('heading-modified').attributes['aria-sort'], 'descending');
+  assert.equal(button(get('pages'), second.name).attributes['aria-pressed'], 'true');
+  assert.match(text(get('pages').children[0]), /second.html/);
+  await button(get('pages'), page.name).click();
+  await get('sort-name').click();
   const row = get('pages').children[0];
   assert.equal(row.children.length, 4);
   assert.doesNotMatch(text(row), /SHA-256|Provenance|Version:/);
@@ -98,10 +102,60 @@ test('compact DOM library has selection/search/sort, truthful detail fields and 
   assert.match(text(get('page-details')), /second.html/);
   get('search').value = ''; await get('search').fire('input');
   for (const sort of ['modified', 'size']) {
-    get('sort').value = sort; await get('sort').fire('change');
+    await get('sort-' + sort).click();
     assert.match(text(get('pages').children[0]), /second.html/);
   }
   assert.doesNotMatch(text(get('pages')), /Replace|Upload/);
+});
+test('sorting is reversible and deterministic, with unknown dates always last and real epoch/older dates intact', () => {
+  const pages = [
+    { ...page, name: 'z.html', modifiedAt: null, size: 2 },
+    { ...page, name: 'b.html', modifiedAt: '1970-01-01T00:00:00Z', size: 1 },
+    { ...page, name: 'a.html', modifiedAt: '1970-01-01T00:00:00Z', size: 1 },
+    { ...page, name: 'old.html', modifiedAt: '1969-01-01T00:00:00Z', size: 0 },
+    { ...page, name: 'bad.html', modifiedAt: 'invalid', size: 3 },
+    { ...page, name: 'new.html', modifiedAt: '2026-01-01T00:00:00Z', size: 1024 },
+    { ...page, name: 'empty.html', modifiedAt: '', size: 3 },
+  ];
+  const names = (key, direction) => visiblePages(pages, '', key, direction).map(item => item.name);
+  assert.deepEqual(names('modified', 'descending'), ['new.html', 'a.html', 'b.html', 'old.html', 'bad.html', 'empty.html', 'z.html']);
+  assert.deepEqual(names('modified', 'ascending'), ['old.html', 'a.html', 'b.html', 'new.html', 'bad.html', 'empty.html', 'z.html']);
+  assert.deepEqual(names('size', 'ascending'), ['old.html', 'a.html', 'b.html', 'z.html', 'bad.html', 'empty.html', 'new.html']);
+  assert.deepEqual(names('size', 'descending'), ['new.html', 'bad.html', 'empty.html', 'z.html', 'a.html', 'b.html', 'old.html']);
+  assert.deepEqual(names('name', 'descending'), names('name', 'ascending').reverse());
+  assert.deepEqual(visiblePages([...pages].reverse(), '', 'modified').map(item => item.name), names('modified', 'descending'));
+  assert.equal(visiblePages(pages, '  NeW  ')[0].name, 'new.html');
+  assert.equal(pages[0].name, 'z.html');
+});
+test('header buttons expose direction and preserve selected detail, backup and search context', async t => {
+  const second = { ...page, name: 'second.html', modifiedAt: null, size: 1048576 };
+  const { get, posts } = await dom(t, { pages: [second, page], mutationsEnabled: false });
+  assert.equal(get('summary').textContent, '2 of 2 HTML pages');
+  assert.match(get('view-status').textContent, /newest first.*1 unknown date last/);
+  assert.equal(button(get('pages'), page.name).attributes['aria-pressed'], 'true');
+  await button(get('backups'), 'Backup 2').click();
+  for (const key of ['name', 'modified', 'size']) {
+    await get('sort-' + key).click();
+    assert.equal(get('heading-' + key).attributes['aria-sort'], key === 'name' ? 'ascending' : 'descending');
+    await get('sort-' + key).click();
+    assert.equal(get('heading-' + key).attributes['aria-sort'], key === 'name' ? 'descending' : 'ascending');
+    assert.match(get('detail-title').textContent, /Selected backup/);
+    assert.match(text(get('technical-fields')), new RegExp(backupB.sha256));
+    for (const other of ['name', 'modified', 'size'].filter(item => item !== key)) assert.equal(get('heading-' + other).attributes['aria-sort'], 'none');
+  }
+  assert.match(text(get('pages')), /1.0 MiB/);
+  get('search').value = 'second'; await get('search').fire('input');
+  assert.equal(get('summary').textContent, '1 of 2 HTML pages');
+  assert.match(get('view-status').textContent, /Selected page is not in this view/);
+  assert.equal(get('clear-search').hidden, false);
+  await get('clear-search').click();
+  assert.equal(get('search').value, '');
+  assert.equal(get('search').focused, true);
+  assert.equal(get('clear-search').hidden, true);
+  assert.equal(button(get('pages'), page.name).attributes['aria-pressed'], 'true');
+  assert.equal(button(get('pages'), 'Delete').attributes['aria-describedby'], 'read-only');
+  assert.match(button(get('pages'), 'Delete').title, /mutations are disabled/);
+  assert.equal(posts().length, 0);
 });
 test('whole page rows select without intercepting Open or Delete controls', async t => {
   const second = { ...page, name: 'second.html' };
@@ -277,7 +331,12 @@ test('real PNG elements bind current, selected backup, confirmation and restored
 test('UI shell keeps compact accessible columns, expandable IDs, responsive rail and no publishing controls or report embedding', async () => {
   const source = await readFile(new URL('../manager-ui.mjs', import.meta.url), 'utf8');
   const ui = await readFile(new URL('../manager.html', import.meta.url), 'utf8');
-  assert.match(ui, /<th scope="col">Page<\/th><th scope="col">Modified<\/th><th scope="col">Size<\/th><th scope="col">Actions<\/th>/);
+  for (const key of ['name', 'modified', 'size']) assert.match(ui, new RegExp(`<th id="heading-${key}" scope="col" aria-sort="(?:none|descending)"><button id="sort-${key}"`));
+  assert.match(ui, /<th scope="col">Actions<\/th>/);
+  assert.match(ui, /aria-describedby="view-status"/);
+  assert.match(ui, /\.page-table-wrap\{overflow:visible\}/);
+  assert.match(ui, /\.detail-rail\{position:sticky;top:16px;align-self:start/);
+  assert.match(ui, /\.detail-rail\{position:static;max-height:none;overflow:visible/);
   assert.match(ui, /<details id="technical"/); assert.match(ui, /<details id="backup-technical"/);
   assert.match(ui, /@media\(max-width:800px\)/); assert.match(ui, /grid-template-columns:1fr/);
   assert.match(ui, /not resolved people or group names, per-page ACLs/);

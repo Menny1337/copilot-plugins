@@ -8,19 +8,43 @@
 @media(min-width:1600px){main{max-width:1800px;margin:auto}}@media(max-width:1100px){main{grid-template-columns:minmax(0,1.8fr) minmax(300px,1fr);padding:24px;gap:22px}.detail-rail{padding-left:22px}.page-cell{gap:12px}.preview{width:72px;height:44px}.actions{gap:12px}th,td{padding:12px 8px}.detail-heading{gap:12px}.detail-heading .preview{width:96px;height:54px}dl{grid-template-columns:100px minmax(0,1fr)}}@media(max-width:800px){main{grid-template-columns:1fr;padding:20px;gap:24px}.detail-rail{border-left:0;border-top:1px solid #d6d6da;padding:24px 0 0;margin-top:0}.footnote{margin-top:20px;padding-top:12px}.toolbar{flex-wrap:wrap;gap:10px}#refresh{margin-left:0}.search{max-width:none;flex-basis:100%}h1{font-size:34px}.inventory-line{display:block}.status{border-left:0;padding:8px 0 0}th,td{padding:12px 6px}.page-cell{gap:10px}.preview{width:62px;height:38px}.actions{gap:10px}.actions button{padding:6px 10px}.detail-heading .preview{width:128px;height:72px}dl{grid-template-columns:125px minmax(0,1fr)}}@media(max-width:420px){main{padding:16px}.page-cell{gap:8px}.page-cell .preview{display:none}.table-wrap table{font-size:12px}th{font-size:9px}.actions{gap:8px}.actions button{padding:6px 8px}.toolbar select{flex:1}dialog{padding:20px}}
 .preview:has(img){padding:0;background:#fff}.preview img{display:block;width:100%;height:100%;object-fit:contain}#review-preview{margin:12px 0}#review-preview .preview{width:160px;height:100px}
 #pages tr{cursor:pointer}#pages tr:not(.selected):hover{background:#fafafa}
+main{align-items:start}
+.detail-rail{position:sticky;top:16px;align-self:start;margin-top:0;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;scrollbar-gutter:stable;padding-right:8px}
+.page-table-wrap{overflow:visible}
+.page-table{table-layout:fixed}
+.page-table .filename-column{width:42%}.page-table .modified-column{width:24%}.page-table .size-column{width:12%}.page-table .actions-column{width:22%}
+.page-table thead th{position:sticky;top:0;z-index:1;background:#fff;box-shadow:0 1px 0 #d5d5d9}
+.page-table th{letter-spacing:.3px;padding:0 8px}
+.page-table th:last-child{padding:12px 8px}
+.sort-button{display:flex;align-items:center;justify-content:space-between;gap:4px;width:100%;min-height:44px;padding:10px 0;border:0;border-radius:0;text-align:left;background:transparent;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.sort-button span{font-size:14px;letter-spacing:0;color:#60636b}
+.page-table th[aria-sort=ascending] .sort-button,.page-table th[aria-sort=descending] .sort-button{color:#125b95}
+.sort-button:hover{background:#f2f4f6}.sort-button:focus-visible{outline-offset:-2px}
+.page-cell{gap:12px;min-width:0}.page-select{min-width:0;flex:1;line-height:1.45}
+.page-cell .preview{width:64px;height:40px;font-size:9px;color:#606168}
+#pages tr.selected{background:#edf3f9}#pages tr.selected .page-select{color:#125b95;text-decoration:underline;text-underline-offset:3px}
+.time-of-day{display:block;color:#555;font-size:11px;margin-top:2px}.modified-cell{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.size-cell{font-variant-numeric:tabular-nums;white-space:nowrap}
+#view-status{font-size:12px;color:#555;margin:0 0 12px;min-height:18px}
+.search input{padding-right:65px}#clear-search{position:absolute;right:5px;top:5px;padding:5px 8px;font-size:12px;border:0;background:#f3f3f5}#clear-search[hidden]{display:none}
+.page-table .actions{gap:12px}.page-table .actions button{padding:7px 10px}
+.detail-rail:focus-visible{outline:2px solid #176bb0;outline-offset:3px}
+@media(max-width:1100px){.page-cell .preview{display:none}.page-table .filename-column{width:38%}.page-table .modified-column{width:25%}.page-table .size-column{width:14%}.page-table .actions-column{width:23%}.page-table .actions{gap:8px}.page-table .actions button{padding:7px 8px}}
+@media(max-width:800px){.detail-rail{position:static;max-height:none;overflow:visible;padding-right:0;scrollbar-gutter:auto}.page-cell .preview{display:flex}.page-table .filename-column{width:42%}.page-table .modified-column{width:24%}.page-table .size-column{width:12%}.page-table .actions-column{width:22%}}
+@media(max-width:520px){.page-cell .preview{display:none}.page-table .filename-column{width:38%}.page-table .modified-column{width:25%}.page-table .size-column{width:16%}.page-table .actions-column{width:21%}.page-table .actions{flex-direction:column;gap:5px;align-items:flex-end}.page-table .actions a{padding:4px 8px}.page-table td{padding:10px 5px}.page-table th{padding:0 5px}.page-table .actions button{padding:6px 8px;min-height:32px}.sort-button{font-size:9px;letter-spacing:0}.size-cell{font-size:11px}.time-of-day{font-size:10px}.detail-heading .preview{width:96px;height:54px}.detail-heading{gap:12px}dl{grid-template-columns:100px minmax(0,1fr)}}
 </style>
 </head>
 <body>
 <main>
 <section class="library" aria-labelledby="page-title">
 <header><span class="eyebrow">PUBLISHED PAGES</span><h1 id="page-title">Published pages</h1><p>Manage trusted reports on this host. Credentials and private backups stay on the server.</p></header>
-<div class="toolbar"><div class="search"><input id="search" type="search" placeholder="Find a filename" aria-label="Find a filename"></div><select id="sort" aria-label="Sort pages"><option value="name">Filename (A-Z)</option><option value="modified">Recently modified</option><option value="size">Largest first</option></select><button id="refresh">Refresh inventory</button></div>
+<div class="toolbar"><div class="search"><input id="search" type="search" placeholder="Find a filename" aria-label="Find a filename"><button id="clear-search" hidden>Clear</button></div><button id="refresh">Refresh inventory</button></div>
 <div class="inventory-line"><p id="summary">Checking pages</p><div id="status" class="status" role="status" aria-live="polite">Loading authenticated inventory.</div></div>
 <p id="read-only"></p>
-<div class="table-wrap"><table aria-label="Published HTML pages"><thead><tr><th scope="col">Page</th><th scope="col">Modified</th><th scope="col">Size</th><th scope="col">Actions</th></tr></thead><tbody id="pages"></tbody></table></div><p id="empty"></p>
+<p id="view-status" role="status" aria-live="polite">Modified: newest first.</p>
+<div class="table-wrap page-table-wrap"><table class="page-table" aria-label="Published HTML pages" aria-describedby="view-status"><colgroup><col class="filename-column"><col class="modified-column"><col class="size-column"><col class="actions-column"></colgroup><thead><tr><th id="heading-name" scope="col" aria-sort="none"><button id="sort-name" class="sort-button">Filename <span aria-hidden="true">↕</span></button></th><th id="heading-modified" scope="col" aria-sort="descending"><button id="sort-modified" class="sort-button">Modified <span aria-hidden="true">↓</span></button></th><th id="heading-size" scope="col" aria-sort="none"><button id="sort-size" class="sort-button">Size <span aria-hidden="true">↕</span></button></th><th scope="col">Actions</th></tr></thead><tbody id="pages"></tbody></table></div><p id="empty"></p>
 <p class="footnote">Static previews show the publisher-supplied image for the exact HTML version. Versions without an image show Preview unavailable. Open loads a report in a separate tab with normal JavaScript. Trusted same-origin report code has the signed-in user's application privileges.</p>
 </section>
-<aside class="detail-rail" aria-label="Selected page details">
+<aside class="detail-rail" aria-label="Selected page details" tabindex="0">
 <h2 id="detail-title">Selected page</h2><div id="page-details"></div>
 <section class="detail-section" aria-labelledby="access-title"><h3 id="access-title">Access requirements (host-wide)</h3><dl id="policy"></dl><p class="notice">Not an individual access list. These are configured host-wide requirements, not resolved people or group names, per-page ACLs, proof of effective access or proof of network admission.</p></section>
 <details id="technical"><summary>Technical details</summary><dl id="technical-fields" class="technical"></dl></details>

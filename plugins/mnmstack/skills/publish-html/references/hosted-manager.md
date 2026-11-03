@@ -118,6 +118,22 @@ tab; the manager never fetches or executes report HTML for selection.
 Upload and replace remain available through the skill and own-API CLI/API,
 not through browser publishing forms.
 
+The table starts with the newest filesystem Modified timestamp first, not an
+inferred upload date. Click a Filename, Modified or Size header, or focus it
+and press Enter or Space, to sort; activate it again to reverse the direction.
+The active header shows its direction and exposes `aria-sort`. Unknown dates
+stay last in both directions. Equal dates or sizes use filename order for a
+stable result. The visible/total count and sort feedback update with search;
+details remain available when the selected page is outside the filtered view.
+Clear resets the search without changing selection.
+
+On desktop, table headers stay visible during document scrolling. The detail
+rail stays beside the table with its own bounded scroll area. Focus the rail
+to scroll it with the keyboard. At narrow widths the rail stacks below the
+table and returns to normal document scrolling. Dates show local date, time
+and zone; their full value is available on hover. Sizes use B, KiB or MiB,
+with the exact byte count available on hover.
+
 Select anywhere on a page row to inspect its size, dates and provenance.
 Open and Delete keep their separate actions. The filename button also supports
 keyboard selection. Expand Technical
