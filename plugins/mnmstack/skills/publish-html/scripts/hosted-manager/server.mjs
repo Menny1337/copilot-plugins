@@ -48,7 +48,7 @@ function managerRequest(req, config, mutation) {
     fail(403, 'manager-origin', 'Exact approved manager origin required.');
   }
   if (mutation && (req.headers['content-type'] !== 'application/json' || req.headers['x-manager-request'] !== '1' ||
-      (req.headers.authorization === undefined && req.headers.origin !== config.origin))) {
+      (req.headers.authorization === undefined && req.headers['x-manager-assertion'] === undefined && req.headers.origin !== config.origin))) {
     fail(403, 'manager-request', 'Same-origin JSON manager request required.');
   }
 }

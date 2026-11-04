@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GUID, NAME, SHA, fail, htmlBytes, readRegular, digest } from './common.mjs';
-import { readResponse, responseFailure, transportFailure, uncertainFailure, sameThumbnail } from './client-protocol.mjs';
+import { ClientError, readResponse, responseFailure, transportFailure, uncertainFailure, sameThumbnail } from './client-protocol.mjs';
 import { MAX_PNG, thumbnailInput } from './png.mjs';
 
 export async function azureToken({ tenantId, apiClientId }, run = execFile) {
@@ -42,6 +42,21 @@ export function parseArgs(args) {
   if (Object.keys(options).some(key => !fields.includes(key)) || fields.some(key => !options[key])) throw new Error('Arguments do not match the selected operation.');
   return { action, ...options, tenantId: options.tenant, apiClientId: options['api-client'] };
 }
+export async function easyAuthSession(origin, token, fetchImpl = globalThis.fetch) {
+  try {
+    const response = await fetchImpl(`${origin}/.auth/login/aad`, {
+      method: 'POST', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(30000),
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: token }),
+    });
+    if (response.status !== 200) { await response.body?.cancel(); throw new Error('Native sign-in refused.'); }
+    const result = await readResponse(response, 65536);
+    if (typeof result?.authenticationToken !== 'string' || !/^[A-Za-z0-9._-]{1,32768}$/.test(result.authenticationToken) ||
+        typeof result?.user?.userId !== 'string' || !result.user.userId || result.user.userId.length > 1024) throw new Error('Invalid native session.');
+    return result.authenticationToken;
+  } catch {
+    throw new ClientError('native-sign-in', 'Native EasyAuth sign-in could not be verified. No manager request was sent. Resolve sign-in or host authentication; no retry or fallback is permitted.', 'not-sent');
+  }
+}
 export async function runPublisher(options, { fetchImpl = globalThis.fetch, tokenProvider = azureToken } = {}) {
   let body = null, suppliedThumbnail = null;
   if ((options.thumbnail || options['thumbnail-html-sha256']) &&
@@ -66,14 +81,15 @@ export async function runPublisher(options, { fetchImpl = globalThis.fetch, toke
       suppliedThumbnail = thumbnailInput(body.thumbnail, digest(bytes)).metadata;
     }
   }
-  let token = await tokenProvider(options);
+  let token = await tokenProvider(options), session = null;
   try {
+    session = await easyAuthSession(options.origin, token, fetchImpl);
     async function request(route, payload) {
       let response, result;
       try {
         response = await fetchImpl(`${options.origin}/_manager/api/${route}`, {
-          method: payload ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(30000),
-          headers: { Authorization: `Bearer ${token}`, ...(payload ? { 'Content-Type': 'application/json', 'X-Manager-Request': '1' } : {}) },
+          method: payload ? 'POST' : 'GET', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(30000),
+          headers: { 'X-ZUMO-AUTH': session, 'X-Manager-Assertion': token, ...(payload ? { 'Content-Type': 'application/json', 'X-Manager-Request': '1' } : {}) },
           ...(payload ? { body: JSON.stringify(payload) } : {}),
         });
         result = await readResponse(response);
@@ -94,7 +110,7 @@ export async function runPublisher(options, { fetchImpl = globalThis.fetch, toke
           digest(Buffer.from(body.htmlBase64, 'base64'))))) throw uncertainFailure(result?.transactionId);
     if (suppliedThumbnail && !sameThumbnail(suppliedThumbnail, result.thumbnail)) throw uncertainFailure(result?.transactionId);
     return body && body.action !== 'delete' ? { ...result, url: `${options.origin}/${body.name}` } : result;
-  } finally { token = null; }
+  } finally { token = null; session = null; }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === '--help') {

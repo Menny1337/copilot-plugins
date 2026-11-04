@@ -29,7 +29,7 @@ const REMEDIATION = Object.freeze({
   'obo-consent-or-policy': 'No report change was made by this request. Ask the host owner to review OBO consent, claims challenges and tenant policy; do not fall back to Kudu.',
 });
 const INPUT = ['request-schema', 'mutation-fields', 'html-payload', 'html-size', 'html-encoding', 'html-document', 'thumbnail-png', 'thumbnail-fields', 'thumbnail-binding', 'thumbnail-conflict', 'request-json', 'request-size', 'manager-origin', 'manager-request', 'method-route'];
-const AUTH = ['principal', 'principal-claims', 'principal-binding', 'principal-user', 'tenant', 'manager', 'bearer', 'jwt-format', 'jwt-algorithm', 'jwt-signature', 'jwt-claims', 'jwt-keys', 'graph-token', 'graph-binding', 'graph-response', 'reader', 'graph-unavailable', 'keys-unavailable', 'mi-config', 'identity-unavailable', 'mi-response', 'obo-unavailable', 'obo-response', 'auth-response'];
+const AUTH = ['principal', 'principal-claims', 'principal-binding', 'principal-user', 'tenant', 'manager', 'bearer', 'native-credentials', 'native-binding', 'jwt-format', 'jwt-algorithm', 'jwt-signature', 'jwt-claims', 'jwt-keys', 'graph-token', 'graph-binding', 'graph-response', 'reader', 'graph-unavailable', 'keys-unavailable', 'mi-config', 'identity-unavailable', 'mi-response', 'obo-unavailable', 'obo-response', 'auth-response'];
 const STATE = ['journal-quota', 'journal-entry', 'journal-torn', 'journal-sequence', 'journal-link', 'transaction-pending', 'inventory-quota', 'inventory-names', 'backup-corrupt', 'thumbnail-corrupt', 'unsafe-file', 'file-changed', 'storage-path', 'storage-link'];
 export class ClientError extends Error {
   constructor(code, message, outcome, transactionId = null) {
@@ -55,11 +55,11 @@ export function responseFailure(status, data, mutation) {
   if (remediation && status >= 400 && status <= 599) return new ClientError(code, `Manager refused the request (${code}, HTTP ${status}). ${remediation}`, 'denied');
   return transportFailure(mutation);
 }
-export async function readResponse(response) {
+export async function readResponse(response, maxBytes = MAX_RESPONSE_BYTES) {
   const chunks = []; let size = 0;
   for await (const chunk of response.body) {
     size += chunk.length;
-    if (size > MAX_RESPONSE_BYTES) throw new Error('Response limit exceeded.');
+    if (size > maxBytes) throw new Error('Response limit exceeded.');
     chunks.push(chunk);
   }
   const bytes = new Uint8Array(size);

@@ -11,7 +11,7 @@ import { runPublisher } from '../publish.mjs';
 import { readResponse } from '../client-protocol.mjs';
 import { pngInfo, MAX_PNG } from '../png.mjs';
 import { digest } from '../common.mjs';
-import { fixture, manager, other, origin, html, png, thumbnail, request, principal, graphFetch } from './test-support.mjs';
+import { fixture, manager, other, origin, html, png, thumbnail, request, principal, graphFetch, nativeLogin } from './test-support.mjs';
 
 const page = async store => (await store.list()).pages[0];
 const withImage = (action, current, bytes, image) => ({ ...request(action, current, bytes), thumbnail: thumbnail(bytes, image) });
@@ -40,7 +40,7 @@ test('CLI -> authenticated HTTP -> private images: upload/replace, backup select
   const a = html('A'), b = html('B'), pngA = png(30), pngB = png(200);
   await writeFile(file, a); await writeFile(image, pngA);
   const deps = { tokenProvider: async () => 'synthetic-token',
-    fetchImpl: async (url, options) => send(new URL(url).pathname, options.method, options.body) };
+    fetchImpl: nativeLogin(async (url, options) => send(new URL(url).pathname, options.method, options.body)) };
   const options = { origin, file, confirm: 'report.html', thumbnail: image, 'thumbnail-html-sha256': digest(a) };
   const uploaded = await runPublisher({ ...options, action: 'upload' }, deps);
   assert.equal(uploaded.thumbnail.sha256, digest(pngA));
@@ -94,9 +94,9 @@ test('invalid/wrong-hash/oversize PNGs fail before token, transaction or live wr
   const id = '99999999-9999-4999-8999-999999999999';
   await assert.rejects(runPublisher({ origin, action: 'replace', file, confirm: 'report.html', thumbnail: image,
     'thumbnail-html-sha256': digest(bytes), revision: 'reviewed', sha256: digest(bytes) }, {
-    tokenProvider: async () => 'synthetic-token', fetchImpl: async () => new Response(JSON.stringify({
+    tokenProvider: async () => 'synthetic-token', fetchImpl: nativeLogin(async () => new Response(JSON.stringify({
       verified: true, name: 'report.html', action: 'replace', sha256: digest(bytes), transactionId: id, revision: id, thumbnail: null,
-    })),
+    }))),
   }), error => error.outcome === 'uncertain' && error.transactionId === id);
 });
 test('same HTML association is immutable, including legacy no-image replace and actual concurrent manager processes', async t => {
