@@ -20,6 +20,32 @@ const keysFetch = async (url, options) => {
   assert.equal(options.redirect, 'error');
   return json({ keys: [jwk] });
 };
+function delegatedFetch(assertion, { calls = [], oid = manager, groups = [group] } = {}) {
+  return async (url, options) => {
+    calls.push(String(url));
+    if (String(url).endsWith('/keys')) return keysFetch(url, options);
+    if (String(url).startsWith('http://127.0.0.1:8081/msi/token?')) {
+      const target = new URL(url);
+      assert.equal(target.searchParams.get('resource'), 'api://AzureADTokenExchange');
+      assert.equal(target.searchParams.get('client_id'), identity);
+      assert.equal(options.headers['X-IDENTITY-HEADER'], 'synthetic-identity-header');
+      return json({ access_token: 'synthetic-mi-assertion' });
+    }
+    if (String(url).endsWith('/oauth2/v2.0/token')) {
+      const form = new URLSearchParams(options.body);
+      assert.equal(form.get('assertion'), assertion);
+      assert.equal(form.get('client_assertion'), 'synthetic-mi-assertion');
+      assert.equal(form.get('requested_token_use'), 'on_behalf_of');
+      assert.equal(form.get('scope'), 'https://graph.microsoft.com/.default');
+      return json({ access_token: 'synthetic-obo-graph', token_type: 'Bearer' });
+    }
+    assert.equal(options.headers.Authorization, 'Bearer synthetic-obo-graph');
+    return graphFetch({ oid, groups })(url, options);
+  };
+}
+const nativeHeaders = (assertion, oid = manager) => ({
+  ...principal(oid), 'x-zumo-auth': 'synthetic-native-session', 'x-manager-assertion': assertion,
+});
 test('reader gate preserves EasyAuth user binding and scoped group lookup', async () => {
   const calls = [];
   assert.equal((await authorize(principal(), config, { fetchImpl: graphFetch({ calls }) }, true)).oid, manager);
@@ -87,29 +113,74 @@ test('malformed JWT JSON shapes return explicit authentication refusal', async (
 });
 test('bearer uses actual user assertion AND MI-federated app assertion, then equivalent Graph gate', async () => {
   const assertion = token(), calls = [];
-  const fetchImpl = async (url, options) => {
-    calls.push(String(url));
-    if (String(url).endsWith('/keys')) return keysFetch(url, options);
-    if (String(url).startsWith('http://127.0.0.1:8081/msi/token?')) {
-      const target = new URL(url);
-      assert.equal(target.searchParams.get('resource'), 'api://AzureADTokenExchange');
-      assert.equal(target.searchParams.get('client_id'), identity);
-      assert.equal(options.headers['X-IDENTITY-HEADER'], 'synthetic-identity-header');
-      return json({ access_token: 'synthetic-mi-assertion' });
-    }
-    if (String(url).endsWith('/oauth2/v2.0/token')) {
-      const form = new URLSearchParams(options.body);
-      assert.equal(form.get('assertion'), assertion);
-      assert.equal(form.get('client_assertion'), 'synthetic-mi-assertion');
-      assert.equal(form.get('requested_token_use'), 'on_behalf_of');
-      assert.equal(form.get('scope'), 'https://graph.microsoft.com/.default');
-      return json({ access_token: 'synthetic-obo-graph', token_type: 'Bearer' });
-    }
-    assert.equal(options.headers.Authorization, 'Bearer synthetic-obo-graph');
-    return graphFetch()(url, options);
-  };
+  const fetchImpl = delegatedFetch(assertion, { calls });
   assert.deepEqual(await authorize({ authorization: `Bearer ${assertion}` }, config, { fetchImpl }, true), { oid: manager, transport: 'bearer' });
   assert.equal(calls.length, 5);
+});
+test('native platform session is bound to the independently verified assertion before MI-OBO and reader authorization', async () => {
+  const assertion = token(), calls = [];
+  assert.deepEqual(await authorize(nativeHeaders(assertion), config, { fetchImpl: delegatedFetch(assertion, { calls }) }, true),
+    { oid: manager, transport: 'native' });
+  assert.equal(calls.length, 5);
+  await assert.rejects(authorize(nativeHeaders(assertion), config, { fetchImpl: delegatedFetch(assertion, { groups: [] }) }, true), { code: 'reader' });
+  await assert.rejects(authorize(nativeHeaders(assertion), config, { fetchImpl: delegatedFetch(assertion, { oid: other }) }, true), { code: 'graph-binding' });
+});
+test('native session cannot omit its assertion, compete with bearer/cookies or bypass platform identity', async () => {
+  const valid = nativeHeaders(token());
+  for (const change of [
+    { 'x-manager-assertion': undefined }, { 'x-zumo-auth': undefined }, { 'x-zumo-auth': '' },
+    { 'x-zumo-auth': ['one', 'two'] }, { 'x-manager-assertion': ['one', 'two'] },
+    { authorization: 'Bearer synthetic-other' }, { cookie: 'AppServiceAuthSession=synthetic-cookie' }, { cookie: '' },
+  ]) await assert.rejects(authorize({ ...valid, ...change }, config, { fetchImpl: () => assert.fail('No remote authorization permitted') }, true), { code: 'native-credentials' });
+  for (const [change, code] of [
+    [{ 'x-ms-client-principal': '' }, 'principal'], [{ 'x-ms-client-principal-id': other }, 'principal-binding'],
+    [principal(manager, other), 'tenant'],
+  ]) await assert.rejects(authorize({ ...valid, ...change }, config, { fetchImpl: () => assert.fail() }, true), { code });
+  await assert.rejects(authorize(valid, config, { fetchImpl: () => assert.fail() }, false), { code: 'native-credentials' });
+  await assert.rejects(authorize(nativeHeaders(token({ oid: other })), config, { fetchImpl: keysFetch }, true), { code: 'native-binding' });
+  await assert.rejects(authorize(nativeHeaders(token({ oid: other }), other), config, { fetchImpl: keysFetch }, true), { code: 'manager' });
+});
+for (const [label, changes] of [
+  ['expired', { exp: time - 1 }], ['not-yet-valid', { nbf: time + 300 }], ['wrong-tenant', { tid: other }],
+  ['wrong-audience', { aud: other }], ['wrong-client', { azp: other }], ['missing-scope', { scp: undefined }],
+  ['wrong-scope', { scp: 'User.Read' }], ['app-only', { idtyp: 'app' }], ['wrong-issuer', { iss: `https://example.test/${tenant}` }],
+]) {
+  test(`native ${label} assertion fails closed without browser-token fallback`, async () => {
+    await assert.rejects(authorize(nativeHeaders(token(changes)), config, { fetchImpl: keysFetch }, true), { code: 'jwt-claims' });
+  });
+}
+test('native malformed or forged assertion cannot use an otherwise valid platform/browser identity', async () => {
+  const wrongPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  for (const [assertion, code] of [['malformed', 'jwt-format'], [token({}, {}, wrongPair.privateKey), 'jwt-signature']]) {
+    await assert.rejects(authorize(nativeHeaders(assertion), config, { fetchImpl: keysFetch }, true), { code });
+  }
+});
+test('browser reader and manager tolerate a native API token in the provider store only through full verification and OBO', async () => {
+  for (const isManager of [false, true]) {
+    const assertion = token(), calls = [];
+    assert.deepEqual(await authorize({ ...principal(), 'x-ms-token-aad-access-token': assertion }, config,
+      { fetchImpl: delegatedFetch(assertion, { calls }) }, isManager), { oid: manager, transport: 'browser' });
+    assert.equal(calls.length, 5);
+  }
+  const assertion = token({ oid: other });
+  assert.deepEqual(await authorize({ ...principal(other), 'x-ms-token-aad-access-token': assertion }, config,
+    { fetchImpl: delegatedFetch(assertion, { oid: other }) }), { oid: other, transport: 'browser' });
+});
+test('stored API-token validation and user binding fail closed before OBO without a Graph-token fallback', async () => {
+  for (const changes of [{ exp: time - 1 }, { tid: other }, { azp: other }, { scp: 'User.Read' }]) {
+    await assert.rejects(authorize({ ...principal(), 'x-ms-token-aad-access-token': token(changes) }, config,
+      { fetchImpl: keysFetch }), { code: 'jwt-claims' });
+  }
+  await assert.rejects(authorize({ ...principal(), 'x-ms-token-aad-access-token': token({ oid: other }) }, config,
+    { fetchImpl: keysFetch }), { code: 'native-binding' });
+  const wrongPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  await assert.rejects(authorize({ ...principal(), 'x-ms-token-aad-access-token': token({}, {}, wrongPair.privateKey) }, config,
+    { fetchImpl: keysFetch }), { code: 'jwt-signature' });
+  await assert.rejects(authorize({ ...principal(), 'x-ms-token-aad-access-token': token({ aud: other }) }, config,
+    { fetchImpl: async (url, options) => {
+      assert.equal(url, 'https://graph.microsoft.com/v1.0/me?$select=id');
+      return json({}, 401);
+    } }), { code: 'graph-unavailable' });
 });
 test('OBO consent/claims challenge fails closed without exposing provider response', async () => {
   const fetchImpl = async url => String(url).endsWith('/keys') ? json({ keys: [jwk] }) :

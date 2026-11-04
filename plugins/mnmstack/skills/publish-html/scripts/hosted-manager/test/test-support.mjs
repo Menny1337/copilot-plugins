@@ -56,6 +56,12 @@ export function principal(oid = manager, tid = tenant, extraClaims = []) {
   };
 }
 export const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
+export const nativeLogin = fetchImpl => async (url, options) => {
+  if (new URL(url).pathname === '/.auth/login/aad') return json({
+    authenticationToken: 'synthetic-session-token', user: { userId: 'sid:synthetic-user' },
+  });
+  return fetchImpl(url, options);
+};
 export function graphFetch({ oid = manager, groups = [group], calls = [] } = {}) {
   return async (url, options) => {
     calls.push({ url: String(url), options });

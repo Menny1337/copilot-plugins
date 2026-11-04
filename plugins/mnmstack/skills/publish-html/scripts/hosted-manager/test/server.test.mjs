@@ -9,6 +9,7 @@ import { fixture, principal, graphFetch, other, html, png, request, origin } fro
 import { visiblePages, mutationRequest, pageUrl } from '../manager-ui.mjs';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { runPublisher } from '../publish.mjs';
+import { verifyOwnApi } from '../auth.mjs';
 import { digest } from '../common.mjs';
 import { tenant, manager, group, client, cli, json } from './test-support.mjs';
 
@@ -101,6 +102,26 @@ test('hosted UI/API upload, replace, delete and restore use one guarded service 
   await mutate(mutationRequest('restore', 'report.html', deleted, { backup: deleted.backups[0] }));
   assert.equal((await inventory()).pages.length, 1);
 });
+test('native assertion origin exemption never permits a session-only, assertion-only or competing-credential write', async t => {
+  const { send, config } = await host(t, {}, () => assert.fail('Invalid native credentials must not reach remote authorization'));
+  const body = JSON.stringify(request('upload', null, html('new')));
+  const native = { 'X-ZUMO-AUTH': 'synthetic-session', 'X-Manager-Assertion': 'synthetic.jwt.token' };
+  for (const headers of [
+    { 'X-ZUMO-AUTH': 'synthetic-session' }, { 'X-Manager-Assertion': 'synthetic.jwt.token' },
+    { ...native, Cookie: 'AppServiceAuthSession=synthetic-cookie' },
+    { ...native, Authorization: 'Bearer synthetic-other' },
+  ]) {
+    const result = await send('/_manager/api/mutate', { method: 'POST',
+      headers: { ...mutateHeaders, ...headers }, body });
+    assert.equal(result.status, 401); assert.equal(JSON.parse(result.text).code, 'native-credentials');
+  }
+  for (const headers of [{ Origin: 'https://other.test' }, { 'Sec-Fetch-Site': 'cross-site' }, { Host: 'other.test' }]) {
+    const result = await send('/_manager/api/mutate', { method: 'POST',
+      headers: { ...mutateHeaders, ...native, ...headers }, body });
+    assert.equal(result.status, 403); assert.equal(JSON.parse(result.text).code, 'manager-origin');
+  }
+  await assert.rejects(readFile(path.join(config.contentDir, 'report.html')), { code: 'ENOENT' });
+});
 test('default-disabled host refuses mutation before reading payload', async t => {
   const { send } = await host(t, { mutationsEnabled: false });
   assert.equal(JSON.parse((await send('/_manager/api/inventory')).text).mutationsEnabled, false);
@@ -181,11 +202,20 @@ test('full offline own-API CLI -> loopback HTTP -> RSA/OBO/Graph -> transaction 
     tokenProvider: async () => assertion,
     fetchImpl: async (url, options) => {
       const target = new URL(url); assert.equal(target.origin, origin);
+      if (target.pathname === '/.auth/login/aad') {
+        assert.equal(options.method, 'POST'); assert.equal(options.credentials, 'omit');
+        assert.equal(options.headers.Authorization, undefined);
+        assert.equal(await verifyOwnApi(JSON.parse(options.body).access_token, config, { fetchImpl: fetchAuth }), manager);
+        return json({ authenticationToken: 'synthetic-native-session', user: { userId: 'sid:synthetic' } });
+      }
+      assert.equal(options.headers['X-ZUMO-AUTH'], 'synthetic-native-session');
+      assert.equal(options.headers['X-Manager-Assertion'], assertion);
+      assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers.Cookie, undefined);
       const response = await send(target.pathname, { method: options.method, headers: options.headers, body: options.body });
       return new Response(response.text, { status: response.status, headers: response.headers });
     },
   });
-  assert.equal(result.verified, true); assert.equal(authCalls.length, 10);
+  assert.equal(result.verified, true); assert.equal(authCalls.length, 11);
   assert.equal(result.thumbnail.sha256, digest(png()));
   assert.deepEqual(await readFile(path.join(config.contentDir, 'report.html')), html('own-api end-to-end'));
 });

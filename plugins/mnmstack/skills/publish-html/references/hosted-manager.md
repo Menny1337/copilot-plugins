@@ -76,9 +76,9 @@ The chosen same-app design requires the own-API app client ID to be the existing
 EasyAuth app client ID. Its Entra registration must set
 `api.requestedAccessTokenVersion` to `2`. Retain the existing exact client ID
 as EasyAuth's sole `allowedAudiences` entry. Do not add a resource URI or accept
-another audience to bypass a rejection. Prove real bearer admission through
-EasyAuth on the deployed host before activation; token issuance alone is not
-that proof.
+another audience to bypass a rejection. Prove real native EasyAuth admission,
+independent own-API assertion validation and successful manager inventory on the
+deployed host before activation; token issuance alone is not that proof.
 
 `/_manager`, its script, inventory and mutations additionally require an
 explicit configured manager user. Inventory is not available to ordinary
@@ -95,6 +95,37 @@ token remains server-side and must pass the same `/me` binding and reader-group
 checks. No Graph application permission or ARM role is needed for filesystem
 management. Consent, claims challenges and policy errors fail closed, with no
 browser-only or Kudu fallback.
+
+The automated publisher first uses the documented
+[client-directed EasyAuth sign-in](https://learn.microsoft.com/en-us/azure/app-service/configure-authentication-customize-sign-in-out#use-client-directed-sign-in):
+it sends the own-API access token as JSON to `POST /.auth/login/aad` on the exact
+approved origin. It keeps the returned platform session token in memory.
+Manager requests carry `X-ZUMO-AUTH` for platform authentication and
+`X-Manager-Assertion` for the original delegated own-API token. They do not
+send an Authorization header or cookies. The application requires both native
+headers, a valid injected EasyAuth principal, and an independently verified
+assertion for that same tenant and user. It then applies the explicit manager,
+MI-federated OBO and live Graph reader checks. A session alone is not publisher
+authorization. Missing assertions, cookies, competing Authorization headers,
+invalid claims and mismatched users fail closed. There is no bearer or browser
+fallback after a native sign-in failure.
+
+The server retains direct bearer validation for previously approved callers;
+the CLI uses only the native contract. Deploy the matching `auth.mjs`,
+`server.mjs` and `client-protocol.mjs` before using this publisher version.
+An installed CLI update does not update the host.
+
+Native sign-in can change platform provider-token state. Browser readers keep
+their normal cookie authentication. If EasyAuth supplies an API-audience token
+instead of a Graph token, the server verifies its complete own-API signature,
+claims and user binding, then uses the existing MI-federated OBO path to obtain
+Graph authorization. It never sends that API token to Graph or silently accepts
+an expired/mismatched assertion. Existing Graph-token browser requests keep
+their original `/me` and reader-group checks. Prove both native publishing and
+browser reader/manager access during an approved rollout. A sign-in experiment
+can require normal browser reauthentication; dropping a local session token
+does not undo platform token-store changes. Do not automatically log out or
+refresh other sessions as cleanup.
 
 The UI uses EasyAuth cookies, same-origin requests, exact host/origin checks and
 a custom JSON request header. No CORS is enabled. These guards do **not** isolate
@@ -256,7 +287,10 @@ Linked files/parents, hard-linked files and multi-dot names are refused.
 
 The CLI captures `az account get-access-token --scope
 api://<app-guid>/publish_as_user` output in memory. It never puts bearer tokens
-in arguments, config, files, browser code or diagnostics. It has no automatic
+in arguments, config, files, browser code or diagnostics. Its EasyAuth session
+also stays only in memory. Native sign-in is one bounded POST, with no redirects,
+cookie storage or retry. A refused, malformed or oversized sign-in response
+stops before any manager request. It has no automatic
 retry. A missing or invalid response is an uncertain outcome, not success.
 After such a response, inspect inventory and server transaction evidence before
 another mutation. A matching verified response includes its transaction ID,
@@ -374,8 +408,9 @@ orphan-image deletion shortcut. Unresolved PNG evidence is never expired.
 
 Keep mutations disabled until the host owner verifies all of the following:
 own-API CLI issuance and real signature/claim checks; effective delegated Graph
-OBO consent and MI-federated execution; EasyAuth bearer admission without
-excluding manager paths or weakening browser readers; configured manager
+OBO consent and MI-federated execution; native EasyAuth admission with the
+same-user delegated assertion, without excluding manager paths or weakening
+browser readers; configured manager
 allowlist; same-origin trust approval; durable shared storage and crash recovery;
 legacy/manual publisher freeze/migration; and independent source review.
 Deploying this host application is separate from uploading a report.

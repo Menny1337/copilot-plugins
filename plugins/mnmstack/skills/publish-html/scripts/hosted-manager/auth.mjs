@@ -126,18 +126,41 @@ async function oboToken(assertion, config, fetchImpl) {
 // EasyAuth headers are authoritative only behind mandatory platform authentication.
 // Injection is a constructor/test dependency, never an HTTP or environment bypass.
 export async function authorize(headers, config, { fetchImpl = globalThis.fetch, now = Date.now } = {}, manager = false) {
-  let oid, graphToken;
-  if (manager && headers.authorization !== undefined) {
+  let oid, graphToken, transport = 'browser';
+  const native = headers['x-manager-assertion'] !== undefined || headers['x-zumo-auth'] !== undefined;
+  if (native) {
+    if (!manager || headers.authorization !== undefined || headers.cookie !== undefined ||
+        typeof headers['x-zumo-auth'] !== 'string' || !/^[A-Za-z0-9._-]{1,32768}$/.test(headers['x-zumo-auth']) ||
+        typeof headers['x-manager-assertion'] !== 'string') {
+      fail(401, 'native-credentials', 'Native publishing requires a platform session and delegated assertion, without cookies or competing authorization.');
+    }
+    const platformOid = easyAuthIdentity(headers, config);
+    const assertion = headers['x-manager-assertion'];
+    oid = await verifyOwnApi(assertion, config, { fetchImpl, now });
+    if (oid !== platformOid) fail(403, 'native-binding', 'Platform session and delegated assertion must identify the same user.');
+    if (!config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
+    graphToken = await oboToken(assertion, config, fetchImpl);
+    transport = 'native';
+  } else if (manager && headers.authorization !== undefined) {
     if (typeof headers.authorization !== 'string' || !/^Bearer [A-Za-z0-9_.-]+$/.test(headers.authorization)) fail(401, 'bearer', 'Bearer authorization required.');
     const assertion = headers.authorization.slice(7);
     oid = await verifyOwnApi(assertion, config, { fetchImpl, now });
     if (!config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
     graphToken = await oboToken(assertion, config, fetchImpl);
+    transport = 'bearer';
   } else {
     oid = easyAuthIdentity(headers, config);
     if (manager && !config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
     graphToken = headers['x-ms-token-aad-access-token'];
+    // Native sign-in can put an API-audience token in the shared provider store.
+    // A routing hint never authorizes it: verify the complete assertion before OBO.
+    if (config.ownApiEnabled && typeof graphToken === 'string' && graphToken.split('.').length === 3 &&
+        jwtPart(graphToken.split('.')[1]).aud === config.apiClientId) {
+      const tokenOid = await verifyOwnApi(graphToken, config, { fetchImpl, now });
+      if (tokenOid !== oid) fail(403, 'native-binding', 'Stored delegated assertion does not match the platform user.');
+      graphToken = await oboToken(graphToken, config, fetchImpl);
+    }
   }
   await checkReader(oid, graphToken, config, fetchImpl);
-  return { oid, transport: manager && headers.authorization !== undefined ? 'bearer' : 'browser' };
+  return { oid, transport };
 }

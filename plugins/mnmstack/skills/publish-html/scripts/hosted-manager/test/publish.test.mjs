@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { azureToken, parseArgs, runPublisher } from '../publish.mjs';
-import { fixture, tenant, client, manager, origin, html, json } from './test-support.mjs';
+import { azureToken, easyAuthSession, parseArgs, runPublisher } from '../publish.mjs';
+import { fixture, tenant, client, manager, origin, html, json, nativeLogin } from './test-support.mjs';
 import { digest } from '../common.mjs';
 
 test('CLI captures own-API scope token in memory, never token argv/files', async () => {
@@ -35,14 +35,17 @@ test('CLI automated create, reviewed replace/delete/restore share store protocol
   const calls = [];
   const deps = {
     tokenProvider: async () => 'synthetic.jwt.token',
-    fetchImpl: async (url, options) => {
-      assert.equal(options.headers.Authorization, 'Bearer synthetic.jwt.token'); assert.equal(options.redirect, 'error');
+    fetchImpl: nativeLogin(async (url, options) => {
+      assert.equal(options.headers['X-Manager-Assertion'], 'synthetic.jwt.token');
+      assert.equal(options.headers['X-ZUMO-AUTH'], 'synthetic-session-token');
+      assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers.Cookie, undefined);
+      assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error');
       calls.push({ url, options });
       if (url === origin + '/_manager/api/inventory') return json({ ...await store.list(), mutationsEnabled: true });
       assert.equal(url, origin + '/_manager/api/mutate');
       assert.equal(options.headers['X-Manager-Request'], '1');
       return json(await store.mutate(JSON.parse(options.body), manager));
-    },
+    }),
   };
   const base = { origin, tenantId: tenant, apiClientId: client };
   const uploaded = await runPublisher({ ...base, action: 'upload', file, confirm: 'report.html' }, deps);
@@ -72,7 +75,7 @@ test('CLI reports structured transaction ID or definite prewrite denial without 
     let calls = 0;
     await assert.rejects(runPublisher(options, {
       tokenProvider: async () => 'synthetic.jwt.token',
-      fetchImpl: async () => { calls++; return json(data, status); },
+      fetchImpl: nativeLogin(async () => { calls++; return json(data, status); }),
     }), error => error.outcome === outcome && error.code === expectedCode &&
       error.transactionId === (outcome === 'uncertain' ? id : null) && !error.message.includes('synthetic.jwt.token'));
     assert.equal(calls, 1);
@@ -83,11 +86,53 @@ test('CLI never retries, logs provider bodies or falls back to Kudu after uncert
   const options = { action: 'delete', origin, name: 'report.html', confirm: 'report.html', revision: 'reviewed', sha256: digest(html('x')) };
   await assert.rejects(runPublisher(options, {
     tokenProvider: async () => 'synthetic.jwt.token',
-    fetchImpl: async () => { calls++; throw new Error('synthetic.jwt.token'); },
+    fetchImpl: nativeLogin(async () => { calls++; throw new Error('synthetic.jwt.token'); }),
   }), error => /uncertain/.test(error.message) && !error.message.includes('synthetic.jwt.token'));
   assert.equal(calls, 1);
   await assert.rejects(runPublisher(options, {
     tokenProvider: async () => 'synthetic.jwt.token',
-    fetchImpl: async () => json({ error: 'synthetic.jwt.token' }, 403),
+    fetchImpl: nativeLogin(async () => json({ error: 'synthetic.jwt.token' }, 403)),
   }), error => !error.message.includes('synthetic.jwt.token'));
+});
+test('native sign-in uses only the explicit origin and own-API token; session and assertion are separate credentials', async () => {
+  const calls = [];
+  const result = await runPublisher({ action: 'inventory', origin }, {
+    tokenProvider: async () => 'synthetic.jwt.token',
+    fetchImpl: async (url, options) => {
+      calls.push(url);
+      assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit');
+      assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers.Cookie, undefined);
+      if (calls.length === 1) {
+        assert.equal(url, `${origin}/.auth/login/aad`); assert.equal(options.method, 'POST');
+        assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+        assert.deepEqual(JSON.parse(options.body), { access_token: 'synthetic.jwt.token' });
+        return json({ authenticationToken: 'synthetic-native-session', user: { userId: 'sid:synthetic' } });
+      }
+      assert.equal(url, `${origin}/_manager/api/inventory`); assert.equal(options.method, 'GET');
+      assert.deepEqual(options.headers, { 'X-ZUMO-AUTH': 'synthetic-native-session', 'X-Manager-Assertion': 'synthetic.jwt.token' });
+      return json({ pages: [] });
+    },
+  });
+  assert.deepEqual(result, { pages: [] }); assert.equal(calls.length, 2);
+});
+test('native sign-in failures never send manager requests, retry, expose provider text or fall back to cookies/bearer', async () => {
+  for (const response of [
+    () => json({ error: 'synthetic-private-provider-text' }, 403),
+    () => json({ authenticationToken: 'header\r\ninjection', user: { userId: 'sid:x' } }),
+    () => json({ authenticationToken: 'synthetic-session', user: {} }),
+    () => json({ authenticationToken: 'x'.repeat(32769), user: { userId: 'sid:x' } }),
+    () => new Response('synthetic-private-provider-text'),
+    () => new Response('x'.repeat(65537)),
+    () => json({ authenticationToken: 'synthetic-session', user: { userId: 'sid:x' } }, 201),
+  ]) {
+    let calls = 0;
+    await assert.rejects(runPublisher({ action: 'inventory', origin }, {
+      tokenProvider: async () => 'synthetic.jwt.token',
+      fetchImpl: async url => { calls++; assert.equal(url, `${origin}/.auth/login/aad`); return response(); },
+    }), error => error.code === 'native-sign-in' && error.outcome === 'not-sent' &&
+      !/synthetic-private|synthetic\.jwt/.test(error.message));
+    assert.equal(calls, 1);
+  }
+  await assert.rejects(easyAuthSession(origin, 'synthetic.jwt.token', async () => { throw new Error('synthetic-private-provider-text'); }),
+    error => error.code === 'native-sign-in' && !error.message.includes('synthetic-private'));
 });
