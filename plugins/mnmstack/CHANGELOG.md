@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.2] - 2026-11-04
+
+_patch release._
+
+- fix(publish-html): support native delegated publisher sessions
+
 ## [1.1.1] - 2026-11-03
 
 _patch release._
