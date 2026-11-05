@@ -25,6 +25,10 @@ jobs:
         run: SKILL_REVIEW_TEST_ARTIFACT_DIR="$RUNNER_TEMP/skill-review-integration-docs" node --test scripts/version.test.mjs plugins/mnmstack/skills/scheduled-skill-review/scripts/integration-docs.test.mjs plugins/mnmstack/skills/scheduled-skill-review/scripts/consolidation.test.mjs
       - name: Validate marketplace structure
         run: node scripts/validate.mjs
+      - name: Test migrated skill packaging and PR monitoring
+        run: node --test scripts/skill-migration.test.mjs plugins/pr-workflows/skills/pr-watch/scripts/watch.test.mjs
+      - name: Validate bundled Humanizer package
+        run: python3 plugins/mnmstack/skills/humanizer/scripts/validate-package.py
       - name: Verify CATALOG.md is up to date
         run: node scripts/catalog.mjs --check
       - name: Verify plugin READMEs are up to date

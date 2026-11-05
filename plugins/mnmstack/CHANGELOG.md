@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0] - 2026-11-05
+
+_minor release._
+
+- Import anatomy, bro, humanizer, show-me, and teach with their tracked
+  supporting files and available licenses and attribution.
+- Preserve manual-only invocation metadata for bro and teach.
+- Adapt only Humanizer metadata and its package checks to scalar-only
+  frontmatter, without changing its prompt body.
+- Verify historical upstream matches for bro, show-me, and all five teach
+  files; retain their MIT licenses and copyright holders with pinned evidence.
+
 ## [1.1.2] - 2026-11-04
 
 _patch release._
