@@ -1,8 +1,8 @@
 {
   "name": "menny1337-plugins",
   "metadata": {
-    "description": "Public Copilot plugin marketplace: mnmstack default skills, presentation, docs, UI, and duty workflows.",
-    "version": "5.1.2"
+    "description": "Public Copilot plugin marketplace: mnmstack default skills, PR workflows, presentation, docs, UI, and duty workflows.",
+    "version": "5.2.0"
   },
   "owner": {
     "name": "Menny1337",
@@ -11,8 +11,8 @@
   "plugins": [
     {
       "name": "mnmstack",
-      "description": "Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.",
-      "version": "1.1.2",
+      "description": "Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, writing, visual explanations, teaching, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.",
+      "version": "1.2.0",
       "source": "./plugins/mnmstack",
       "author": {
         "name": "Menny1337",
@@ -56,6 +56,30 @@
         "audit",
         "architect",
         "scheduling"
+      ]
+    },
+    {
+      "name": "pr-workflows",
+      "description": "Pull request preparation, review, validation, status, check diagnosis, feedback handling, and monitoring for GitHub and Azure DevOps.",
+      "version": "1.0.0",
+      "source": "./plugins/pr-workflows",
+      "author": {
+        "name": "Menny1337",
+        "email": "noreply@github.com"
+      },
+      "homepage": "https://github.com/Menny1337/copilot-plugins/tree/main/plugins/pr-workflows",
+      "repository": "https://github.com/Menny1337/copilot-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "pull-request",
+        "review",
+        "validation",
+        "ci",
+        "feedback",
+        "monitoring",
+        "github",
+        "azure-devops"
       ]
     },
     {

@@ -1,0 +1,5 @@
+{
+  "name": "pr-workflows",
+  "version": "1.0.0",
+  "description": "Pull request preparation, review, validation, status, check diagnosis, feedback handling, and monitoring for GitHub and Azure DevOps."
+}
