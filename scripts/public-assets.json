@@ -2,6 +2,31 @@
   "version": 1,
   "assets": [
     {
+      "path": "plugins/mnmstack/skills/anatomy/.github/assets/dial-indicator.webp",
+      "sha256": "a1f0550e0938a3c76316fddd272792d5f50609cceca7217606b187868d7f4fe7",
+      "reason": "Privacy review: upstream MIT-licensed dial-indicator illustration with generic technical labels, no personal data. WebP contains only a VP8 image chunk, without EXIF, XMP, or other metadata chunks. Upstream license retained."
+    },
+    {
+      "path": "plugins/mnmstack/skills/anatomy/.github/assets/raptor-engine-apart.webp",
+      "sha256": "db1bee237411d26d97e2e88f60949a75f9f160a0139d03382f46a2e2d6801050",
+      "reason": "Privacy review: upstream MIT-licensed exploded engine illustration with generic technical labels, no personal data. WebP contains only a VP8 image chunk, without EXIF, XMP, or other metadata chunks. Upstream license retained."
+    },
+    {
+      "path": "plugins/mnmstack/skills/anatomy/.github/assets/raptor-engine-firing.webp",
+      "sha256": "c42a9eb6aacb506f7baf0fd91d4fbb04649999e9615f9847585daff595a62d55",
+      "reason": "Privacy review: upstream MIT-licensed engine illustration with generic controls and technical labels, no personal data. WebP contains only a VP8 image chunk, without EXIF, XMP, or other metadata chunks. Upstream license retained."
+    },
+    {
+      "path": "plugins/mnmstack/skills/anatomy/.github/assets/ripple-tank.webp",
+      "sha256": "1312c34386e18792d44c3d3e1939d22e14bc48ce67e4f48eb29c543e741f79c2",
+      "reason": "Privacy review: upstream MIT-licensed ripple-tank illustration with generic technical labels, no personal data. WebP contains only a VP8 image chunk, without EXIF, XMP, or other metadata chunks. Upstream license retained."
+    },
+    {
+      "path": "plugins/mnmstack/skills/anatomy/.github/assets/turning-dial.webp",
+      "sha256": "f77d1a97efc718d875ca3abfa0c0a0b64049797006e188f804383d0173281739",
+      "reason": "Privacy review: upstream MIT-licensed turning-dial illustration with generic keyboard hints, no personal data. WebP contains only a VP8 image chunk, without EXIF, XMP, or other metadata chunks. Upstream license retained."
+    },
+    {
       "path": "plugins/mnmstack/skills/scheduled-headless-copilot/scripts/loops-app/packaging/appicon-1024.png",
       "sha256": "115b96d1f783bce8c61d1ceeda4e04efdc95cc8c5633e6014e5a8628e0e5a268",
       "reason": "Privacy review: generic infinity app icon without personal text. PNG checksums, C2PA claims, protected certificate headers and timestamp metadata were inspected; they contain public-vendor provenance and asset-specific identifiers. Content credentials are retained."

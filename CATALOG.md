@@ -2,7 +2,7 @@
 
 # Catalog
 
-**5** plugins · **5** agents · **39** skills · **4** hooks
+**6** plugins · **5** agents · **51** skills · **4** hooks
 
 A single index of every agent, skill, and hook across all plugins in this marketplace. Source files (`SKILL.md`, `*.agent.md`, `hooks.json`) remain the only source of truth — this catalog is regenerated from their frontmatter by `scripts/catalog.mjs`.
 
@@ -19,15 +19,18 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`agent-crafting`](plugins/mnmstack/skills/agent-crafting/SKILL.md) 📚 🔒 | skill | `mnmstack` | Creates and troubleshoots Copilot agent definitions (.agent.md). Use for persona, frontmatter, tool access, or loading and routing changes. |
 | [`agent-skill-audit`](plugins/mnmstack/skills/agent-skill-audit/SKILL.md) 📚 🔒 | skill | `mnmstack` | Audits agent, skill, and hook definitions for structural quality, routing, and inventory. Use for static reviews, not architect self-audits or session-history analysis. |
 | [`agent-system-design`](plugins/mnmstack/skills/agent-system-design/SKILL.md) | skill | `mnmstack` | Designs customization workflows across skills, agents, hooks, plugins, and extension or canvas boundaries. |
+| [`anatomy`](plugins/mnmstack/skills/anatomy/SKILL.md) 📜 📚 | skill | `mnmstack` | Build crafted, highly detailed, interactive isometric SVG figures that explain a technical idea as a real physical object (a test rig, a dial gauge, a cabinet of drawers, a… |
 | [`assistant-capture`](plugins/mnmstack/skills/assistant-capture/SKILL.md) 📜 📚 | skill | `mnmstack` | Captures personal notes, tasks, and reminders. Use to save a note, manage a task or reminder, or turn meeting action items into tasks. |
 | [`assistant-query`](plugins/mnmstack/skills/assistant-query/SKILL.md) 📜 📚 | skill | `mnmstack` | Queries saved notes, tasks, reminders, and open pull requests, and creates daily or weekly briefings. Use to find personal context, check what is due, or get a briefing. |
 | [`az`](plugins/mnmstack/skills/az/SKILL.md) 📚 | skill | `mnmstack` | Generate and explain Azure CLI (`az`) commands for managing Azure and Azure DevOps. Use when the user asks for Azure CLI commands or wants to manage Azure or Azure DevOps from the… |
+| [`bro`](plugins/mnmstack/skills/bro/SKILL.md) | skill | `mnmstack` | Restate the last message in plain human language, with no jargon. |
 | [`browser`](plugins/mnmstack/skills/browser/SKILL.md) 📜 📚 | skill | `mnmstack` | Automates websites in a dedicated signed-in browser window. Use for screenshots, rendered pages, forms, account flows, or browser network/storage inspection; not API-only tasks,… |
 | [`create-image`](plugins/mnmstack/skills/create-image/SKILL.md) 📜 📚 | skill | `mnmstack` | Generates and edits raster images with gpt-image-2 on Azure AI Foundry. Use for image generation or gpt-image command and setup help; use nano-banana-cli for Gemini. |
 | [`github-session-sync`](plugins/mnmstack/skills/github-session-sync/SKILL.md) 📜 🔒 | skill | `mnmstack` | Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced… |
 | [`grok-search`](plugins/mnmstack/skills/grok-search/SKILL.md) 📜 📚 | skill | `mnmstack` | Searches live X/Twitter posts and sentiment through Grok. For other web research, use only when the user or workflow selects Grok; general news or citation requests alone do not… |
 | [`hooks-crafting`](plugins/mnmstack/skills/hooks-crafting/SKILL.md) 📚 🔒 | skill | `mnmstack` | Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications,… |
 | [`html-presentation`](plugins/presentation/skills/html-presentation/SKILL.md) 🔒 | skill | `presentation` | Create beautiful browser-runnable HTML presentations using reveal.js. Single self-contained HTML file with slides, transitions, speaker notes, and responsive design. |
+| [`humanizer`](plugins/mnmstack/skills/humanizer/SKILL.md) 📜 | skill | `mnmstack` | Rewrite AI-sounding text so it reads like the writer without changing what it says. Use when editing or reviewing prose for AI tells: not-X-but-Y contrasts, one-line closers,… |
 | [`interview-management`](plugins/duty/skills/interview-management/SKILL.md) 🔒 | skill | `duty` | Manage structured engineering interviews for Senior Frontend Engineer, Frontend Engineer, and Fullstack Engineer loops. |
 | [`interview-manager`](plugins/duty/agents/interview-manager.agent.md) | agent | `duty` | Engineering interviewer sidekick. Helps prepare, run, and debrief Senior Frontend Engineer, Frontend Engineer, and Fullstack Engineer interviews with question banks, STAR-style… |
 | [`issue-updates`](plugins/mnmstack/skills/issue-updates/SKILL.md) | skill | `mnmstack` | Updates existing GitHub issues and Azure DevOps work items: comments, fields, assignments, and state. |
@@ -41,6 +44,13 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`oncall-query`](plugins/duty/skills/oncall-query/SKILL.md) | skill | `duty` | Search, filter, aggregate, and report on on-call data. Timeline views, active incidents, shift handoffs, weekly summaries, and metrics. |
 | [`plugin-crafting`](plugins/mnmstack/skills/plugin-crafting/SKILL.md) 🔒 | skill | `mnmstack` | Builds and troubleshoots Copilot CLI plugins and marketplaces. Use for plugin.json or marketplace.json, packaging agents/skills/hooks/commands/extensions/MCP/LSP servers, install… |
 | [`pptx-creation`](plugins/presentation/skills/pptx-creation/SKILL.md) 📜 📚 🔒 | skill | `presentation` | Create and rebuild professional PowerPoint presentations (.pptx) from content, outlines, or approved slide plans. |
+| [`pr-comments`](plugins/pr-workflows/skills/pr-comments/SKILL.md) | skill | `pr-workflows` | Resolves existing PR review feedback end-to-end by default; assesses only when explicitly requested. Use standalone or within pr-watch, not for a fresh code review. |
+| [`pr-diagnose`](plugins/pr-workflows/skills/pr-diagnose/SKILL.md) | skill | `pr-workflows` | Diagnoses failed or blocked PR checks and pipelines; fixes failures when delegated. Use standalone or within pr-watch, not for continuous monitoring. |
+| [`pr-prepare`](plugins/pr-workflows/skills/pr-prepare/SKILL.md) | skill | `pr-workflows` | Assesses local changes for publication and, when authorized, publishes a new PR or refreshes an existing one for human review, including target integration and conflict… |
+| [`pr-review`](plugins/pr-workflows/skills/pr-review/SKILL.md) | skill | `pr-workflows` | Reviews pull requests for correctness and the smallest correct implementation, posting the review by default without editing code. |
+| [`pr-status`](plugins/pr-workflows/skills/pr-status/SKILL.md) | skill | `pr-workflows` | Reports a PR status snapshot covering current checks, approvals, unresolved feedback, conflicts, and merge blockers. Not for continuous monitoring or fixes. |
+| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) | skill | `pr-workflows` | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. |
+| [`pr-watch`](plugins/pr-workflows/skills/pr-watch/SKILL.md) 📜 📚 | skill | `pr-workflows` | Monitors a PR, fixes CI failures, and handles review feedback until all CI checks pass and approval is valid. Use for ongoing ownership, not a one-time status check. Never merges. |
 | [`prd-to-work-items`](plugins/docs/skills/prd-to-work-items/SKILL.md) | skill | `docs` | Decompose and create vertical-slice work items from a PRD with dependency tracking. Use when breaking down a PRD, feature spec, or requirements document into trackable GitHub… |
 | [`presentation-critique`](plugins/presentation/skills/presentation-critique/SKILL.md) 🔒 | skill | `presentation` | Structured evaluation procedure for PowerPoint presentations against professional standards. |
 | [`presentation-designer`](plugins/presentation/agents/presentation-designer.agent.md) | agent | `presentation` | Create or revise professional presentations in PPTX or HTML. Handles outline design, AI-generated visuals, slide production, speaker notes, and multi-model quality review — all… |
@@ -54,8 +64,10 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`sessionStart: hooks/detect-tools.sh`](plugins/mnmstack/hooks/detect-tools.sh) | hook | `mnmstack` | On `sessionStart` runs `hooks/detect-tools.sh` (timeout 15s). |
 | [`sessionStart: hooks/link-commands.sh`](plugins/mnmstack/hooks/link-commands.sh) | hook | `mnmstack` | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). |
 | [`sessionStart: hooks/lint-memory-advisory.sh`](plugins/mnmstack/hooks/lint-memory-advisory.sh) | hook | `mnmstack` | On `sessionStart` runs `hooks/lint-memory-advisory.sh` (timeout 15s). |
+| [`show-me`](plugins/mnmstack/skills/show-me/SKILL.md) | skill | `mnmstack` | Help the user understand the current topic visually with concise diagrams, code-shape sketches, and focused HTML artifacts. |
 | [`skill-crafting`](plugins/mnmstack/skills/skill-crafting/SKILL.md) 📚 🔒 | skill | `mnmstack` | Finds, installs, creates, and refines Agent Skills. Use for skill discovery, SKILL.md changes, or installation. |
 | [`skill-improvement-loop`](plugins/mnmstack/skills/skill-improvement-loop/SKILL.md) 📚 🔒 | skill | `mnmstack` | Improves agents or skills using observed session evidence. Use for triggering issues, procedure-adherence gaps, repeated tool failures, user corrections, feedback loops, and… |
+| [`teach`](plugins/mnmstack/skills/teach/SKILL.md) | skill | `mnmstack` | Teach the user a new skill or concept, within this workspace. |
 | [`ui-critic`](plugins/ui/agents/ui-critic.agent.md) | agent | `ui` | Senior design critic and accessibility specialist. Evaluates React/TypeScript UI against design system constraints, hierarchy, accessibility, and micro-interactions. |
 | [`ui-critique`](plugins/ui/skills/ui-critique/SKILL.md) | skill | `ui` | Review and evaluate UI components against design principles. Use when reviewing, scoring, or critiquing React/TypeScript UI code for quality, accessibility, hierarchy, and design… |
 | [`ui-design-system`](plugins/ui/skills/ui-design-system/SKILL.md) | skill | `ui` | Review and apply design system constraints and tokens for beautiful UI generation. Use when creating, styling, or reviewing React/TypeScript UI components. |
@@ -67,7 +79,7 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 
 ### `mnmstack`
 
-Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.
+Skills for browser automation, Azure and DevOps, research, personal tasks and messaging, writing, visual explanations, teaching, and Copilot customization. Replaces core-skills, core-agents, and meta without custom agent definitions.
 
 _Source: [`plugins/mnmstack/`](plugins/mnmstack/)_
 
@@ -80,14 +92,17 @@ _Source: [`plugins/mnmstack/`](plugins/mnmstack/)_
 | [`agent-crafting`](plugins/mnmstack/skills/agent-crafting/SKILL.md) 📚 🔒 | Creates and troubleshoots Copilot agent definitions (.agent.md). Use for persona, frontmatter, tool access, or loading and routing changes. | — |
 | [`agent-skill-audit`](plugins/mnmstack/skills/agent-skill-audit/SKILL.md) 📚 🔒 | Audits agent, skill, and hook definitions for structural quality, routing, and inventory. Use for static reviews, not architect self-audits or session-history analysis. | — |
 | [`agent-system-design`](plugins/mnmstack/skills/agent-system-design/SKILL.md) | Designs customization workflows across skills, agents, hooks, plugins, and extension or canvas boundaries. | — |
+| [`anatomy`](plugins/mnmstack/skills/anatomy/SKILL.md) 📜 📚 | Build crafted, highly detailed, interactive isometric SVG figures that explain a technical idea as a real physical object (a test rig, a dial gauge, a cabinet of drawers, a… | — |
 | [`assistant-capture`](plugins/mnmstack/skills/assistant-capture/SKILL.md) 📜 📚 | Captures personal notes, tasks, and reminders. Use to save a note, manage a task or reminder, or turn meeting action items into tasks. | — |
 | [`assistant-query`](plugins/mnmstack/skills/assistant-query/SKILL.md) 📜 📚 | Queries saved notes, tasks, reminders, and open pull requests, and creates daily or weekly briefings. Use to find personal context, check what is due, or get a briefing. | — |
 | [`az`](plugins/mnmstack/skills/az/SKILL.md) 📚 | Generate and explain Azure CLI (`az`) commands for managing Azure and Azure DevOps. Use when the user asks for Azure CLI commands or wants to manage Azure or Azure DevOps from the… | — |
+| [`bro`](plugins/mnmstack/skills/bro/SKILL.md) | Restate the last message in plain human language, with no jargon. | — |
 | [`browser`](plugins/mnmstack/skills/browser/SKILL.md) 📜 📚 | Automates websites in a dedicated signed-in browser window. Use for screenshots, rendered pages, forms, account flows, or browser network/storage inspection; not API-only tasks,… | — |
 | [`create-image`](plugins/mnmstack/skills/create-image/SKILL.md) 📜 📚 | Generates and edits raster images with gpt-image-2 on Azure AI Foundry. Use for image generation or gpt-image command and setup help; use nano-banana-cli for Gemini. | — |
 | [`github-session-sync`](plugins/mnmstack/skills/github-session-sync/SKILL.md) 📜 🔒 | Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced… | github session sync, update issue with progress, session-to-issue, sync session to github, stamp issue with session, session-yield hook |
 | [`grok-search`](plugins/mnmstack/skills/grok-search/SKILL.md) 📜 📚 | Searches live X/Twitter posts and sentiment through Grok. For other web research, use only when the user or workflow selects Grok; general news or citation requests alone do not… | — |
 | [`hooks-crafting`](plugins/mnmstack/skills/hooks-crafting/SKILL.md) 📚 🔒 | Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications,… | — |
+| [`humanizer`](plugins/mnmstack/skills/humanizer/SKILL.md) 📜 | Rewrite AI-sounding text so it reads like the writer without changing what it says. Use when editing or reviewing prose for AI tells: not-X-but-Y contrasts, one-line closers,… | — |
 | [`issue-updates`](plugins/mnmstack/skills/issue-updates/SKILL.md) | Updates existing GitHub issues and Azure DevOps work items: comments, fields, assignments, and state. | — |
 | [`m365-messaging`](plugins/mnmstack/skills/m365-messaging/SKILL.md) | Read and send Microsoft Teams messages via the Teams MCP server (chats, channels, presence, mentions, search). | check Teams, any new messages, unread, DMs, message a teammate, ping the team, post to channel, what did X say, mentions, who messaged me, Teams catch up, is X online, send Teams message, notes to self, reply on Teams, send Teams file, m365 user lookup |
 | [`memory`](plugins/mnmstack/skills/memory/SKILL.md) 📜 🔒 | Read, write, and search persistent cross-session memory for Copilot agents. Use when retrieving context, recording facts or preferences, or recalling project knowledge from… | — |
@@ -99,8 +114,10 @@ _Source: [`plugins/mnmstack/`](plugins/mnmstack/)_
 | [`research-methodology`](plugins/mnmstack/skills/research-methodology/SKILL.md) 📚 | Conducts cited external research and answers questions about saved research reports. Use for literature reviews, technology comparisons, market reports, or multi-source… | — |
 | [`scheduled-headless-copilot`](plugins/mnmstack/skills/scheduled-headless-copilot/SKILL.md) 📜 📚 | Manages unattended Copilot CLI and executable tasks via Copilot Loops on macOS or OS schedulers. | — |
 | [`scheduled-skill-review`](plugins/mnmstack/skills/scheduled-skill-review/SKILL.md) 📜 📚 | Manages scheduled Copilot skill-and-agent reviews on macOS with a menu-bar app for status, control, and per-unit settings. | — |
+| [`show-me`](plugins/mnmstack/skills/show-me/SKILL.md) | Help the user understand the current topic visually with concise diagrams, code-shape sketches, and focused HTML artifacts. | — |
 | [`skill-crafting`](plugins/mnmstack/skills/skill-crafting/SKILL.md) 📚 🔒 | Finds, installs, creates, and refines Agent Skills. Use for skill discovery, SKILL.md changes, or installation. | — |
 | [`skill-improvement-loop`](plugins/mnmstack/skills/skill-improvement-loop/SKILL.md) 📚 🔒 | Improves agents or skills using observed session evidence. Use for triggering issues, procedure-adherence gaps, repeated tool failures, user corrections, feedback loops, and… | — |
+| [`teach`](plugins/mnmstack/skills/teach/SKILL.md) | Teach the user a new skill or concept, within this workspace. | — |
 
 **Hooks**
 
@@ -110,6 +127,24 @@ _Source: [`plugins/mnmstack/`](plugins/mnmstack/)_
 | [`sessionStart: hooks/detect-tools.sh`](plugins/mnmstack/hooks/detect-tools.sh) | On `sessionStart` runs `hooks/detect-tools.sh` (timeout 15s). | — |
 | [`sessionStart: hooks/link-commands.sh`](plugins/mnmstack/hooks/link-commands.sh) | On `sessionStart` runs `hooks/link-commands.sh` (timeout 10s). | — |
 | [`sessionStart: hooks/ado-sync-advisory.sh`](plugins/mnmstack/hooks/ado-sync-advisory.sh) | On `sessionStart` runs `hooks/ado-sync-advisory.sh` (timeout 10s). | — |
+
+### `pr-workflows`
+
+Pull request preparation, review, validation, status, check diagnosis, feedback handling, and monitoring for GitHub and Azure DevOps.
+
+_Source: [`plugins/pr-workflows/`](plugins/pr-workflows/)_
+
+**Skills**
+
+| Name | Description | Triggers / Keywords |
+| --- | --- | --- |
+| [`pr-comments`](plugins/pr-workflows/skills/pr-comments/SKILL.md) | Resolves existing PR review feedback end-to-end by default; assesses only when explicitly requested. Use standalone or within pr-watch, not for a fresh code review. | — |
+| [`pr-diagnose`](plugins/pr-workflows/skills/pr-diagnose/SKILL.md) | Diagnoses failed or blocked PR checks and pipelines; fixes failures when delegated. Use standalone or within pr-watch, not for continuous monitoring. | — |
+| [`pr-prepare`](plugins/pr-workflows/skills/pr-prepare/SKILL.md) | Assesses local changes for publication and, when authorized, publishes a new PR or refreshes an existing one for human review, including target integration and conflict… | — |
+| [`pr-review`](plugins/pr-workflows/skills/pr-review/SKILL.md) | Reviews pull requests for correctness and the smallest correct implementation, posting the review by default without editing code. | — |
+| [`pr-status`](plugins/pr-workflows/skills/pr-status/SKILL.md) | Reports a PR status snapshot covering current checks, approvals, unresolved feedback, conflicts, and merge blockers. Not for continuous monitoring or fixes. | — |
+| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. | — |
+| [`pr-watch`](plugins/pr-workflows/skills/pr-watch/SKILL.md) 📜 📚 | Monitors a PR, fixes CI failures, and handles review feedback until all CI checks pass and approval is valid. Use for ongoing ownership, not a one-time status check. Never merges. | — |
 
 ### `presentation`
 
@@ -209,15 +244,18 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 | [`agent-crafting`](plugins/mnmstack/skills/agent-crafting/SKILL.md) 📚 🔒 | `mnmstack` | Creates and troubleshoots Copilot agent definitions (.agent.md). Use for persona, frontmatter, tool access, or loading and routing changes. | — |
 | [`agent-skill-audit`](plugins/mnmstack/skills/agent-skill-audit/SKILL.md) 📚 🔒 | `mnmstack` | Audits agent, skill, and hook definitions for structural quality, routing, and inventory. Use for static reviews, not architect self-audits or session-history analysis. | — |
 | [`agent-system-design`](plugins/mnmstack/skills/agent-system-design/SKILL.md) | `mnmstack` | Designs customization workflows across skills, agents, hooks, plugins, and extension or canvas boundaries. | — |
+| [`anatomy`](plugins/mnmstack/skills/anatomy/SKILL.md) 📜 📚 | `mnmstack` | Build crafted, highly detailed, interactive isometric SVG figures that explain a technical idea as a real physical object (a test rig, a dial gauge, a cabinet of drawers, a… | — |
 | [`assistant-capture`](plugins/mnmstack/skills/assistant-capture/SKILL.md) 📜 📚 | `mnmstack` | Captures personal notes, tasks, and reminders. Use to save a note, manage a task or reminder, or turn meeting action items into tasks. | — |
 | [`assistant-query`](plugins/mnmstack/skills/assistant-query/SKILL.md) 📜 📚 | `mnmstack` | Queries saved notes, tasks, reminders, and open pull requests, and creates daily or weekly briefings. Use to find personal context, check what is due, or get a briefing. | — |
 | [`az`](plugins/mnmstack/skills/az/SKILL.md) 📚 | `mnmstack` | Generate and explain Azure CLI (`az`) commands for managing Azure and Azure DevOps. Use when the user asks for Azure CLI commands or wants to manage Azure or Azure DevOps from the… | — |
+| [`bro`](plugins/mnmstack/skills/bro/SKILL.md) | `mnmstack` | Restate the last message in plain human language, with no jargon. | — |
 | [`browser`](plugins/mnmstack/skills/browser/SKILL.md) 📜 📚 | `mnmstack` | Automates websites in a dedicated signed-in browser window. Use for screenshots, rendered pages, forms, account flows, or browser network/storage inspection; not API-only tasks,… | — |
 | [`create-image`](plugins/mnmstack/skills/create-image/SKILL.md) 📜 📚 | `mnmstack` | Generates and edits raster images with gpt-image-2 on Azure AI Foundry. Use for image generation or gpt-image command and setup help; use nano-banana-cli for Gemini. | — |
 | [`github-session-sync`](plugins/mnmstack/skills/github-session-sync/SKILL.md) 📜 🔒 | `mnmstack` | Reviews the just-finished Copilot session and updates the related GitHub issue so the GitHub personal board stays a source of truth linking issues to the sessions that produced… | github session sync, update issue with progress, session-to-issue, sync session to github, stamp issue with session, session-yield hook |
 | [`grok-search`](plugins/mnmstack/skills/grok-search/SKILL.md) 📜 📚 | `mnmstack` | Searches live X/Twitter posts and sentiment through Grok. For other web research, use only when the user or workflow selects Grok; general news or citation requests alone do not… | — |
 | [`hooks-crafting`](plugins/mnmstack/skills/hooks-crafting/SKILL.md) 📚 🔒 | `mnmstack` | Authors and troubleshoots GitHub Copilot hooks. Use for hooks.json, lifecycle events, command/HTTP/prompt configurations, tool-call decisions, context injection, notifications,… | — |
 | [`html-presentation`](plugins/presentation/skills/html-presentation/SKILL.md) 🔒 | `presentation` | Create beautiful browser-runnable HTML presentations using reveal.js. Single self-contained HTML file with slides, transitions, speaker notes, and responsive design. | — |
+| [`humanizer`](plugins/mnmstack/skills/humanizer/SKILL.md) 📜 | `mnmstack` | Rewrite AI-sounding text so it reads like the writer without changing what it says. Use when editing or reviewing prose for AI tells: not-X-but-Y contrasts, one-line closers,… | — |
 | [`interview-management`](plugins/duty/skills/interview-management/SKILL.md) 🔒 | `duty` | Manage structured engineering interviews for Senior Frontend Engineer, Frontend Engineer, and Fullstack Engineer loops. | interviewer, frontend interview, fullstack interview, hiring loop, question bank, interview history, scorecard, rubric, debrief |
 | [`issue-updates`](plugins/mnmstack/skills/issue-updates/SKILL.md) | `mnmstack` | Updates existing GitHub issues and Azure DevOps work items: comments, fields, assignments, and state. | — |
 | [`m365-messaging`](plugins/mnmstack/skills/m365-messaging/SKILL.md) | `mnmstack` | Read and send Microsoft Teams messages via the Teams MCP server (chats, channels, presence, mentions, search). | check Teams, any new messages, unread, DMs, message a teammate, ping the team, post to channel, what did X say, mentions, who messaged me, Teams catch up, is X online, send Teams message, notes to self, reply on Teams, send Teams file, m365 user lookup |
@@ -229,6 +267,13 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 | [`oncall-query`](plugins/duty/skills/oncall-query/SKILL.md) | `duty` | Search, filter, aggregate, and report on on-call data. Timeline views, active incidents, shift handoffs, weekly summaries, and metrics. | query, search, find, show, list, report, handoff, summary, metrics, timeline, what happened, open incidents |
 | [`plugin-crafting`](plugins/mnmstack/skills/plugin-crafting/SKILL.md) 🔒 | `mnmstack` | Builds and troubleshoots Copilot CLI plugins and marketplaces. Use for plugin.json or marketplace.json, packaging agents/skills/hooks/commands/extensions/MCP/LSP servers, install… | — |
 | [`pptx-creation`](plugins/presentation/skills/pptx-creation/SKILL.md) 📜 📚 🔒 | `presentation` | Create and rebuild professional PowerPoint presentations (.pptx) from content, outlines, or approved slide plans. | — |
+| [`pr-comments`](plugins/pr-workflows/skills/pr-comments/SKILL.md) | `pr-workflows` | Resolves existing PR review feedback end-to-end by default; assesses only when explicitly requested. Use standalone or within pr-watch, not for a fresh code review. | — |
+| [`pr-diagnose`](plugins/pr-workflows/skills/pr-diagnose/SKILL.md) | `pr-workflows` | Diagnoses failed or blocked PR checks and pipelines; fixes failures when delegated. Use standalone or within pr-watch, not for continuous monitoring. | — |
+| [`pr-prepare`](plugins/pr-workflows/skills/pr-prepare/SKILL.md) | `pr-workflows` | Assesses local changes for publication and, when authorized, publishes a new PR or refreshes an existing one for human review, including target integration and conflict… | — |
+| [`pr-review`](plugins/pr-workflows/skills/pr-review/SKILL.md) | `pr-workflows` | Reviews pull requests for correctness and the smallest correct implementation, posting the review by default without editing code. | — |
+| [`pr-status`](plugins/pr-workflows/skills/pr-status/SKILL.md) | `pr-workflows` | Reports a PR status snapshot covering current checks, approvals, unresolved feedback, conflicts, and merge blockers. Not for continuous monitoring or fixes. | — |
+| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) | `pr-workflows` | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. | — |
+| [`pr-watch`](plugins/pr-workflows/skills/pr-watch/SKILL.md) 📜 📚 | `pr-workflows` | Monitors a PR, fixes CI failures, and handles review feedback until all CI checks pass and approval is valid. Use for ongoing ownership, not a one-time status check. Never merges. | — |
 | [`prd-to-work-items`](plugins/docs/skills/prd-to-work-items/SKILL.md) | `docs` | Decompose and create vertical-slice work items from a PRD with dependency tracking. Use when breaking down a PRD, feature spec, or requirements document into trackable GitHub… | — |
 | [`presentation-critique`](plugins/presentation/skills/presentation-critique/SKILL.md) 🔒 | `presentation` | Structured evaluation procedure for PowerPoint presentations against professional standards. | critique presentation, review slides, presentation feedback, deck review, slide quality |
 | [`presentation-workflow`](plugins/presentation/skills/presentation-workflow/SKILL.md) 🔒 | `presentation` | End-to-end orchestration procedure for creating presentations. Covers intent capture, outline planning, image generation delegation, slide building, multi-model parallel critique,… | — |
@@ -237,8 +282,10 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 | [`research-methodology`](plugins/mnmstack/skills/research-methodology/SKILL.md) 📚 | `mnmstack` | Conducts cited external research and answers questions about saved research reports. Use for literature reviews, technology comparisons, market reports, or multi-source… | — |
 | [`scheduled-headless-copilot`](plugins/mnmstack/skills/scheduled-headless-copilot/SKILL.md) 📜 📚 | `mnmstack` | Manages unattended Copilot CLI and executable tasks via Copilot Loops on macOS or OS schedulers. | — |
 | [`scheduled-skill-review`](plugins/mnmstack/skills/scheduled-skill-review/SKILL.md) 📜 📚 | `mnmstack` | Manages scheduled Copilot skill-and-agent reviews on macOS with a menu-bar app for status, control, and per-unit settings. | — |
+| [`show-me`](plugins/mnmstack/skills/show-me/SKILL.md) | `mnmstack` | Help the user understand the current topic visually with concise diagrams, code-shape sketches, and focused HTML artifacts. | — |
 | [`skill-crafting`](plugins/mnmstack/skills/skill-crafting/SKILL.md) 📚 🔒 | `mnmstack` | Finds, installs, creates, and refines Agent Skills. Use for skill discovery, SKILL.md changes, or installation. | — |
 | [`skill-improvement-loop`](plugins/mnmstack/skills/skill-improvement-loop/SKILL.md) 📚 🔒 | `mnmstack` | Improves agents or skills using observed session evidence. Use for triggering issues, procedure-adherence gaps, repeated tool failures, user corrections, feedback loops, and… | — |
+| [`teach`](plugins/mnmstack/skills/teach/SKILL.md) | `mnmstack` | Teach the user a new skill or concept, within this workspace. | — |
 | [`ui-critique`](plugins/ui/skills/ui-critique/SKILL.md) | `ui` | Review and evaluate UI components against design principles. Use when reviewing, scoring, or critiquing React/TypeScript UI code for quality, accessibility, hierarchy, and design… | — |
 | [`ui-design-system`](plugins/ui/skills/ui-design-system/SKILL.md) | `ui` | Review and apply design system constraints and tokens for beautiful UI generation. Use when creating, styling, or reviewing React/TypeScript UI components. | — |
 | [`ui-generation`](plugins/ui/skills/ui-generation/SKILL.md) 📚 | `ui` | Generate beautiful React/TypeScript UI components through a step-by-step workflow. Use when building new components, layouts, pages, or UI features. | — |
