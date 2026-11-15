@@ -1,8 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readResponse, responseFailure, transportFailure, MAX_RESPONSE_BYTES } from '../client-protocol.mjs';
+import { nativeSignInFailure, readResponse, responseFailure, transportFailure, MAX_RESPONSE_BYTES } from '../client-protocol.mjs';
 import { json } from './test-support.mjs';
 
+test('native sign-in projects only a fixed stage, HTTP status and GUID middleware correlation', () => {
+  const id = '99999999-9999-4999-8999-999999999999';
+  const error = nativeSignInFailure(new Response('synthetic-private-body', {
+    status: 403, headers: { 'x-ms-middleware-request-id': id, 'set-cookie': 'synthetic-private-cookie', location: 'https://private.test' },
+  }), 'http-response');
+  assert.equal(error.code, 'native-sign-in'); assert.equal(error.outcome, 'not-sent');
+  assert.deepEqual(error.nativeSignIn, { stage: 'http-response', httpStatus: 403, middlewareRequestId: id });
+  assert.equal(Object.isFrozen(error.nativeSignIn), true);
+  assert.doesNotMatch(JSON.stringify(error), /synthetic|private\.test|set-cookie|location/);
+  for (const correlation of ['synthetic.jwt.token', 'x'.repeat(65536), 'constructor', `${id} private`]) {
+    const invalid = nativeSignInFailure({ status: 403, headers: new Headers({ 'x-ms-middleware-request-id': correlation }) }, 'synthetic-private-stage');
+    assert.deepEqual(invalid.nativeSignIn, { stage: 'transport', httpStatus: 403, middlewareRequestId: null });
+  }
+  for (const status of [undefined, '403', 0, 99, 600, NaN, 403.5]) {
+    assert.equal(nativeSignInFailure({ status }, 'session-response').nativeSignIn.httpStatus, null);
+  }
+  assert.deepEqual(nativeSignInFailure(null, 'transport').nativeSignIn,
+    { stage: 'transport', httpStatus: null, middlewareRequestId: null });
+});
 test('client preserves allowlisted definite denial codes with fixed non-secret remediation', () => {
   for (const [status, code] of [[409, 'version-conflict'], [507, 'state-quota'], [507, 'content-quota'], [403, 'mutations-disabled'], [403, 'obo-consent-or-policy']]) {
     const error = responseFailure(status, { code, error: 'synthetic.jwt.token', transactionId: 'untrusted' }, true);

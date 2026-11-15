@@ -114,7 +114,7 @@ test('malformed JWT JSON shapes return explicit authentication refusal', async (
 test('bearer uses actual user assertion AND MI-federated app assertion, then equivalent Graph gate', async () => {
   const assertion = token(), calls = [];
   const fetchImpl = delegatedFetch(assertion, { calls });
-  assert.deepEqual(await authorize({ authorization: `Bearer ${assertion}` }, config, { fetchImpl }, true), { oid: manager, transport: 'bearer' });
+  assert.deepEqual(await authorize({ ...principal(), authorization: `Bearer ${assertion}` }, config, { fetchImpl }, true), { oid: manager, transport: 'bearer' });
   assert.equal(calls.length, 5);
 });
 test('native platform session is bound to the independently verified assertion before MI-OBO and reader authorization', async () => {
@@ -186,17 +186,36 @@ test('OBO consent/claims challenge fails closed without exposing provider respon
   const fetchImpl = async url => String(url).endsWith('/keys') ? json({ keys: [jwk] }) :
     String(url).startsWith('http:') ? json({ access_token: 'synthetic-mi' }) :
       json({ error: 'interaction_required', claims: 'synthetic-sensitive-claims' }, 400);
-  await assert.rejects(authorize({ authorization: `Bearer ${token()}` }, config, { fetchImpl }, true), error =>
+  await assert.rejects(authorize({ ...principal(), authorization: `Bearer ${token()}` }, config, { fetchImpl }, true), error =>
     error.code === 'obo-consent-or-policy' && !error.message.includes('synthetic-sensitive'));
 });
 test('bearer denies unconfigured manager before MI/OBO and never falls back to browser identity', async () => {
-  await assert.rejects(authorize({ ...principal(), authorization: `Bearer ${token({ oid: other })}` }, config, { fetchImpl: keysFetch }, true), { code: 'manager' });
+  await assert.rejects(authorize({ ...principal(other), authorization: `Bearer ${token({ oid: other })}` }, config, { fetchImpl: keysFetch }, true), { code: 'manager' });
   await assert.rejects(authorize({ ...principal(), authorization: 'bad' }, config, { fetchImpl: () => assert.fail() }, true));
 });
 test('unsafe MI endpoints cannot receive either assertion', async () => {
   for (const identityEndpoint of ['https://example.test/msi/token', 'http://example.test/msi/token', 'http://127.0.0.1:8081/other']) {
-    await assert.rejects(authorize({ authorization: `Bearer ${token()}` }, { ...config, identityEndpoint }, { fetchImpl: keysFetch }, true), { code: 'mi-config' });
+    await assert.rejects(authorize({ ...principal(), authorization: `Bearer ${token()}` }, { ...config, identityEndpoint }, { fetchImpl: keysFetch }, true), { code: 'mi-config' });
   }
+});
+test('bearer requires a same-tenant platform identity and binds the independently verified user before OBO', async () => {
+  const assertion = token();
+  for (const headers of [
+    { authorization: `Bearer ${assertion}` },
+    { ...principal(manager, other), authorization: `Bearer ${assertion}` },
+  ]) {
+    await assert.rejects(authorize(headers, config, { fetchImpl: () => assert.fail('No network without platform identity') }, true));
+  }
+  await assert.rejects(authorize({ ...principal(other), authorization: `Bearer ${assertion}` }, config,
+    { fetchImpl: keysFetch }, true), { code: 'principal-binding' });
+  for (const changes of [{ aud: other }, { azp: other }, { scp: 'User.Read' }, { exp: time - 1 }]) {
+    await assert.rejects(authorize({ ...principal(), authorization: `Bearer ${token(changes)}` }, config,
+      { fetchImpl: keysFetch }, true), { code: 'jwt-claims' });
+  }
+  await assert.rejects(authorize({ ...principal(), authorization: `Bearer ${assertion}` }, config,
+    { fetchImpl: delegatedFetch(assertion, { groups: [] }) }, true), { code: 'reader' });
+  await assert.rejects(authorize({ ...principal(), authorization: `Bearer ${assertion}` }, config,
+    { fetchImpl: delegatedFetch(assertion, { oid: other }) }, true), { code: 'graph-binding' });
 });
 test('configuration fails closed for identifiers, origin, paths, flags and retention', () => {
   for (const change of [

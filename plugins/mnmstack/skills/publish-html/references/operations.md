@@ -17,6 +17,14 @@ hosted mutations; the host-owner freeze/migration applies to all copies.
 
 ## Set up once
 
+For full resource creation/reuse and a private inventory, use the separately
+approved [htmlpub setup command](htmlpub.md) and [onboarding workflow](onboarding.md).
+The local npm package supplies Windows/POSIX launchers; installation is a
+separate approval. Its Node.js setup CLI supports
+Windows/macOS/Linux contracts; live Windows execution is not yet validated.
+The command below remains a capture-only legacy initializer. It does not
+provision the host or enable native publishing.
+
 Run this after the host owner approves its tenant, registration and group allowlist:
 
 ```powershell

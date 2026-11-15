@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0] - 2026-11-15
+
+_minor release._
+
+- Add the installable `htmlpub` command for guided setup, report publishing,
+  replacement, deletion, backup restore and interrupted-operation recovery.
+- Add arrow-key menus, Space selection, terminal colors and private save/resume.
+  New setup plans disclose logging costs and access; saved plans keep their choices.
+- Send delegated bearer tokens directly to the approved manager API, with
+  platform identity, same-user assertion, manager and Graph authorization checks.
+  Browser authentication and the legacy uploader remain separate.
+- Add explicit browser publishing with a fresh owned session, unchanged server
+  authorization, same-origin requests and verified shutdown. Bearer is still
+  the default; the CLI does not change transport after a denial.
+- Keep resource creation, runtime deployment and publishing activation under
+  explicit approval, with private inventory, runtime hashes and recovery records.
+- Package only production files and the MIT license. Cover the installed command
+  with offline package tests and real terminal-keyboard tests.
+
 ## [1.2.0] - 2026-11-05
 
 _minor release._

@@ -4,6 +4,8 @@ This is reusable host-application source, not a routine HTML upload. Installing
 the skill does not deploy it. Deployment, app registration, consent, storage
 validation and mutation activation require separate host-owner approval.
 Source and offline tests do not prove that these live prerequisites work.
+For explicit create/reuse onboarding and private resource inventory, see
+[onboarding.md](onboarding.md). Routine publisher commands never invoke setup.
 
 ## Contents
 
@@ -21,9 +23,15 @@ The zero-dependency source is in `scripts/hosted-manager/`. Use POSIX Node.js 24
 The host entrypoint is `node server.mjs`. Copy its runtime modules
 (`server.mjs`, `config.mjs`, `common.mjs`, `auth.mjs`, `store.mjs`, `client-protocol.mjs`),
 `png.mjs`, `manager.html` and `manager-ui.mjs` together during an approved application
-deployment. Keep `publish.mjs` with `common.mjs`, `png.mjs` and `client-protocol.mjs` on publisher machines and `recover.mjs` for
+deployment. Keep `publish.mjs` with `browser-transport.mjs`, `common.mjs`, `png.mjs` and `client-protocol.mjs` on publisher machines and `recover.mjs` for
 offline operator recovery. Do not copy test fixtures into the application.
 No package installation is required.
+The onboarding release also includes `start-host.mjs`, which initializes only
+the approved fixed storage paths before calling the existing server. It and
+all runtime dependencies are part of the immutable deployment manifest.
+Keep `onboarding/state.mjs` at its source-relative path beside the publisher's
+`hosted-manager/` directory when copying publisher tools; config loading
+depends on it. It is not a hosted-server dependency.
 
 Keep all environment identifiers and runtime state outside the public source
 checkout. Create the content directory in advance. The private state directory
@@ -76,7 +84,7 @@ The chosen same-app design requires the own-API app client ID to be the existing
 EasyAuth app client ID. Its Entra registration must set
 `api.requestedAccessTokenVersion` to `2`. Retain the existing exact client ID
 as EasyAuth's sole `allowedAudiences` entry. Do not add a resource URI or accept
-another audience to bypass a rejection. Prove real native EasyAuth admission,
+another audience to bypass a rejection. Prove real bearer-token EasyAuth admission,
 independent own-API assertion validation and successful manager inventory on the
 deployed host before activation; token issuance alone is not that proof.
 
@@ -94,40 +102,42 @@ OBO with both that assertion and the actual user assertion. The delegated Graph
 token remains server-side and must pass the same `/me` binding and reader-group
 checks. No Graph application permission or ARM role is needed for filesystem
 management. Consent, claims challenges and policy errors fail closed, with no
-browser-only or Kudu fallback.
+automatic transport or Kudu fallback.
 
-The automated publisher first uses the documented
-[client-directed EasyAuth sign-in](https://learn.microsoft.com/en-us/azure/app-service/configure-authentication-customize-sign-in-out#use-client-directed-sign-in):
-it sends the own-API access token as JSON to `POST /.auth/login/aad` on the exact
-approved origin. It keeps the returned platform session token in memory.
-Manager requests carry `X-ZUMO-AUTH` for platform authentication and
-`X-Manager-Assertion` for the original delegated own-API token. They do not
-send an Authorization header or cookies. The application requires both native
-headers, a valid injected EasyAuth principal, and an independently verified
-assertion for that same tenant and user. It then applies the explicit manager,
-MI-federated OBO and live Graph reader checks. A session alone is not publisher
-authorization. Missing assertions, cookies, competing Authorization headers,
-invalid claims and mismatched users fail closed. There is no bearer or browser
-fallback after a native sign-in failure.
+The default bearer publisher sends the original delegated own-API access token as
+`Authorization: Bearer <token>` directly to the existing manager API endpoints
+on the exact approved origin. App Service
+[validates incoming access tokens](https://learn.microsoft.com/en-us/azure/app-service/configure-authentication-provider-aad#allowed-token-audiences)
+and injects the authenticated principal before application authorization.
+The application requires that platform principal and independently verifies
+the complete assertion for the same tenant and user. It then applies the
+explicit manager, MI-federated OBO and live Graph reader checks.
 
-The server retains direct bearer validation for previously approved callers;
-the CLI uses only the native contract. Deploy the matching `auth.mjs`,
-`server.mjs` and `client-protocol.mjs` before using this publisher version.
+In bearer mode, the CLI does not call `POST /.auth/login/aad`, create a platform session, send
+native headers, store cookies or use a browser credential. Bearer authentication
+is the publisher's protocol, not a fallback after another sign-in attempt.
+Missing platform identity, invalid claims, mismatched users and policy failures
+fail closed. Requests do not follow redirects or retry.
+
+The server retains the older paired native-header contract for existing
+callers, but the CLI no longer requires it. Deploy the matching `auth.mjs`,
+`server.mjs` and `client-protocol.mjs` before using bearer publishing.
 An installed CLI update does not update the host.
 
-Native sign-in can change platform provider-token state. Browser readers keep
+Older native sign-in can change platform provider-token state. Browser readers keep
 their normal cookie authentication. If EasyAuth supplies an API-audience token
 instead of a Graph token, the server verifies its complete own-API signature,
 claims and user binding, then uses the existing MI-federated OBO path to obtain
 Graph authorization. It never sends that API token to Graph or silently accepts
 an expired/mismatched assertion. Existing Graph-token browser requests keep
-their original `/me` and reader-group checks. Prove both native publishing and
+their original `/me` and reader-group checks. Prove both bearer publishing and
 browser reader/manager access during an approved rollout. A sign-in experiment
 can require normal browser reauthentication; dropping a local session token
 does not undo platform token-store changes. Do not automatically log out or
 refresh other sessions as cleanup.
 
-The UI uses EasyAuth cookies, same-origin requests, exact host/origin checks and
+The UI and explicitly selected browser publisher use EasyAuth cookies,
+same-origin requests, exact host/origin checks and
 a custom JSON request header. No CORS is enabled. These guards do **not** isolate
 the manager from trusted same-origin report JavaScript. Reviewed first-party
 report code has the user's application privileges, including manager privileges.
@@ -201,13 +211,32 @@ ordinary report readers cannot enumerate or read private thumbnails.
 
 ## Automated publisher
 
+The public command is `htmlpub`, with guided confirmations and complete
+headless arguments. See [htmlpub.md](htmlpub.md) for the local npm install,
+command mapping, version/backup selection and journal recovery. It uses this
+same publisher and manager API, with no automatic authentication or Kudu fallback.
+
 Use the source-relative `scripts/hosted-manager/publish.mjs` after approved
 cutover. It requires POSIX Node 24, Azure CLI already installed and an approved
 signed-in account. Native Windows support for this new CLI is not validated.
 The historical PowerShell helper retains its existing Windows support.
 
+Explicit `--browser` uses a fresh owned Edge session on macOS/Windows instead
+of acquiring an Azure CLI token. It requires the bundled MIT browser runtime
+and compatible installed `playwright-cli`; native Windows execution is unverified.
+See [browser prerequisites and sign-in](htmlpub.md#optional-browser-publishing).
+Real page-context requests retain normal same-origin cookies, the existing
+JSON/request-header guards and POST `referrerPolicy: 'same-origin'`. No OAuth
+token, cookie, Origin or identity header is exported or forged. API failures
+are not retried. A verified write with unverified browser shutdown retains
+`verified-cleanup-pending` and its transaction ID; never repeat it.
+
 All commands require explicit `--origin '<approved-https-origin>'`,
 `--tenant '<tenant-guid>'` and `--api-client '<own-api-app-guid>'`.
+Alternatively, supply `--config '<private-resources.json>'` from completed
+onboarding, without mixing explicit target arguments. Inventory can use a
+configured pending host; mutations require fresh acceptance and separate
+verified activation. Config loading performs no provisioning or policy repair.
 
 ```text
 node publish.mjs inventory BASE
@@ -287,11 +316,10 @@ Linked files/parents, hard-linked files and multi-dot names are refused.
 
 The CLI captures `az account get-access-token --scope
 api://<app-guid>/publish_as_user` output in memory. It never puts bearer tokens
-in arguments, config, files, browser code or diagnostics. Its EasyAuth session
-also stays only in memory. Native sign-in is one bounded POST, with no redirects,
-cookie storage or retry. A refused, malformed or oversized sign-in response
-stops before any manager request. It has no automatic
-retry. A missing or invalid response is an uncertain outcome, not success.
+in arguments, config, files, browser code or diagnostics. Each manager API
+request carries the original bearer token, with no native sign-in, cookie
+storage, redirects or automatic retry. A missing or invalid mutation response
+is an uncertain outcome, not success.
 After such a response, inspect inventory and server transaction evidence before
 another mutation. A matching verified response includes its transaction ID,
 revision and readback SHA-256.
@@ -408,7 +436,7 @@ orphan-image deletion shortcut. Unresolved PNG evidence is never expired.
 
 Keep mutations disabled until the host owner verifies all of the following:
 own-API CLI issuance and real signature/claim checks; effective delegated Graph
-OBO consent and MI-federated execution; native EasyAuth admission with the
+OBO consent and MI-federated execution; bearer-token EasyAuth admission with the
 same-user delegated assertion, without excluding manager paths or weakening
 browser readers; configured manager
 allowlist; same-origin trust approval; durable shared storage and crash recovery;

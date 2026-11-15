@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private HTML publisher resource inventory",
+  "description": "Nonsecret environment identifiers are still private. This file must be outside repositories. The setup script also validates exact target relationships and field values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "setupId", "revision", "createdAt", "updatedAt", "sourceVersion", "request", "requestSha256", "subscription", "resources", "dependencies", "policy", "runtime", "diagnostics", "gates", "publisher", "activation", "preview", "operation", "recovery", "lastFailure"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "setupId": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "sourceVersion": { "const": "publish-html-onboarding-v1" },
+    "request": { "type": "object", "description": "Validated frozen user selections, never an arbitrary command or URL." },
+    "requestSha256": { "$ref": "#/$defs/sha256" },
+    "subscription": { "type": ["object", "null"], "description": "Null until selected subscription/tenant/cloud metadata is observed." },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceGroup", "plan", "identity", "application", "site", "servicePrincipal", "readerGroup0"],
+      "properties": {
+        "resourceGroup": { "$ref": "#/$defs/resource" },
+        "plan": { "$ref": "#/$defs/resource" },
+        "identity": { "$ref": "#/$defs/resource" },
+        "application": { "$ref": "#/$defs/resource" },
+        "site": { "$ref": "#/$defs/resource" },
+        "servicePrincipal": { "$ref": "#/$defs/resource" },
+        "workspace": { "$ref": "#/$defs/resource" }
+      },
+      "patternProperties": { "^readerGroup(?:[0-9]|1[0-9])$": { "$ref": "#/$defs/resource" } }
+    },
+    "dependencies": { "type": "object", "description": "Observed federation, delegated scope/grant, manager and client references. No directory profiles, secrets or token material." },
+    "policy": { "type": ["object", "null"], "description": "Allowlisted policy fields and hashes only, never raw authentication/appsettings responses." },
+    "runtime": { "type": ["object", "null"], "description": "Exact runtime file hashes, release hash, selected startup, content/state paths and verification provenance. Storage paths are not standalone Azure Storage resources." },
+    "diagnostics": { "type": "object", "required": ["status", "capture"], "properties": { "capture": { "const": "unverified" } } },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["native-manager-obo", "browser-reader-manager", "browser-denials", "corporate-ingress", "storage-durability-recovery", "trusted-origin-review", "legacy-writers-frozen", "source-review"],
+      "properties": {
+        "native-manager-obo": { "$ref": "#/$defs/gate" },
+        "browser-reader-manager": { "$ref": "#/$defs/gate" },
+        "browser-denials": { "$ref": "#/$defs/gate" },
+        "corporate-ingress": { "$ref": "#/$defs/gate" },
+        "storage-durability-recovery": { "$ref": "#/$defs/gate" },
+        "trusted-origin-review": { "$ref": "#/$defs/gate" },
+        "legacy-writers-frozen": { "$ref": "#/$defs/gate" },
+        "source-review": { "$ref": "#/$defs/gate" }
+      }
+    },
+    "publisher": { "type": ["object", "null"], "description": "Approved HTTPS origin, tenant GUID and own-API client GUID, derived from observed resources." },
+    "activation": {
+      "type": "object", "additionalProperties": false, "required": ["status", "targetSha256", "verifiedAt"],
+      "properties": {
+        "status": { "enum": ["pending", "verified"] },
+        "targetSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "verifiedAt": { "type": ["string", "null"] }
+      }
+    },
+    "preview": { "type": ["object", "null"], "description": "Finite stage, exact generated operation and scope digest. A digest is not authenticated user authorization." },
+    "operation": { "type": ["object", "null"], "description": "Bounded operation journal. Uncertain submissions are not retried." },
+    "recovery": { "type": ["object", "null"], "description": "Exact original deny-only SCM policy and host/release binding. Never a token or arbitrary command." },
+    "lastFailure": { "type": ["object", "null"], "description": "Sanitized stage/code/time only." }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "resource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["desired", "observed", "status", "ownership", "createdBySetup", "observedAt", "source"],
+      "properties": {
+        "desired": { "type": "object" },
+        "observed": { "type": ["object", "null"], "description": "Authoritative IDs/types/names/location and relationships only. Null is not a copy of desired state." },
+        "status": { "enum": ["unverified", "verified", "absent", "blocked", "uncertain"] },
+        "ownership": { "enum": ["unknown", "created", "reused", "external"] },
+        "createdBySetup": { "type": "boolean" },
+        "observedAt": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] }
+      }
+    },
+    "gate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "source", "checkedAt", "targetSha256", "evidence"],
+      "properties": {
+        "status": { "enum": ["pending", "passed", "failed"] },
+        "source": { "type": ["string", "null"] },
+        "checkedAt": { "type": ["string", "null"] },
+        "targetSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "evidence": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

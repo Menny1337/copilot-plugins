@@ -1,14 +1,16 @@
 ---
 name: publish-html
-description: "Publishes, lists, replaces, deletes and restores trusted HTML reports on an existing entitlement-protected Azure host. Use for report publishing, hosted page management or interrupted-upload recovery, not application deployment."
-compatibility: "Legacy uploader: Windows, PowerShell 7.2+, standard Azure CLI MSI and approved host access. Hosted manager and own-API CLI: POSIX Node.js 24, Azure CLI and separately approved host deployment/OBO configuration."
-argument-hint: "<report.html> [list|replace|delete|restore|recover]"
+description: "Publishes and manages trusted HTML reports on a protected Azure host, and configures publisher infrastructure on explicit request. Use for report publishing, lifecycle actions, upload recovery or publisher onboarding, not general application deployment."
+compatibility: "Setup: Node.js 24 and Azure CLI on Windows/macOS/Linux (Windows execution unverified). Legacy upload: Windows, PowerShell 7.2+, Azure CLI MSI. Bearer publisher: POSIX Node.js 24. Optional browser publisher: macOS/Windows, Edge and compatible playwright-cli (native Windows unverified). Both require separately accepted hosted authorization."
+argument-hint: "<report.html> [setup|list|replace|delete|restore|recover]"
 ---
 
 # Publish HTML
 
 Publish one trusted HTML file without changing the host's access policy or
 restarting its application. Initialize a private local config on first use.
+For explicitly requested full publisher onboarding, create or reuse its required
+resources through the separate approved setup procedure.
 
 Resolve `scripts/`, `references/`, and `templates/` relative to this skill's
 installation directory supplied when the skill loads. Do not use a fixed
@@ -19,14 +21,16 @@ checkout, session, or installed-plugin path.
 Use for publishing or listing existing HTML reports, explicitly replacing or deleting a hosted
 report, restoring its backup, or closing deployment access after an
 interrupted upload.
+Also use for explicit setup of this HTML publisher and its private resource
+inventory, including creation or reuse of the required host resources.
 
 ## When to skip
 
 - Creating or editing HTML: use the available HTML-authoring workflow, then
   return here only if publishing was requested.
-- Provisioning a site, changing its audience, or migrating hosting: use
-  Azure infrastructure tooling such as `az`. This skill only configures
-  itself against an existing approved host.
+- Unrelated site provisioning, audience changes or hosting migration: use
+  Azure infrastructure tooling such as `az`. Publisher onboarding is limited
+  to its documented protected App Service topology.
 - Deploying an application or a multi-file bundle: use its deployment
   workflow. This command uploads only the selected HTML file.
 - Arbitrary third-party HTML: do not publish it as trusted application code.
@@ -61,11 +65,43 @@ interrupted upload.
 
 ## Procedure
 
+### Explicit publisher onboarding
+
+For a setup request, read [htmlpub.md](references/htmlpub.md) and use
+`htmlpub setup` (`htmlpub --setup` is an alias). The local npm package supplies
+the real command on Windows/macOS/Linux; installing it needs separate approval.
+Without installation, run `node <skill-directory>/scripts/htmlpub.mjs setup`.
+Guide humans with Up/Down and Enter for one choice, or Space and Enter for
+multiple choices. Esc or Ctrl+C saves confirmed answers and exits without
+approving the pending change. Text prompts also accept `:save`. Keep exact typed
+operation confirmations. Color respects `NO_COLOR`; `TERM=dumb` uses plain
+numbered choices. Redirected input never prompts. New guided requests include logging with
+explicit cost/access/restart disclosure; saved requests stay unchanged.
+Private drafts support save/exit/resume. Structured automation remains
+available through `htmlpub setup plan|apply|recover|evidence`.
+Read [onboarding.md](references/onboarding.md) for engine details.
+Save the private draft/inventory before discovery, select create/reuse
+explicitly and review each impactful stage. Preview hashes bind scope, not
+authenticated approval. Keep routine publishing separate.
+Bearer-token EasyAuth/OBO and reader/manager checks must pass on the actual host
+before activation. Token issuance and offline tests do not establish readiness.
+Do not repair authentication, broaden access or restart the app as an implicit
+part of publication.
+
 ### 1. Resolve the file and host
 
 For an already migrated hosted manager, read
-[hosted-manager.md](references/hosted-manager.md) and use its automated own-API
-protocol for upload, replacement, deletion or restore. Never start, deploy or
+[htmlpub.md](references/htmlpub.md) for `htmlpub list|publish|replace|delete|restore`
+and [hosted-manager.md](references/hosted-manager.md) for the existing own-API
+protocol. Guided mutations confirm the displayed exact version; restore
+selects an actual backup. Redirected input requires complete arguments and
+never assumes approval. Bearer publishing requires POSIX. Explicit `--browser`
+uses a dedicated Edge window and the same manager API, with no cookie export,
+OAuth token extraction or bearer fallback. It requires an installed compatible
+`playwright-cli`; missing capability or required sign-in is an actionable stop.
+Browser publishing supports the macOS/Windows runtime; native Windows execution
+is unverified and Linux browser transport is unsupported.
+Never start, deploy or
 activate the host application as part of a routine upload. The remaining steps
 describe the historical single-file helper while hosted mutations are disabled
 and legacy publishing is not frozen. Its `-Recover` remains valid after cutover.
@@ -178,6 +214,11 @@ by its own organization's policy does not prove this app denied it.
 | File | Purpose |
 | --- | --- |
 | `scripts/upload-html.ps1` | First-use config, upload, backup and recovery |
+| `scripts/setup-html.mjs` | Explicit staged onboarding, private inventory and setup recovery |
+| `references/onboarding.md` | Create/reuse choices, approvals, acceptance and platform limits |
+| `templates/onboarding-request.example.json` | Non-working, generic setup selections |
+| `templates/resource-inventory.schema.json` | Private versioned inventory shape |
+| `scripts/onboarding.test.mjs` | Offline payload, approval and recovery cases |
 | `references/operations.md` | Host prerequisites, troubleshooting and limits |
 | `templates/config.example.json` | Generic, non-working config example |
 | `references/evaluations.json` | Routing and outcome evaluation cases |
