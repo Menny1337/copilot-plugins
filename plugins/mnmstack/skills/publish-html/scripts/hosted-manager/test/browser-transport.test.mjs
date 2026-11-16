@@ -165,6 +165,31 @@ test('bootstrap after MFA shares its navigation budget and unsupported readiness
   await assert.rejects(createBrowserTransport({ origin, onSignInRequired: () => assert.fail('not MFA') },
     ownedRuntime({ runCode: async (_session, source) => broken(source) })), { code: 'browser-capability' });
 });
+test('bootstrap waits for the server HTML revisit without adding a CLI navigation or retrying its fallback', async () => {
+  for (const finalStatus of [200, 403]) {
+    let status = 403, visits = 0;
+    const location = { origin, pathname: '/_manager/', search: '' };
+    const execute = pageContext(() => assert.fail('no API before recovery finishes'), {
+      context: { location, performance: { getEntriesByType: () => [{ responseStatus: status }] },
+        document: { body: { textContent: 'Generic recovery guidance, not JSON.' },
+          querySelector: selector => selector === 'meta[name="manager-origin-recovery"]' ?
+            (location.search === '' ? { content: 'revisit' } : null) :
+            { disabled: false, textContent: '0 of 0 HTML pages' } } },
+      page: { goto: async url => { assert.equal(url, origin + '/_manager/'); visits++; },
+        waitForFunction: async (fn, arg) => {
+          assert.equal(fn(arg), false);
+          location.search = '?recovery=1'; status = finalStatus;
+          assert.ok(fn(arg));
+        } },
+    });
+    const setup = ownedRuntime({ runCode: async (_session, source) => execute(source) });
+    if (finalStatus === 200) {
+      const browser = await createBrowserTransport({ origin }, setup); await browser.close();
+    } else await assert.rejects(createBrowserTransport({ origin, onSignInRequired: () => assert.fail('not MFA') }, setup),
+      { code: 'browser-access' });
+    assert.equal(visits, 1);
+  }
+});
 test('static manager nodes do not race the initial UI inventory or hide its failure', async () => {
   let busy = true, failed = false, waits = 0, drained = 0;
   const execute = pageContext(() => assert.fail('no API before initial UI inventory finishes'), {

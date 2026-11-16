@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1] - 2026-11-16
+
+_patch release._
+
+- Show a bounded HTML recovery page for canonical manager navigation origin
+  rejections, with one automatic revisit and manual retry/sign-in guidance.
+- Preserve manager authorization, JSON API errors, CSP and existing publisher
+  retry limits. A separate application rollout is required for running hosts.
+
 ## [1.3.0] - 2026-11-15
 
 _minor release._

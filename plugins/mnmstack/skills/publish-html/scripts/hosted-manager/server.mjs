@@ -23,6 +23,30 @@ const HEADERS = {
   'Content-Security-Policy': "frame-ancestors 'self'",
 };
 const MANAGER_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+const MANAGER_REVISIT = '/_manager/?recovery=1';
+const MANAGER_DOCUMENTS = ['/_manager', '/_manager/', MANAGER_REVISIT];
+function recoveryDocument(revisited) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+${revisited ? '' : `<meta name="manager-origin-recovery" content="revisit">
+<meta http-equiv="refresh" content="2;url=${MANAGER_REVISIT}">`}
+<title>Open the page manager</title>
+<style>
+body{font:1rem/1.6 Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:0;padding:24px}
+main{max-width:40rem;margin:10vh auto}a{color:#125b95}a:focus-visible{outline:2px solid #125b95;outline-offset:4px}
+</style>
+</head>
+<body><main>
+<h1>The manager could not open this navigation</h1>
+<p>${revisited ? 'The manager still cannot open this navigation. No more automatic retries will run.' : 'The browser will open the approved manager address again once. If it does not, use the retry link below.'}</p>
+<p><a href="${MANAGER_REVISIT}">Try opening the manager again</a></p>
+<p>This navigation was blocked by the manager origin check. This does not mean your sign-in has expired.</p>
+<p>If you need to sign in, <a href="/.auth/login/aad?post_login_redirect_uri=%2F_manager%2F%3Frecovery%3D1">sign in with Microsoft</a> using your approved work account. Sign-in does not grant manager access.</p>
+<p>If the problem continues, contact the host administrator and mention the manager-origin error. No page data was loaded.</p>
+</main></body></html>`;
+}
 export function contentName(target) {
   const pathname = target.split('?')[0];
   if (pathname === '/') return 'index.html';
@@ -70,7 +94,7 @@ export async function createServer(config, dependencies = {}) {
         const mutation = req.url === '/_manager/api/mutate' && req.method === 'POST';
         managerRequest(req, config, mutation);
         const identity = await authorize(req.headers, config, dependencies, true);
-        const assets = ['/_manager', '/_manager/', '/_manager/manager-ui.mjs', '/_manager/client-protocol.mjs'];
+        const assets = [...MANAGER_DOCUMENTS, '/_manager/manager-ui.mjs', '/_manager/client-protocol.mjs'];
         const inventoryRoute = req.url === '/_manager/api/inventory';
         const mutateRoute = req.url === '/_manager/api/mutate';
         const thumbnailRoute = /^\/_manager\/api\/thumbnail\/([a-f0-9-]{36})\/(before|after)\/([a-f0-9]{64})\.png$/.exec(req.url);
@@ -102,6 +126,17 @@ export async function createServer(config, dependencies = {}) {
       const content = await readRegular(path.join(config.contentDir, name));
       send(200, content.bytes, MIME_TYPES[path.extname(name).slice(1)]);
     } catch (error) {
+      // Only a canonical top-level document gets recovery UX, never an API or an untrusted target.
+      if (error instanceof ManagerError && error.status === 403 && error.code === 'manager-origin' &&
+          req.method === 'GET' && MANAGER_DOCUMENTS.includes(req.url) &&
+          req.headers.host === new URL(config.origin).host &&
+          (req.headers.origin === undefined || req.headers.origin === config.origin) &&
+          ['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']) &&
+          req.headers['sec-fetch-mode'] === 'navigate' && req.headers['sec-fetch-dest'] === 'document' &&
+          req.headers.accept?.split(',').some(value => value.trim().split(';')[0] === 'text/html')) {
+        send(403, recoveryDocument(req.url === MANAGER_REVISIT), MIME_TYPES.html);
+        return;
+      }
       const notFound = ['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code);
       const status = error instanceof ManagerError ? error.status : notFound ? 404 : 500;
       if (status >= 500) (dependencies.logError ?? console.error)(`HTML host request failed (${error instanceof ManagerError ? error.code : 'internal'}).`);
