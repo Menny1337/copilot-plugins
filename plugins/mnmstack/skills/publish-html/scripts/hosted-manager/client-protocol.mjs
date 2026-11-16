@@ -36,6 +36,16 @@ export class ClientError extends Error {
     super(message); this.code = code; this.outcome = outcome; this.transactionId = transactionId;
   }
 }
+export function nativeSignInFailure(response, stage) {
+  const error = new ClientError('native-sign-in', 'Native EasyAuth sign-in could not be verified. No manager request was sent. Resolve sign-in or host authentication; no retry or fallback is permitted.', 'not-sent');
+  const correlation = response?.headers?.get('x-ms-middleware-request-id');
+  error.nativeSignIn = Object.freeze({
+    stage: ['http-response', 'session-response'].includes(stage) ? stage : 'transport',
+    httpStatus: Number.isInteger(response?.status) && response.status >= 100 && response.status <= 599 ? response.status : null,
+    middlewareRequestId: typeof correlation === 'string' && GUID.test(correlation) ? correlation : null,
+  });
+  return error;
+}
 export function uncertainFailure(transactionId = null) {
   const id = typeof transactionId === 'string' && GUID.test(transactionId) ? transactionId : null;
   return new ClientError('outcome-uncertain',

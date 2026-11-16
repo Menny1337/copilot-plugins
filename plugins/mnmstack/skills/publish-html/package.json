@@ -1,0 +1,51 @@
+{
+  "name": "@mnmstack/htmlpub",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Guided setup and publishing for the protected HTML report host",
+  "type": "module",
+  "bin": {
+    "htmlpub": "scripts/htmlpub.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "scripts/htmlpub.mjs",
+    "scripts/htmlpub-catalog.mjs",
+    "scripts/htmlpub-terminal.mjs",
+    "scripts/htmlpub-wizard.mjs",
+    "scripts/setup-html.mjs",
+    "scripts/upload-html.ps1",
+    "scripts/onboarding/azure.mjs",
+    "scripts/onboarding/stages.mjs",
+    "scripts/onboarding/state.mjs",
+    "scripts/hosted-manager/browser-transport.mjs",
+    "scripts/browser-runtime/browser-window.mjs",
+    "scripts/browser-runtime/browser-managed.mjs",
+    "scripts/browser-runtime/browser-managed-owner.cjs",
+    "scripts/browser-runtime/browser-profile-launcher.cjs",
+    "scripts/browser-runtime/browser-activity.cjs",
+    "scripts/browser-runtime/bridge-token.mjs",
+    "scripts/browser-runtime/browser-window-macos.applescript",
+    "scripts/browser-runtime/browser-window-windows.ps1",
+    "scripts/hosted-manager/auth.mjs",
+    "scripts/hosted-manager/client-protocol.mjs",
+    "scripts/hosted-manager/common.mjs",
+    "scripts/hosted-manager/config.mjs",
+    "scripts/hosted-manager/manager-ui.mjs",
+    "scripts/hosted-manager/manager.html",
+    "scripts/hosted-manager/png.mjs",
+    "scripts/hosted-manager/publish.mjs",
+    "scripts/hosted-manager/recover.mjs",
+    "scripts/hosted-manager/render-thumbnail.mjs",
+    "scripts/hosted-manager/server.mjs",
+    "scripts/hosted-manager/start-host.mjs",
+    "scripts/hosted-manager/store.mjs",
+    "references/*.md",
+    "templates/*.json",
+    "SKILL.md",
+    "LICENSE"
+  ]
+}

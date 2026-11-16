@@ -143,8 +143,10 @@ export async function authorize(headers, config, { fetchImpl = globalThis.fetch,
     transport = 'native';
   } else if (manager && headers.authorization !== undefined) {
     if (typeof headers.authorization !== 'string' || !/^Bearer [A-Za-z0-9_.-]+$/.test(headers.authorization)) fail(401, 'bearer', 'Bearer authorization required.');
+    const platformOid = easyAuthIdentity(headers, config);
     const assertion = headers.authorization.slice(7);
     oid = await verifyOwnApi(assertion, config, { fetchImpl, now });
+    if (oid !== platformOid) fail(403, 'principal-binding', 'Platform identity and delegated assertion must identify the same user.');
     if (!config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
     graphToken = await oboToken(assertion, config, fetchImpl);
     transport = 'bearer';

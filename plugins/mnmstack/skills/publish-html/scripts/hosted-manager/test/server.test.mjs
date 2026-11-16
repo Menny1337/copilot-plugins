@@ -9,7 +9,6 @@ import { fixture, principal, graphFetch, other, html, png, request, origin } fro
 import { visiblePages, mutationRequest, pageUrl } from '../manager-ui.mjs';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { runPublisher } from '../publish.mjs';
-import { verifyOwnApi } from '../auth.mjs';
 import { digest } from '../common.mjs';
 import { tenant, manager, group, client, cli, json } from './test-support.mjs';
 
@@ -197,25 +196,47 @@ test('full offline own-API CLI -> loopback HTTP -> RSA/OBO/Graph -> transaction 
   const { root, config, send } = await host(t, {}, fetchAuth);
   const file = path.join(root, 'report.html'); await writeFile(file, html('own-api end-to-end'));
   const image = path.join(root, 'report.png'); await writeFile(image, png());
-  const result = await runPublisher({ action: 'upload', origin, tenantId: tenant, apiClientId: client, file, confirm: 'report.html',
-    thumbnail: image, 'thumbnail-html-sha256': digest(html('own-api end-to-end')) }, {
+  const deps = {
     tokenProvider: async () => assertion,
     fetchImpl: async (url, options) => {
       const target = new URL(url); assert.equal(target.origin, origin);
-      if (target.pathname === '/.auth/login/aad') {
-        assert.equal(options.method, 'POST'); assert.equal(options.credentials, 'omit');
-        assert.equal(options.headers.Authorization, undefined);
-        assert.equal(await verifyOwnApi(JSON.parse(options.body).access_token, config, { fetchImpl: fetchAuth }), manager);
-        return json({ authenticationToken: 'synthetic-native-session', user: { userId: 'sid:synthetic' } });
-      }
-      assert.equal(options.headers['X-ZUMO-AUTH'], 'synthetic-native-session');
-      assert.equal(options.headers['X-Manager-Assertion'], assertion);
-      assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers.Cookie, undefined);
+      assert.ok(['/_manager/api/inventory', '/_manager/api/mutate'].includes(target.pathname));
+      assert.equal(options.headers.Authorization, `Bearer ${assertion}`);
+      assert.equal(options.headers['X-ZUMO-AUTH'], undefined);
+      assert.equal(options.headers['X-Manager-Assertion'], undefined); assert.equal(options.headers.Cookie, undefined);
       const response = await send(target.pathname, { method: options.method, headers: options.headers, body: options.body });
       return new Response(response.text, { status: response.status, headers: response.headers });
     },
-  });
-  assert.equal(result.verified, true); assert.equal(authCalls.length, 11);
+  };
+  const base = { origin, tenantId: tenant, apiClientId: client };
+  const result = await runPublisher({ ...base, action: 'upload', file, confirm: 'report.html',
+    thumbnail: image, 'thumbnail-html-sha256': digest(html('own-api end-to-end')) }, deps);
+  assert.equal(result.verified, true); assert.equal(authCalls.length, 10);
   assert.equal(result.thumbnail.sha256, digest(png()));
   assert.deepEqual(await readFile(path.join(config.contentDir, 'report.html')), html('own-api end-to-end'));
+  const page = (await runPublisher({ ...base, action: 'inventory' }, deps)).pages[0];
+  await writeFile(file, html('reviewed replacement'));
+  const replaced = await runPublisher({ ...base, action: 'replace', file, confirm: 'report.html',
+    revision: page.revision, sha256: page.sha256, thumbnail: image,
+    'thumbnail-html-sha256': digest(html('reviewed replacement')) }, deps);
+  const deleted = await runPublisher({ ...base, action: 'delete', name: 'report.html', confirm: 'report.html',
+    revision: replaced.revision, sha256: replaced.sha256 }, deps);
+  const inventory = await runPublisher({ ...base, action: 'inventory' }, deps);
+  const backup = inventory.backups.find(item => item.sha256 === page.sha256);
+  const restored = await runPublisher({ ...base, action: 'restore', name: 'report.html', confirm: 'report.html',
+    revision: deleted.revision, sha256: 'missing', 'backup-id': backup.id, 'backup-sha256': backup.sha256 }, deps);
+  assert.equal(restored.sha256, page.sha256);
+  assert.equal(restored.thumbnail.sha256, digest(png()));
+  assert.deepEqual(await readFile(path.join(config.contentDir, 'report.html')), html('own-api end-to-end'));
+  const before = authCalls.length;
+  assert.equal((await send('/_manager/api/inventory', {
+    headers: { Authorization: `Bearer ${assertion}`, 'x-ms-client-principal': '' },
+  })).status, 401);
+  assert.equal(authCalls.length, before);
+  const wrongUser = await send('/_manager/api/inventory', {
+    headers: { ...principal(other), Authorization: `Bearer ${assertion}` },
+  });
+  assert.equal(wrongUser.status, 403);
+  assert.equal(JSON.parse(wrongUser.text).code, 'principal-binding');
+  assert.equal(authCalls.length, before + 1);
 });

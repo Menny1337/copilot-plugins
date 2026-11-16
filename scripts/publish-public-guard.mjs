@@ -8,7 +8,7 @@ const GENERIC = [
   },
   {
     name: 'absolute Linux user path',
-    re: /\/home\/(?!(?:<[^>]+>|USERNAME|user|you)(?:\/|\s|["'`]|$)|site\/wwwroot(?:\/|\s|["'`]|$))[^/\s"'`<>]+/i,
+    re: /\/home\/(?!(?:<[^>]+>|USERNAME|user|you)(?:\/|\s|["'`]|$)|site(?:\/(?:wwwroot|html-manager)(?:\/|\s|["'`]|$)|\s|["'`]|$))[^/\s"'`<>]+/i,
   },
   {
     name: 'absolute Windows user path',

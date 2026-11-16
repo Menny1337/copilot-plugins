@@ -25,6 +25,12 @@ jobs:
         run: SKILL_REVIEW_TEST_ARTIFACT_DIR="$RUNNER_TEMP/skill-review-integration-docs" node --test scripts/version.test.mjs plugins/mnmstack/skills/scheduled-skill-review/scripts/integration-docs.test.mjs plugins/mnmstack/skills/scheduled-skill-review/scripts/consolidation.test.mjs
       - name: Validate marketplace structure
         run: node scripts/validate.mjs
+      - name: Test public-readiness path guards
+        run: node --test scripts/public-readiness.test.mjs
+      - name: Test HTML publisher CLI, setup and hosted manager offline
+        run: |
+          mkdir -p "$RUNNER_TEMP/htmlpub-tests"
+          PUBLISH_HTML_TEST_ARTIFACT_DIR="$RUNNER_TEMP/htmlpub-tests" node --test plugins/mnmstack/skills/publish-html/scripts/htmlpub*.test.mjs plugins/mnmstack/skills/publish-html/scripts/onboarding.test.mjs plugins/mnmstack/skills/publish-html/scripts/upload-html.test.mjs plugins/mnmstack/skills/publish-html/scripts/hosted-manager/test/*.test.mjs
       - name: Test migrated skill packaging and PR monitoring
         run: node --test scripts/skill-migration.test.mjs plugins/pr-workflows/skills/pr-watch/scripts/watch.test.mjs
       - name: Validate bundled Humanizer package
