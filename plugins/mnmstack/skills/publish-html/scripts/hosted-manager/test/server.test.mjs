@@ -84,6 +84,68 @@ test('API guards reject cross-origin, wrong host, wrong fetch-site/type, missing
   assert.equal((await send('/_manager/api/mutate?x=1', { method: 'POST', headers: mutateHeaders, body })).status, 404);
   await assert.rejects(readFile(path.join(config.contentDir, 'report.html')), { code: 'ENOENT' });
 });
+const documentHeaders = { Accept: 'text/html,application/xhtml+xml', 'Sec-Fetch-Site': 'cross-site',
+  'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' };
+test('canonical HTML navigation gets one fixed revisit, then manual recovery without bypassing authorization', async t => {
+  const calls = [];
+  const { send } = await host(t, {}, graphFetch({ calls }));
+  const csp = (await send('/_manager')).headers['content-security-policy'];
+  calls.length = 0;
+  for (const [route, site] of [['/_manager', 'cross-site'], ['/_manager/', 'same-site']]) {
+    const response = await send(route, { headers: { ...documentHeaders, 'Sec-Fetch-Site': site, Origin: origin, 'x-ms-client-principal': '' } });
+    assert.equal(response.status, 403);
+    assert.equal(response.headers['content-type'], MIME_TYPES.html);
+    assert.equal(response.headers['content-security-policy'], csp);
+    assert.equal(response.headers['cache-control'], 'no-store');
+    assert.equal(response.headers['referrer-policy'], 'no-referrer');
+    assert.equal(response.headers['x-frame-options'], 'DENY');
+    assert.equal(response.headers['cross-origin-resource-policy'], 'same-origin');
+    assert.match(response.text, /<html lang="en">/);
+    assert.match(response.text, /<h1>/);
+    assert.match(response.text, /does not mean your sign-in has expired/);
+    assert.match(response.text, /<meta name="manager-origin-recovery" content="revisit">/);
+    assert.doesNotMatch(response.text, /<script|tenantId|allowedGroupIds|22222222|pages":/);
+    const revisit = /<meta http-equiv="refresh" content="2;url=([^"]+)">/.exec(response.text)?.[1];
+    assert.equal(revisit, '/_manager/?recovery=1');
+    const fallback = await send(revisit, { headers: documentHeaders });
+    assert.equal(fallback.status, 403);
+    assert.doesNotMatch(fallback.text, /http-equiv="refresh"|name="manager-origin-recovery"/);
+    assert.match(fallback.text, /No more automatic retries/);
+    assert.match(fallback.text, /href="\/_manager\/\?recovery=1"/);
+    assert.match(fallback.text, /href="\/\.auth\/login\/aad\?post_login_redirect_uri=%2F_manager%2F%3Frecovery%3D1"/);
+    assert.equal((await send(revisit, { headers: documentHeaders })).text, fallback.text);
+  }
+  assert.equal(calls.length, 0);
+  const revisit = '/_manager/?recovery=1';
+  const success = await send(revisit, { headers: { ...documentHeaders, 'Sec-Fetch-Site': 'same-origin' } });
+  assert.equal(success.status, 200);
+  assert.match(success.text, /<title>Published pages<\/title>/);
+  assert.equal((await send(revisit, { headers: { ...principal(other), Accept: 'text/html' } })).status, 403);
+  const unauthenticated = await send(revisit, { headers: { Accept: 'text/html', 'x-ms-client-principal': '' } });
+  assert.equal(unauthenticated.status, 401);
+  assert.match(unauthenticated.headers['content-type'], /application\/json/);
+});
+test('recovery never changes JSON errors for APIs, mutations, non-documents or untrusted origins/hosts', async t => {
+  const { send } = await host(t, {}, () => assert.fail('Origin failures must not reach authorization'));
+  const cases = [
+    { url: '/_manager/api/inventory' }, { url: '/_manager/manager-ui.mjs' },
+    { url: '/_manager/api/mutate', method: 'POST' }, { url: '/_manager', method: 'POST' },
+    { url: '/_manager/?recovery=1&next=https://evil.test' },
+    { headers: { Host: 'evil.test' } }, { headers: { Origin: 'https://evil.test' } },
+    { headers: { Origin: 'null' } }, { headers: { Accept: 'application/json' } },
+    { headers: { 'Sec-Fetch-Mode': 'cors' } }, { headers: { 'Sec-Fetch-Dest': 'iframe' } },
+    { headers: { 'Sec-Fetch-Site': 'invalid' } },
+  ];
+  for (const { url = '/_manager', method = 'GET', headers = {} } of cases) {
+    const response = await send(url, { method, headers: { ...documentHeaders, ...headers } });
+    assert.equal(response.status, 403);
+    assert.equal(response.headers['content-type'], MIME_TYPES.json);
+    assert.deepEqual(JSON.parse(response.text), { code: 'manager-origin', error: 'Exact approved manager origin required.' });
+  }
+  const head = await send('/_manager', { method: 'HEAD', headers: documentHeaders });
+  assert.equal(head.status, 403); assert.equal(head.text, '');
+  assert.equal(head.headers['content-type'], MIME_TYPES.json);
+});
 test('hosted UI/API upload, replace, delete and restore use one guarded service protocol', async t => {
   const { send } = await host(t);
   async function inventory() { const result = await send('/_manager/api/inventory'); assert.equal(result.status, 200); return JSON.parse(result.text); }

@@ -153,6 +153,9 @@ export async function createBrowserTransport({ origin, runtimePath = process.env
         if (location.origin !== expected || location.pathname !== '/_manager/') return false;
         const status = performance.getEntriesByType('navigation')[0]?.responseStatus;
         if ([401, 403].includes(status)) {
+          // Let the server's one-shot document refresh finish; do not add a CLI retry.
+          if (status === 403 && location.search === '' &&
+              document.querySelector('meta[name="manager-origin-recovery"]')?.content === 'revisit') return false;
           const text = document.body?.textContent;
           let managerOrigin = false;
           if (status === 403 && typeof text === 'string' && text.length <= 1024 &&

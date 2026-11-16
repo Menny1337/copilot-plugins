@@ -151,6 +151,26 @@ GET requests keep the default policy. The global server/report
 `Referrer-Policy: no-referrer` header and all origin, credential, custom-header,
 CSP and authentication requirements remain unchanged; CSRF checks are not disabled.
 
+For a top-level HTML GET to the exact manager address, a `manager-origin`
+rejection caused by a cross-site or same-site navigation shows a generic recovery
+page instead of raw JSON. The Host must match, and any Origin must still match.
+The page makes one automatic revisit to `/_manager/?recovery=1` with a fixed
+HTML refresh. That exact marker route applies all normal manager checks. If it
+is also rejected, it shows manual retry and Microsoft sign-in links with no
+further automatic refresh. Manual retry and sign-in retain the marker, so they
+cannot restart the automatic retry loop. This works without JavaScript or browser
+storage and keeps the existing CSP and HTTP 403 status.
+The browser publisher waits for this server refresh within its existing readiness
+deadline. Its separate one-time retry for the older JSON rejection is unchanged;
+API requests and mutations gain no retries.
+
+The recovery page contains no inventory or user identity. It does not prove that
+the session has expired or grant access. API, mutation, wrong-host, mismatched-Origin
+and other failures retain their JSON/status behavior. A specific sign-in incident
+does not establish which request header caused its origin rejection unless those
+headers were captured. Installing this source does not update a running host;
+the change requires a separately reviewed application rollout.
+
 ## Browser library
 
 The browser manager is a compact live-page table and a selected-page detail
