@@ -2,7 +2,7 @@
   "name": "menny1337-plugins",
   "metadata": {
     "description": "Public Copilot plugin marketplace: mnmstack default skills, PR workflows, presentation, docs, UI, and duty workflows.",
-    "version": "5.4.0"
+    "version": "5.4.1"
   },
   "owner": {
     "name": "Menny1337",
@@ -61,7 +61,7 @@
     {
       "name": "pr-workflows",
       "description": "Pull request preparation, review, validation, status, check diagnosis, feedback handling, and monitoring for GitHub and Azure DevOps.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "source": "./plugins/pr-workflows",
       "author": {
         "name": "Menny1337",

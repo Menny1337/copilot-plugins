@@ -23,7 +23,9 @@ backend-only or documentation-only work.
 1. Resolve the live PR, head, target, diff, intent, and repository validation
    guidance. Define observable acceptance checks before running tests.
    Record the exact source/target revisions and validation environment.
-2. Use an isolated or explicitly owned checkout. For UI runtime tests, verify
+2. Use an isolated or explicitly owned checkout. Before executing checks, follow
+   [environment preparation](references/environment-setup.md) to install needed
+   dependencies and select compatible, current tools. For UI runtime tests, verify
    that the browser actually serves the requested revision's bundle, not an
    old dev server or cached build. Keep artifact directories unique and avoid
    competing runners or shared-service mutations.
