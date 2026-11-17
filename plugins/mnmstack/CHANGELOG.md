@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0] - 2026-11-17
+
+_minor release._
+
+- Add optional Entra security-group grants for managers and publishers, with
+  live transitive checks and unchanged reader, token, origin and activation gates.
+- Verify exact group IDs in setup and retain user-only configurations and
+  existing profile evidence. Running hosts need a separate approved rollout.
+
 ## [1.3.1] - 2026-11-16
 
 _patch release._
