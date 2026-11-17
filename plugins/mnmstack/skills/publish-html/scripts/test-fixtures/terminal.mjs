@@ -15,6 +15,7 @@ const catalog = {
     if (role === 'users') return [3, 4].map(n => ({ id: guid(n), displayName: `Sample manager ${n}` }));
     if (role === 'clients') return [5, 6].map(n => ({ appId: guid(n), displayName: `Sample client ${n}` }));
     if (role === 'group') return [7, 8].map(n => ({ id: guid(n), displayName: `Sample readers ${n}` }));
+    if (role === 'managerGroups') return [9, 10].map(n => ({ id: guid(n), displayName: `Sample manager security group ${n}` }));
     return [];
   },
   async estimate() { return { monthlyUsd: 73, hourlyUsd: 0.1, assumption: 'Synthetic 730-hour estimate', source: 'offline fixture' }; },

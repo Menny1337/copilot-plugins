@@ -51,7 +51,8 @@ enforce it. Review that isolation boundary before activation.
 | --- | --- |
 | `TENANT_ID` | Approved single-tenant GUID |
 | `ALLOWED_GROUP_IDS` | 1-20 unique reader group GUIDs, comma-separated |
-| `HTML_MANAGER_OBJECT_IDS` | Explicit manager user object GUIDs, comma-separated |
+| `HTML_MANAGER_OBJECT_IDS` | 0-20 unique explicit manager user object GUIDs, comma-separated |
+| `HTML_MANAGER_GROUP_IDS` | Optional 0-20 unique manager security-group object GUIDs, comma-separated; absent or empty grants no group access |
 | `HTML_MANAGER_ORIGIN` | Exact approved HTTPS origin, no path, port or credentials |
 | `HTML_CONTENT_DIR` | Absolute normalized directory containing existing flat reports/assets |
 | `HTML_MANAGER_STATE_DIR` | Absolute private state directory outside served content and public source |
@@ -70,6 +71,9 @@ enforce it. Review that isolation boundary before activation.
 but an explicit runtime path is recommended. There are no real identifiers in
 the source or templates. Invalid flags, retention values, identifiers, origins
 and path relationships stop startup rather than silently selecting a fallback.
+At least one manager user or manager group is required. Existing user-only
+settings need no change. Group IDs must identify owner-verified Entra security
+groups, not email addresses, display names or copied member lists.
 
 ## Authentication and trust
 
@@ -89,9 +93,38 @@ independent own-API assertion validation and successful manager inventory on the
 deployed host before activation; token issuance alone is not that proof.
 
 `/_manager`, its script, inventory and mutations additionally require an
-explicit configured manager user. Inventory is not available to ordinary
+explicit configured manager user or verified membership in a configured manager
+security group. Reader eligibility is always required, even for managers.
+Inventory is not available to ordinary
 readers. The manager lists configured tenant/group requirements, not individual
 people's entitlement. It does not attest or change Azure ingress settings.
+
+Manager groups use the same delegated
+[`POST /me/checkMemberGroups`](https://learn.microsoft.com/en-us/graph/api/directoryobject-checkmembergroups?view=graph-rest-1.0)
+as readers. Microsoft documents this check as transitive, including nested
+membership, with at most 20 selected IDs per request and delegated `User.Read`
+for the signed-in user. Reader and manager group requests are separate, each
+bounded to 20 IDs. The server first binds Graph `/me` to the authenticated user,
+then requires a reader match, then checks manager groups only if the user is
+not an explicit manager. This applies to the UI, browser publisher, bearer and
+paired native-header paths. Explicit managers do not depend on manager-group
+lookups, but still pass all reader checks.
+
+Every authorization request checks live membership. There is no membership
+cache or static expansion. Changes take effect when Graph reflects them;
+directory propagation is not instantaneous. Empty, denied, unavailable,
+oversized, malformed, duplicate, unexpected or mismatched results never grant
+group access. Hidden membership that Graph cannot evaluate is not a match.
+There is no broader consent, application Graph role, user-list fallback or
+transport fallback.
+
+Setup accepts existing security groups (`securityEnabled: true`), including
+mail-enabled security groups, only after an exact `/groups/{id}` metadata
+lookup. Distribution lists, Microsoft 365 groups and arbitrary directory
+objects are not manager security groups. Email addresses and names can help
+the owner find a group, but only its verified object GUID is a grant. Setup
+uses the operator's existing directory read access to verify metadata; it
+does not add that permission to the hosted app. A denied lookup stops setup.
 
 Own-API automation verifies an RS256 signature against tenant signing keys,
 v2 issuer, tenant, app audience, allowed client (`azp`), delegated
@@ -111,7 +144,7 @@ on the exact approved origin. App Service
 and injects the authenticated principal before application authorization.
 The application requires that platform principal and independently verifies
 the complete assertion for the same tenant and user. It then applies the
-explicit manager, MI-federated OBO and live Graph reader checks.
+manager user/group, MI-federated OBO and live Graph reader checks.
 
 In bearer mode, the CLI does not call `POST /.auth/login/aad`, create a platform session, send
 native headers, store cookies or use a browser credential. Bearer authentication
@@ -201,7 +234,7 @@ keyboard selection. Expand Technical
 details for the hash, revision, actor object ID, inventory timestamp and
 unmanaged-entry count. Revisions can be transaction IDs, `untracked:<sha256>`
 or missing. These are not invented page IDs. Configured tenant and reader-group
-IDs describe host-wide requirements, not resolved people, group names,
+IDs and manager user/group IDs describe host-wide requirements, not resolved people, group names,
 per-page access lists or effective entitlement. Inventory does not attest
 network admission.
 

@@ -96,7 +96,7 @@ export class Azure {
     return unique(await this.graph('servicePrincipals', { query: `?$filter=appId eq '${appId}'&$select=id,appId,displayName,oauth2PermissionScopes,accountEnabled` }));
   }
   async settings() {
-    const names = ['TENANT_ID', 'ALLOWED_GROUP_IDS', 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID', 'HTML_MANAGER_OBJECT_IDS',
+    const names = ['TENANT_ID', 'ALLOWED_GROUP_IDS', 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID', 'HTML_MANAGER_OBJECT_IDS', 'HTML_MANAGER_GROUP_IDS',
       'HTML_MANAGER_ORIGIN', 'HTML_CONTENT_DIR', 'HTML_MANAGER_STATE_DIR', 'HTML_MANAGER_MUTATIONS_ENABLED',
       'HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN', 'HTML_MANAGER_OWN_API_ENABLED', 'HTML_MANAGER_API_CLIENT_ID',
       'HTML_MANAGER_ALLOWED_CLIENT_IDS', 'HTML_MANAGER_MI_CLIENT_ID', 'WEBSITE_AUTH_AAD_TRACE_LEVEL'];
@@ -111,7 +111,8 @@ export class Azure {
         name === 'HTML_MANAGER_STATE_DIR' ? value === '/home/site/html-manager/state' :
         name === 'WEBSITE_AUTH_AAD_TRACE_LEVEL' ? ['Off', 'Error', 'Warning', 'Information', 'Verbose'].includes(value) :
         /(?:ENABLED|FROZEN)$/.test(name) ? ['true', 'false'].includes(value) :
-        ['ALLOWED_GROUP_IDS', 'HTML_MANAGER_OBJECT_IDS', 'HTML_MANAGER_ALLOWED_CLIENT_IDS'].includes(name)
+        ['HTML_MANAGER_OBJECT_IDS', 'HTML_MANAGER_GROUP_IDS'].includes(name) && value === '' ? true :
+        ['ALLOWED_GROUP_IDS', 'HTML_MANAGER_OBJECT_IDS', 'HTML_MANAGER_GROUP_IDS', 'HTML_MANAGER_ALLOWED_CLIENT_IDS'].includes(name)
           ? typeof value === 'string' && value.split(',').length <= 20 && value.split(',').every(id => GUID.test(id.trim())) :
           typeof value === 'string' && GUID.test(value);
       if (!valid) throw new Error(`Selected appsetting ${name} has an unsupported value. It was not captured; inspect it privately with the host owner.`);

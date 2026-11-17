@@ -12,7 +12,18 @@
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
     "sourceVersion": { "const": "publish-html-onboarding-v1" },
-    "request": { "type": "object", "description": "Validated frozen user selections, never an arbitrary command or URL." },
+    "request": {
+      "type": "object",
+      "description": "Validated frozen user selections, never an arbitrary command or URL. Omitted managerGroupIds stays omitted in older inventories.",
+      "properties": {
+        "managerObjectIds": { "$ref": "#/$defs/managerIds" },
+        "managerGroupIds": { "$ref": "#/$defs/managerIds", "description": "Optional existing security-group object GUIDs, verified during identity setup. No membership snapshots." }
+      },
+      "anyOf": [
+        { "required": ["managerObjectIds"], "properties": { "managerObjectIds": { "minItems": 1 } } },
+        { "required": ["managerGroupIds"], "properties": { "managerGroupIds": { "minItems": 1 } } }
+      ]
+    },
     "requestSha256": { "$ref": "#/$defs/sha256" },
     "subscription": { "type": ["object", "null"], "description": "Null until selected subscription/tenant/cloud metadata is observed." },
     "resources": {
@@ -30,7 +41,7 @@
       },
       "patternProperties": { "^readerGroup(?:[0-9]|1[0-9])$": { "$ref": "#/$defs/resource" } }
     },
-    "dependencies": { "type": "object", "description": "Observed federation, delegated scope/grant, manager and client references. No directory profiles, secrets or token material." },
+    "dependencies": { "type": "object", "description": "Observed federation, delegated scope/grant, manager users, optional manager security groups and client references. No directory profiles, membership snapshots, secrets or token material." },
     "policy": { "type": ["object", "null"], "description": "Allowlisted policy fields and hashes only, never raw authentication/appsettings responses." },
     "runtime": { "type": ["object", "null"], "description": "Exact runtime file hashes, release hash, selected startup, content/state paths and verification provenance. Storage paths are not standalone Azure Storage resources." },
     "diagnostics": { "type": "object", "required": ["status", "capture"], "properties": { "capture": { "const": "unverified" } } },
@@ -65,6 +76,10 @@
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "managerIds": {
+      "type": "array", "maxItems": 20, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$" }
+    },
     "resource": {
       "type": "object", "additionalProperties": false,
       "required": ["desired", "observed", "status", "ownership", "createdBySetup", "observedAt", "source"],

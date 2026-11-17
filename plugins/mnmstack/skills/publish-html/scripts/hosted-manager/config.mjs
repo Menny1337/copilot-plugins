@@ -5,7 +5,7 @@ import { GUID } from './common.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 function ids(value, label, min = 1, max = 20) {
-  const list = (value ?? '').split(',').map(id => id.trim().toLowerCase());
+  const list = value === undefined || value === '' ? [] : value.split(',').map(id => id.trim().toLowerCase());
   if (list.length < min || list.length > max || list.some(id => !GUID.test(id)) || new Set(list).size !== list.length) throw new Error(`${label} requires unique GUIDs.`);
   return Object.freeze(list);
 }
@@ -23,7 +23,9 @@ export function loadConfig(env = process.env) {
   const tenantId = env.TENANT_ID?.toLowerCase();
   if (!GUID.test(tenantId ?? '')) throw new Error('TENANT_ID must be an approved tenant GUID.');
   const allowedGroupIds = ids(env.ALLOWED_GROUP_IDS, 'ALLOWED_GROUP_IDS');
-  const managerObjectIds = ids(env.HTML_MANAGER_OBJECT_IDS, 'HTML_MANAGER_OBJECT_IDS');
+  const managerObjectIds = ids(env.HTML_MANAGER_OBJECT_IDS, 'HTML_MANAGER_OBJECT_IDS', 0);
+  const managerGroupIds = ids(env.HTML_MANAGER_GROUP_IDS, 'HTML_MANAGER_GROUP_IDS', 0);
+  if (!managerObjectIds.length && !managerGroupIds.length) throw new Error('At least one explicit manager user or manager security group is required.');
   const origin = env.HTML_MANAGER_ORIGIN;
   let parsed;
   try { parsed = new URL(origin); } catch { throw new Error('HTML_MANAGER_ORIGIN requires the approved HTTPS origin.'); }
@@ -50,7 +52,7 @@ export function loadConfig(env = process.env) {
   const port = env.PORT ?? '8080';
   if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error('PORT must be 1 to 65535.');
   return Object.freeze({
-    tenantId, allowedGroupIds, managerObjectIds, origin, contentDir, stateDir,
+    tenantId, allowedGroupIds, managerObjectIds, managerGroupIds, origin, contentDir, stateDir,
     mutationsEnabled, legacyPublishersFrozen, ownApiEnabled, apiClientId,
     managedIdentityClientId, allowedClientIds: Object.freeze(allowedClientIds),
     identityEndpoint: env.IDENTITY_ENDPOINT, identityHeader: env.IDENTITY_HEADER,

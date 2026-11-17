@@ -45,18 +45,24 @@ async function jsonRequest(url, options, fetchImpl, stage) {
     fail(503, `${stage}-unavailable`, `${stage} authorization could not be verified.`);
   }
 }
+async function memberGroups(token, groupIds, fetchImpl) {
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const groups = await jsonRequest(`${GRAPH}/me/checkMemberGroups`, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupIds }),
+  }, fetchImpl, 'graph');
+  if (!Array.isArray(groups?.value) || Object.keys(groups).some(key => !['value', '@odata.context'].includes(key)) ||
+      groups.value.some(id => typeof id !== 'string' || !groupIds.includes(id.toLowerCase())) ||
+      new Set(groups.value.map(id => id.toLowerCase())).size !== groups.value.length) fail(502, 'graph-response', 'Invalid group authorization response.');
+  return groups.value;
+}
 export async function checkReader(oid, token, config, fetchImpl = globalThis.fetch) {
   if (typeof token !== 'string' || !token.length || token.length > 32768 || /\s/.test(token)) fail(401, 'graph-token', 'Graph access token missing; sign in again.');
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
   const me = await jsonRequest(`${GRAPH}/me?$select=id`, { headers }, fetchImpl, 'graph');
   if (typeof me?.id !== 'string' || me.id.toLowerCase() !== oid) fail(403, 'graph-binding', 'Graph token user does not match the authenticated user.');
-  const groups = await jsonRequest(`${GRAPH}/me/checkMemberGroups`, {
-    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ groupIds: config.allowedGroupIds }),
-  }, fetchImpl, 'graph');
-  if (!Array.isArray(groups?.value) || groups.value.some(id => typeof id !== 'string' || !config.allowedGroupIds.includes(id.toLowerCase())) ||
-      new Set(groups.value.map(id => id.toLowerCase())).size !== groups.value.length) fail(502, 'graph-response', 'Invalid group authorization response.');
-  if (!groups.value.length) fail(403, 'reader', 'Configured reader group membership required.');
+  const groups = await memberGroups(token, config.allowedGroupIds, fetchImpl);
+  if (!groups.length) fail(403, 'reader', 'Configured reader group membership required.');
 }
 function jwtPart(part) {
   if (!part || !/^[A-Za-z0-9_-]+$/.test(part) || Buffer.from(part, 'base64url').toString('base64url') !== part) fail(401, 'jwt-format', 'Invalid bearer token.');
@@ -127,6 +133,10 @@ async function oboToken(assertion, config, fetchImpl) {
 // Injection is a constructor/test dependency, never an HTTP or environment bypass.
 export async function authorize(headers, config, { fetchImpl = globalThis.fetch, now = Date.now } = {}, manager = false) {
   let oid, graphToken, transport = 'browser';
+  const managerGroups = config.managerGroupIds ?? [];
+  function managerCandidate() {
+    if (manager && !config.managerObjectIds.includes(oid) && !managerGroups.length) fail(403, 'manager', 'Configured manager user or security group membership required.');
+  }
   const native = headers['x-manager-assertion'] !== undefined || headers['x-zumo-auth'] !== undefined;
   if (native) {
     if (!manager || headers.authorization !== undefined || headers.cookie !== undefined ||
@@ -138,7 +148,7 @@ export async function authorize(headers, config, { fetchImpl = globalThis.fetch,
     const assertion = headers['x-manager-assertion'];
     oid = await verifyOwnApi(assertion, config, { fetchImpl, now });
     if (oid !== platformOid) fail(403, 'native-binding', 'Platform session and delegated assertion must identify the same user.');
-    if (!config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
+    managerCandidate();
     graphToken = await oboToken(assertion, config, fetchImpl);
     transport = 'native';
   } else if (manager && headers.authorization !== undefined) {
@@ -147,12 +157,12 @@ export async function authorize(headers, config, { fetchImpl = globalThis.fetch,
     const assertion = headers.authorization.slice(7);
     oid = await verifyOwnApi(assertion, config, { fetchImpl, now });
     if (oid !== platformOid) fail(403, 'principal-binding', 'Platform identity and delegated assertion must identify the same user.');
-    if (!config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
+    managerCandidate();
     graphToken = await oboToken(assertion, config, fetchImpl);
     transport = 'bearer';
   } else {
     oid = easyAuthIdentity(headers, config);
-    if (manager && !config.managerObjectIds.includes(oid)) fail(403, 'manager', 'Configured manager user required.');
+    managerCandidate();
     graphToken = headers['x-ms-token-aad-access-token'];
     // Native sign-in can put an API-audience token in the shared provider store.
     // A routing hint never authorizes it: verify the complete assertion before OBO.
@@ -164,5 +174,8 @@ export async function authorize(headers, config, { fetchImpl = globalThis.fetch,
     }
   }
   await checkReader(oid, graphToken, config, fetchImpl);
+  if (manager && !config.managerObjectIds.includes(oid) && !(await memberGroups(graphToken, managerGroups, fetchImpl)).length) {
+    fail(403, 'manager', 'Configured manager user or security group membership required.');
+  }
   return { oid, transport };
 }

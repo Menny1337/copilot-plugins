@@ -66,7 +66,9 @@ export function graphFetch({ oid = manager, groups = [group], calls = [] } = {})
   return async (url, options) => {
     calls.push({ url: String(url), options });
     if (url === 'https://graph.microsoft.com/v1.0/me?$select=id') return json({ id: oid });
-    if (url === 'https://graph.microsoft.com/v1.0/me/checkMemberGroups') return json({ value: groups });
+    if (url === 'https://graph.microsoft.com/v1.0/me/checkMemberGroups') return json({
+      value: typeof groups === 'function' ? groups(JSON.parse(options.body).groupIds) : groups,
+    });
     throw new Error('Forbidden test network request.');
   };
 }

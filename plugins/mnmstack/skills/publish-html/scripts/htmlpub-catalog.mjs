@@ -34,13 +34,15 @@ export class SetupCatalog {
   async resources(role, request) {
     if (role === 'resourceGroup') return this.azure.cli(['group', 'list', '--subscription', request.subscriptionId,
       '--query', '[].{id:id,name:name,location:location}']);
-    if (['application', 'group', 'users', 'clients'].includes(role)) {
-      const collection = { application: 'applications', group: 'groups', users: 'users', clients: 'servicePrincipals' }[role];
+    if (['application', 'group', 'managerGroups', 'users', 'clients'].includes(role)) {
+      const collection = { application: 'applications', group: 'groups', managerGroups: 'groups', users: 'users', clients: 'servicePrincipals' }[role];
       const fields = { application: 'id,displayName', group: 'id,displayName,securityEnabled,mailEnabled',
+        managerGroups: 'id,displayName,securityEnabled,mailEnabled',
         users: 'id,displayName,userPrincipalName', clients: 'id,appId,displayName,accountEnabled' }[role];
       const result = await this.azure.graph(collection, { query: `?$top=50&$select=${fields}` });
       if (!Array.isArray(result?.value)) throw new Error('Could not verify the directory choices. Keep your saved answers and check access with the tenant owner.');
-      return result.value.filter(item => role === 'group' ? item.securityEnabled && !item.mailEnabled :
+      return result.value.filter(item => role === 'managerGroups' ? item.securityEnabled === true && typeof item.mailEnabled === 'boolean' :
+        role === 'group' ? item.securityEnabled && !item.mailEnabled :
         role === 'clients' ? item.accountEnabled === true : true);
     }
     const types = { plan: 'Microsoft.Web/serverfarms', identity: 'Microsoft.ManagedIdentity/userAssignedIdentities',

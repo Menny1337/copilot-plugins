@@ -261,13 +261,19 @@ if (typeof document !== 'undefined') {
   async function loadInventory() {
     const result = await api('inventory');
     if (!Array.isArray(result.pages) || !Array.isArray(result.backups) || !result.missingVersions ||
-        !result.access || !Array.isArray(result.access.allowedGroupIds) || result.origin !== location.origin) throw new Error('Invalid inventory response.');
+        !result.access || !Array.isArray(result.access.allowedGroupIds) ||
+        (result.access.managerObjectIds !== undefined && !Array.isArray(result.access.managerObjectIds)) ||
+        (result.access.managerGroupIds !== undefined && !Array.isArray(result.access.managerGroupIds)) ||
+        result.origin !== location.origin) throw new Error('Invalid inventory response.');
     for (const version of [...result.pages, ...result.backups]) thumbnailUrl(version);
     inventory = result; fresh = true;
     if (!selectedName) selectedName = visiblePages(result.pages, '', sortKey, sortDirection)[0]?.name ?? result.backups[0]?.name ?? null;
     const current = result.pages.find(page => page.name === selectedName);
     if (current) lastKnown = current;
     fields($('policy'), [['Tenant', result.access.tenantId], ['Reader groups', result.access.allowedGroupIds.join(', ') || 'Unknown'],
+      ['Manager users', result.access.managerObjectIds?.join(', ') || (result.access.managerObjectIds ? 'None' : 'Not reported by this host')],
+      ['Manager security groups', result.access.managerGroupIds?.join(', ') || (result.access.managerGroupIds ? 'None' : 'Not reported by this host')],
+      ['Manager access', result.access.management ?? 'Not reported by this host'],
       ['Authentication', result.access.authentication], ['Network', result.access.network]]);
   }
   async function refresh() {

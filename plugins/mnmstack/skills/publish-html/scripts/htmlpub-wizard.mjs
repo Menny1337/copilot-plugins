@@ -10,7 +10,7 @@ const resourceNames = { resourceGroup: 'Resource group', plan: 'Hosting plan', i
   application: 'App registration', site: 'Website', workspace: 'Log workspace', group: 'Reader group' };
 
 const ANSWERS = ['version', 'cloud', 'tenantId', 'subscriptionId', 'location', 'resourceGroup', 'plan', 'identity',
-  'application', 'site', 'readerGroups', 'managerObjectIds', 'allowedClientIds', 'diagnostics', 'legacyConfig'];
+  'application', 'site', 'readerGroups', 'managerObjectIds', 'managerGroupIds', 'allowedClientIds', 'diagnostics', 'legacyConfig'];
 export function validateDraft(draft) {
   exact(draft, ['version', 'answers', 'prefix', 'mode', 'completed']);
   exact(draft.answers, [], ANSWERS);
@@ -180,16 +180,29 @@ export async function guidedSetup(options, ui, { catalog = new SetupCatalog(), e
         draft.answers.location = await choose(ui, 'Region', found.map(item => ({
           label: `${item.displayName} (${item.name})`, value: item.name }))); await persist();
       }
-      async function refs(role) {
+      async function refs(role, optional = false) {
         const found = await catalog.resources(role, draft.answers);
-        const selected = await chooseMany(ui, role === 'users' ? 'Choose managers (first tenant page)' : 'Choose approved client apps (first tenant page)', [
+        const title = role === 'users' ? 'Manager object' : role === 'managerGroups' ? 'Manager security-group object' : 'Client application';
+        const selected = await chooseMany(ui, role === 'users' ? 'Choose managers (first tenant page)' :
+          role === 'managerGroups' ? 'Choose manager security groups (first tenant page)' : 'Choose approved client apps (first tenant page)', [
           ...found.map(item => ({ label: `${item.displayName} (${role === 'clients' ? item.appId : item.id})`, value: role === 'clients' ? item.appId : item.id })),
+          ...(optional ? [{ label: 'No explicit manager users (requires manager groups)', value: 'none' }] : []),
           { label: 'Enter known GUIDs', value: null }]);
+        if (selected.includes('none')) {
+          if (selected.length !== 1) throw new Error('Choose no explicit managers or select users, not both.');
+          return [];
+        }
         const values = selected.filter(value => value !== null);
-        if (selected.includes(null)) values.push(...(await ui.ask(`${role === 'users' ? 'Manager object' : 'Client application'} GUIDs, separated by commas`)).split(',').map(value => value.trim()));
+        if (selected.includes(null)) values.push(...(await ui.ask(`${title} GUIDs, separated by commas`)).split(',').map(value => value.trim()));
         if (!values.length || values.length > 20 || values.some(value => !GUID.test(value)) ||
             new Set(values.map(value => value.toLowerCase())).size !== values.length) throw new Error('Choose 1-20 different GUIDs.');
         return values;
+      }
+      async function managerGroups() {
+        ui.line('Manager groups must already be security groups. Email addresses and names are hints, not grant IDs. Setup verifies exact object GUIDs without changing membership.');
+        return await choose(ui, 'Manager security groups', [
+          { label: 'No manager groups', value: false }, { label: 'Select existing manager security groups', value: true }])
+          ? refs('managerGroups') : [];
       }
       async function logging() {
         draft.answers.diagnostics = { mode: 'enabled', workspace: await resource('workspace', '-logs'),
@@ -214,7 +227,13 @@ export async function guidedSetup(options, ui, { catalog = new SetupCatalog(), e
           if (!draft.answers[role]) { draft.answers[role] = await resource(role, suffix); await persist(); }
         }
         if (!draft.answers.readerGroups) { draft.answers.readerGroups = await readers(); await persist(); }
-        if (!draft.answers.managerObjectIds) { draft.answers.managerObjectIds = await refs('users'); await persist(); }
+        if (!draft.answers.managerObjectIds) {
+          draft.answers.managerObjectIds = await refs('users', true); await persist();
+          draft.answers.managerGroupIds = await managerGroups(); await persist();
+        }
+        if (!draft.answers.managerObjectIds.length && !Object.hasOwn(draft.answers, 'managerGroupIds')) {
+          draft.answers.managerGroupIds = await managerGroups(); await persist();
+        }
         if (!draft.answers.allowedClientIds) { draft.answers.allowedClientIds = await refs('clients'); await persist(); }
         if (!draft.answers.diagnostics) await logging();
       }
@@ -234,9 +253,9 @@ export async function guidedSetup(options, ui, { catalog = new SetupCatalog(), e
         if (action === 'save') return { status: 'saved', config };
         if (action === 'apply') break;
         const key = await choose(ui, 'Change a setting', [
-          ...['subscription', 'resourceGroup', 'location', 'plan', 'identity', 'application', 'site', 'readerGroups', 'managerObjectIds', 'allowedClientIds', 'diagnostics']
+          ...['subscription', 'resourceGroup', 'location', 'plan', 'identity', 'application', 'site', 'readerGroups', 'managerObjectIds', 'allowedClientIds', 'diagnostics', 'managerGroupIds']
             .map(value => ({ label: { subscription: 'Subscription', location: 'Region', readerGroups: 'Reader groups',
-              managerObjectIds: 'Managers', allowedClientIds: 'Approved client apps', diagnostics: 'Logging', ...resourceNames }[value], value })),
+              managerObjectIds: 'Managers', managerGroupIds: 'Manager security groups', allowedClientIds: 'Approved client apps', diagnostics: 'Logging', ...resourceNames }[value], value })),
           { label: 'Back to review', value: 'back' }]);
         if (key === 'back') continue;
         if (key === 'subscription') {
@@ -244,7 +263,8 @@ export async function guidedSetup(options, ui, { catalog = new SetupCatalog(), e
           draft.answers = { version: 1, cloud: 'AzureCloud' };
           await subscriptions(); await collect();
         } else if (key === 'location') await region();
-        else if (key === 'managerObjectIds' || key === 'allowedClientIds') draft.answers[key] = await refs(key === 'managerObjectIds' ? 'users' : 'clients');
+        else if (key === 'managerObjectIds' || key === 'allowedClientIds') draft.answers[key] = await refs(key === 'managerObjectIds' ? 'users' : 'clients', key === 'managerObjectIds');
+        else if (key === 'managerGroupIds') draft.answers.managerGroupIds = await managerGroups();
         else if (key === 'readerGroups') draft.answers.readerGroups = await readers();
         else if (key === 'diagnostics') {
           const mode = await choose(ui, 'Logging', [{ label: 'Set up logging', value: 'enabled' },

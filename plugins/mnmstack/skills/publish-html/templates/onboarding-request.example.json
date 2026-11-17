@@ -13,6 +13,7 @@
     { "mode": "reuse", "name": "<selected-security-group-name>", "id": "<approved-security-group-object-guid>" }
   ],
   "managerObjectIds": ["<approved-manager-user-object-guid>"],
+  "managerGroupIds": [],
   "allowedClientIds": ["<approved-delegated-client-application-guid>"],
   "diagnostics": { "mode": "off" }
 }

@@ -158,6 +158,7 @@ function expectedSettings(inventory) {
   const groups = inventory.request.readerGroups.map((_, i) => resourceReady(inventory, `readerGroup${i}`).id);
   return { TENANT_ID: inventory.request.tenantId, ALLOWED_GROUP_IDS: groups.join(','),
     OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID: identity.clientId, HTML_MANAGER_OBJECT_IDS: inventory.request.managerObjectIds.join(','),
+    ...(inventory.request.managerGroupIds ? { HTML_MANAGER_GROUP_IDS: inventory.request.managerGroupIds.join(',') } : {}),
     HTML_MANAGER_ORIGIN: inventory.publisher.origin, HTML_CONTENT_DIR: '/home/site/wwwroot/content',
     HTML_MANAGER_STATE_DIR: '/home/site/html-manager/state', HTML_MANAGER_MUTATIONS_ENABLED: 'false',
     HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN: 'true', HTML_MANAGER_OWN_API_ENABLED: 'true', HTML_MANAGER_API_CLIENT_ID: app.appId,
@@ -174,6 +175,7 @@ function assertPolicy(inventory) {
       !approvedReaders(p.web) || p.basicScmAllowed !== false || !closedScm(p.web) ||
       !resourceReady(inventory, 'site').httpsOnly || resourceReady(inventory, 'site').publicNetworkAccess !== 'Enabled') throw new Error('Host policy is not the approved tenant/corporate/secretless policy. Identity stage or host-owner review required.');
   const desired = expectedSettings(inventory);
+  if (!r.managerGroupIds && p.settings.HTML_MANAGER_GROUP_IDS?.value) throw new Error('Host manager groups differ from the frozen request. Host-owner review required.');
   for (const [key, value] of Object.entries(desired)) {
     if (['HTML_MANAGER_MUTATIONS_ENABLED', 'HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN'].includes(key)) continue;
     if (p.settings[key]?.value !== value) throw new Error(`Host setting differs: ${key}. No automatic repair during publication/deployment.`);
@@ -211,6 +213,15 @@ async function identityOperation(inventory, azure) {
     if (user?.id?.toLowerCase() !== id.toLowerCase()) throw new Error('Manager user reference does not match.');
     managers.push({ id: user.id, type: 'Microsoft.Graph/users', status: 'verified', source: 'Microsoft Graph v1.0' });
   }
+  const managerGroups = [];
+  for (const id of r.managerGroupIds ?? []) {
+    const group = await azure.graph('groups', { id, query: '?$select=id,securityEnabled,mailEnabled' });
+    if (typeof group?.id !== 'string' || group.id.toLowerCase() !== id ||
+        (group['@odata.type'] !== undefined && group['@odata.type'] !== '#microsoft.graph.group') || group.securityEnabled !== true ||
+        typeof group.mailEnabled !== 'boolean') throw new Error('Manager group must match the selected security-group object GUID.');
+    managerGroups.push({ id, type: 'Microsoft.Graph/groups', securityEnabled: true, mailEnabled: group.mailEnabled,
+      status: 'verified', source: 'Microsoft Graph v1.0' });
+  }
   const clients = [];
   for (const id of r.allowedClientIds) {
     const sp = await azure.sp(id);
@@ -218,7 +229,7 @@ async function identityOperation(inventory, azure) {
     clients.push({ id: sp.id, appId: sp.appId, type: 'Microsoft.Graph/servicePrincipals', status: 'verified', source: 'Microsoft Graph v1.0' });
   }
   inventory.dependencies = { ...inventory.dependencies, graph: { id: graph.id, appId: GRAPH_APP_ID, delegatedUserReadId: userRead.id },
-    managers, clients };
+    managers, ...(r.managerGroupIds ? { managerGroups } : {}), clients };
   const scopes = app.scopes.filter(scope => scope.value === 'publish_as_user');
   if (scopes.length > 1 || (scopes.length && (!scopes[0].isEnabled || scopes[0].type !== 'Admin'))) throw new Error('Existing publish_as_user scope conflicts.');
   const scopeId = scopes[0]?.id ?? inventory.dependencies.publishScope?.desiredId ?? randomUUID();
