@@ -26,9 +26,9 @@ export function exact(value, required, optional = []) {
   if (!value || Array.isArray(value) || typeof value !== 'object' ||
       required.some(key => !Object.hasOwn(value, key)) || Object.keys(value).some(key => ![...required, ...optional].includes(key))) throw new Error('Unsupported or incomplete configuration fields.');
 }
-export function ids(value, label) {
-  if (!Array.isArray(value) || !value.length || value.length > 20 || value.some(id => typeof id !== 'string' || !GUID.test(id)) ||
-      new Set(value.map(id => id.toLowerCase())).size !== value.length) throw new Error(`${label} requires 1-20 unique GUIDs.`);
+export function ids(value, label, min = 1) {
+  if (!Array.isArray(value) || value.length < min || value.length > 20 || value.some(id => typeof id !== 'string' || !GUID.test(id)) ||
+      new Set(value.map(id => id.toLowerCase())).size !== value.length) throw new Error(`${label} requires ${min}-20 unique GUIDs.`);
 }
 const ARM = {
   resourceGroup: null, plan: 'Microsoft.Web/serverfarms', identity: 'Microsoft.ManagedIdentity/userAssignedIdentities',
@@ -55,14 +55,16 @@ function selection(value, role, request) {
 }
 export function validateRequest(request) {
   exact(request, ['version', 'cloud', 'tenantId', 'subscriptionId', 'location', 'resourceGroup', 'plan', 'identity',
-    'application', 'site', 'readerGroups', 'managerObjectIds', 'allowedClientIds', 'diagnostics'], ['legacyConfig']);
+    'application', 'site', 'readerGroups', 'managerObjectIds', 'allowedClientIds', 'diagnostics'], ['legacyConfig', 'managerGroupIds']);
   if (request.version !== 1 || request.cloud !== 'AzureCloud' || !GUID.test(request.tenantId) || !GUID.test(request.subscriptionId) ||
       !/^[a-z][a-z0-9]{1,39}$/.test(request.location)) throw new Error('Explicit public-Azure tenant, subscription and region required.');
   for (const role of ['resourceGroup', 'plan', 'identity', 'application', 'site']) selection(request[role], role, request);
   if (!Array.isArray(request.readerGroups) || !request.readerGroups.length || request.readerGroups.length > 20) throw new Error('Select 1-20 reader groups.');
   for (const group of request.readerGroups) selection(group, 'group', request);
   if (new Set(request.readerGroups.map(group => (group.id ?? group.name).toLowerCase())).size !== request.readerGroups.length) throw new Error('Duplicate reader group.');
-  ids(request.managerObjectIds, 'Managers'); ids(request.allowedClientIds, 'Delegated clients');
+  ids(request.managerObjectIds, 'Managers', 0); ids(request.allowedClientIds, 'Delegated clients');
+  if (Object.hasOwn(request, 'managerGroupIds')) ids(request.managerGroupIds, 'Manager security groups', 0);
+  if (!request.managerObjectIds.length && !request.managerGroupIds?.length) throw new Error('Select at least one manager user or manager security group.');
   exact(request.diagnostics, ['mode'], request.diagnostics.mode === 'off' ? [] : ['workspace', 'settingName', 'retentionDays', 'dailyQuotaGb']);
   if (!['off', 'enabled'].includes(request.diagnostics.mode)) throw new Error('Diagnostics must be explicitly off or enabled.');
   if (request.diagnostics.mode === 'enabled') {
@@ -74,6 +76,7 @@ export function validateRequest(request) {
   if (request.legacyConfig !== undefined && (!path.isAbsolute(request.legacyConfig) || path.basename(request.legacyConfig) !== 'config.json')) throw new Error('Select an absolute legacy config.json path.');
   request.tenantId = request.tenantId.toLowerCase(); request.subscriptionId = request.subscriptionId.toLowerCase();
   request.managerObjectIds = request.managerObjectIds.map(id => id.toLowerCase());
+  if (request.managerGroupIds) request.managerGroupIds = request.managerGroupIds.map(id => id.toLowerCase());
   request.allowedClientIds = request.allowedClientIds.map(id => id.toLowerCase());
   for (const selected of [request.application, ...request.readerGroups]) if (selected.id) selected.id = selected.id.toLowerCase();
   return request;
@@ -355,13 +358,17 @@ export async function publisherTarget(filename, action) {
       }
       for (const name of ['auth.mjs', 'server.mjs']) {
         const source = await readFile(path.resolve(skillRoot, 'scripts/hosted-manager', name));
-        const accepted = [hash(source)];
+        // Exact pre-group runtimes remain usable with their original, fresh evidence.
+        const previous = { 'auth.mjs': '573e385a77e3e200efb5b87f5337c0144c54207fb87f8535ef3083ca2a40de11',
+          'server.mjs': '6e751015667813e9c0cf9fa4cf947a44ab38e88d3ea8419131d8ef1235f5838f' };
+        const accepted = [hash(source), previous[name]];
         if (name === 'auth.mjs' && profile.publisher.transport === 'browser') {
           const browserCompatible = source.toString('utf8')
             .replace('    const platformOid = easyAuthIdentity(headers, config);\n    const assertion = headers.authorization.slice(7);',
               '    const assertion = headers.authorization.slice(7);')
             .replace("    if (oid !== platformOid) fail(403, 'principal-binding', 'Platform identity and delegated assertion must identify the same user.');\n", '');
           accepted.push(hash(Buffer.from(browserCompatible)));
+          accepted.push('4dbdb7ae85739bc2f292280d6c59451abfcf0fb467e39e344638d9105b899b57');
         }
         if (!accepted.includes(profile.runtime.files.find(file => file.name === name)?.sha256)) throw new Error('Existing host authorization runtime differs from this publisher. Ask the host owner to verify the selected release.');
       }

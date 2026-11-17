@@ -116,6 +116,7 @@ function catalog({ alias = 'alex@example.invalid', denied = false } = {}) {
   async resources(role) {
     calls.push(role);
     if (role === 'users') return [{ id: manager, displayName: 'Approved manager' }];
+    if (role === 'managerGroups') return [{ id: guid(12), displayName: 'Approved manager security group' }];
     if (role === 'clients') return [{ id: guid(9), appId: client, displayName: 'Approved client' }];
     return [];
   }, async estimate() { return { monthlyUsd: 73, hourlyUsd: 0.1, assumption: 'Synthetic 730-hour fixture, not a live quote', source: 'offline' }; } };
@@ -204,6 +205,24 @@ test('verified existing-host config keeps its actual runtime and simple commands
     '--revision', 'r1', '--sha256', beforeSha], dependencies);
   assert.equal(removed.verified, true); assert.equal(p.counters.tokens, 2);
   assert.equal((await readPrivate(f.config)).runtime.startup, profile.runtime.startup);
+});
+test('known pre-group host profiles remain usable without rewriting runtime or acceptance evidence', async t => {
+  for (const browser of [false, true]) {
+    const f = await fixture(t), profile = await existingProfile({ browser }), p = protocol();
+    profile.runtime.files.find(file => file.name === 'auth.mjs').sha256 = browser ?
+      '4dbdb7ae85739bc2f292280d6c59451abfcf0fb467e39e344638d9105b899b57' :
+      '573e385a77e3e200efb5b87f5337c0144c54207fb87f8535ef3083ca2a40de11';
+    profile.runtime.files.find(file => file.name === 'server.mjs').sha256 = '6e751015667813e9c0cf9fa4cf947a44ab38e88d3ea8419131d8ef1235f5838f';
+    for (const check of Object.values(profile.checks)) check.targetSha256 = existingHostHash(profile);
+    await savePrivate(f.config, profile);
+    const before = await readFile(f.config, 'utf8');
+    const result = await runHtmlpub(['delete', 'report.html', '--config', f.config, '--confirm', 'report.html',
+      '--revision', 'r1', '--sha256', beforeSha], { ui: quiet(), publisherTransport: p.transport,
+      ...(browser ? { publisher: async options => {
+        assert.equal(options.browser, true); return { verified: true, transactionId: tx };
+      } } : {}) });
+    assert.equal(result.verified, true); assert.equal(await readFile(f.config, 'utf8'), before);
+  }
 });
 test('existing-host config refuses stale, changed-target or wrong-runtime mutation before credentials', async t => {
   for (const kind of ['stale', 'target', 'runtime']) {
@@ -394,6 +413,33 @@ test('new guided setup saves logging by default with exact disclosures and no en
   assert.match(text, /sensitive authentication data about other users/); assert.match(text, /Other people may have access/);
   assert.match(text, /restart/); assert.match(text, /73\/month/); assert.match(text, /not a hard spend cap/);
   assert.equal(await optionalPrivate(f.config), null);
+});
+test('guided group-only setup saves exact grants, not names or a static manager user list', async t => {
+  const f = await fixture(t), ui = scripted();
+  ui.select = async (prompt, items, selected = 0) => {
+    if (prompt === 'Manager security groups') return true;
+    if (prompt === 'What next?') return 'save';
+    return items[selected].value;
+  };
+  ui.multiselect = async (prompt, items) => prompt.startsWith('Choose managers') ? ['none'] : [items[0].value];
+  const result = await runHtmlpub(['setup', '--config', f.config], { ui, setupDependencies: {
+    catalog: catalog(), engine: () => assert.fail('No setup writes in a saved draft'),
+  } });
+  assert.equal(result.status, 'saved');
+  const draft = await readPrivate(`${f.config}.guided.json`);
+  assert.deepEqual(draft.answers.managerObjectIds, []);
+  assert.deepEqual(draft.answers.managerGroupIds, [guid(12)]);
+  assert.equal(await optionalPrivate(f.config), null);
+});
+test('manager-group catalog excludes unsupported and malformed group types without accepting mail strings', async () => {
+  const valid = [false, true].map((mailEnabled, i) => ({ id: guid(12 + i), displayName: 'Synthetic group', securityEnabled: true, mailEnabled }));
+  const metadata = new SetupCatalog({ azure: { graph: async (collection, options) => {
+    assert.equal(collection, 'groups'); assert.match(options.query, /securityEnabled,mailEnabled/);
+    return { value: [...valid, { id: guid(14), securityEnabled: false, mailEnabled: true },
+      { id: guid(15), securityEnabled: 'true', mailEnabled: false }, { id: guid(16), securityEnabled: true }] };
+  } } });
+  assert.deepEqual(await metadata.resources('managerGroups', request()), valid);
+  assert.throws(() => validateRequest({ ...request(), managerGroupIds: ['team@example.invalid'] }), /GUID/);
 });
 test('interrupt/resume persists selected subscription and prefix; missing alias prompts, never fabricates', async t => {
   const f = await fixture(t), metadata = catalog({ alias: null });

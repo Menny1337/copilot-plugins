@@ -6,6 +6,8 @@ import { loadConfig } from '../config.mjs';
 import { configEnv, tenant, manager, group, client, cli, other, identity, principal, json, graphFetch } from './test-support.mjs';
 
 const config = loadConfig(configEnv('/synthetic'));
+const managerGroup = '88888888-8888-4888-8888-888888888888';
+const groupConfig = loadConfig({ ...configEnv('/synthetic'), HTML_MANAGER_GROUP_IDS: managerGroup });
 const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwk = { ...pair.publicKey.export({ format: 'jwk' }), kid: 'offline-key', use: 'sig', alg: 'RS256' };
 const time = Math.floor(Date.now() / 1000);
@@ -82,6 +84,72 @@ for (const [label, headers, fetchImpl] of [
 test('non-manager readers remain allowed on ordinary report routes', async () => {
   assert.equal((await authorize(principal(other), config, { fetchImpl: graphFetch({ oid: other }) })).oid, other);
 });
+test('manager-group authorization checks live selected membership after reader eligibility and reflects revocation', async () => {
+  const calls = [];
+  let member = true;
+  const fetchImpl = graphFetch({ oid: other, calls, groups: ids => ids.includes(group) ? [group] : member ? [managerGroup.toUpperCase()] : [] });
+  assert.deepEqual(await authorize(principal(other), groupConfig, { fetchImpl }, true), { oid: other, transport: 'browser' });
+  assert.deepEqual(calls.map(call => call.url), ['https://graph.microsoft.com/v1.0/me?$select=id',
+    'https://graph.microsoft.com/v1.0/me/checkMemberGroups', 'https://graph.microsoft.com/v1.0/me/checkMemberGroups']);
+  assert.deepEqual(JSON.parse(calls[2].options.body), { groupIds: [managerGroup] });
+  member = false;
+  await assert.rejects(authorize(principal(other), groupConfig, { fetchImpl }, true), { code: 'manager' });
+  assert.equal(calls.length, 6);
+});
+test('manager groups cannot replace reader eligibility, token binding or tenant checks', async () => {
+  for (const [headers, options, code, count] of [
+    [principal(other), { oid: other, groups: [] }, 'reader', 2],
+    [principal(other), { oid: manager, groups: ids => ids }, 'graph-binding', 1],
+    [principal(other, manager), { oid: other, groups: ids => ids }, 'tenant', 0],
+  ]) {
+    const calls = [];
+    await assert.rejects(authorize(headers, groupConfig, { fetchImpl: graphFetch({ ...options, calls }) }, true), { code });
+    assert.equal(calls.length, count);
+  }
+});
+for (const [label, result] of [
+  ['non-member', () => json({ value: [] })],
+  ['denied', () => json({ error: 'private' }, 403)],
+  ['unauthenticated', () => json({}, 401)],
+  ['unavailable', () => json({}, 503)],
+  ['network', () => { throw new TypeError('private'); }],
+  ['timeout', () => { throw new DOMException('private', 'TimeoutError'); }],
+  ['missing-value', () => json({})],
+  ['wrong-type', () => json({ value: managerGroup })],
+  ['unknown-id', () => json({ value: [other] })],
+  ['malformed-id', () => json({ value: ['team@example.invalid'] })],
+  ['duplicate', () => json({ value: [managerGroup, managerGroup.toUpperCase()] })],
+  ['null-id', () => json({ value: [null] })],
+  ['pagination', () => json({ value: [managerGroup], '@odata.nextLink': 'https://untrusted.invalid/' })],
+  ['error-envelope', () => json({ value: [managerGroup], error: { code: 'denied' } })],
+  ['invalid-json', () => new Response('{not json')],
+  ['oversized', () => json({ value: [managerGroup], extra: 'x'.repeat(128 * 1024) })],
+]) {
+  test(`manager group fails closed on ${label}`, async () => {
+    const reader = graphFetch({ oid: other });
+    const fetchImpl = (url, options) => url.endsWith('/checkMemberGroups') && JSON.parse(options.body).groupIds.includes(managerGroup)
+      ? result() : reader(url, options);
+    await assert.rejects(authorize(principal(other), groupConfig, { fetchImpl }, true));
+  });
+}
+test('explicit managers and ordinary readers never depend on manager-group lookups', async () => {
+  for (const [oid, isManager] of [[manager, true], [other, false]]) {
+    const calls = [];
+    assert.equal((await authorize(principal(oid), groupConfig, {
+      fetchImpl: graphFetch({ oid, calls }),
+    }, isManager)).oid, oid);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(JSON.parse(calls[1].options.body), { groupIds: [group] });
+  }
+});
+test('reader and manager allowlists stay separately bounded at twenty IDs', async () => {
+  const ids = n => Array.from({ length: 20 }, (_, i) => `${String(n + i).padStart(8, '0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
+  const readers = ids(1), managers = ids(21), calls = [];
+  const selected = loadConfig({ ...configEnv('/synthetic'), ALLOWED_GROUP_IDS: readers.join(','),
+    HTML_MANAGER_OBJECT_IDS: '', HTML_MANAGER_GROUP_IDS: managers.join(',') });
+  await authorize(principal(other), selected, { fetchImpl: graphFetch({ oid: other, calls, groups: values => [values[0]] }) }, true);
+  assert.deepEqual(calls.slice(1).map(call => JSON.parse(call.options.body).groupIds), [readers, managers]);
+});
 test('own-API verifies actual synthetic RSA signature', async () => {
   assert.equal(await verifyOwnApi(token(), config, { fetchImpl: keysFetch }), manager);
 });
@@ -116,6 +184,24 @@ test('bearer uses actual user assertion AND MI-federated app assertion, then equ
   const fetchImpl = delegatedFetch(assertion, { calls });
   assert.deepEqual(await authorize({ ...principal(), authorization: `Bearer ${assertion}` }, config, { fetchImpl }, true), { oid: manager, transport: 'bearer' });
   assert.equal(calls.length, 5);
+});
+test('group-only manager uses the same verified Graph gate across browser OBO, bearer and native paths', async () => {
+  const selected = { ...groupConfig, managerObjectIds: [] }, assertion = token({ oid: other });
+  for (const transport of ['browser', 'bearer', 'native']) {
+    const headers = transport === 'native' ? nativeHeaders(assertion, other) :
+      transport === 'bearer' ? { ...principal(other), authorization: `Bearer ${assertion}` } :
+        { ...principal(other), 'x-ms-token-aad-access-token': assertion };
+    const calls = [], groups = ids => ids.includes(group) ? [group] : [managerGroup];
+    assert.deepEqual(await authorize(headers, selected, { fetchImpl: delegatedFetch(assertion, { oid: other, calls, groups }) }, true),
+      { oid: other, transport });
+    assert.equal(calls.length, 6);
+    await assert.rejects(authorize(headers, selected, {
+      fetchImpl: delegatedFetch(assertion, { oid: other, groups: ids => ids.includes(group) ? [group] : [] }),
+    }, true), { code: 'manager' });
+    await assert.rejects(authorize(headers, selected, {
+      fetchImpl: delegatedFetch(assertion, { oid: other, groups: [] }),
+    }, true), { code: 'reader' });
+  }
 });
 test('native platform session is bound to the independently verified assertion before MI-OBO and reader authorization', async () => {
   const assertion = token(), calls = [];
@@ -231,4 +317,16 @@ test('configuration fails closed for identifiers, origin, paths, flags and reten
   const disabled = configEnv('/synthetic');
   delete disabled.HTML_MANAGER_MUTATIONS_ENABLED; delete disabled.HTML_MANAGER_LEGACY_PUBLISHERS_FROZEN;
   assert.equal(loadConfig(disabled).mutationsEnabled, false);
+});
+test('manager configuration accepts optional/group-only grants and rejects malformed or empty policies', () => {
+  assert.deepEqual(config.managerGroupIds, []);
+  assert.deepEqual(loadConfig({ ...configEnv('/synthetic'), HTML_MANAGER_GROUP_IDS: '' }).managerGroupIds, []);
+  const selected = loadConfig({ ...configEnv('/synthetic'), HTML_MANAGER_OBJECT_IDS: undefined,
+    HTML_MANAGER_GROUP_IDS: managerGroup.toUpperCase() });
+  assert.deepEqual(selected.managerObjectIds, []); assert.deepEqual(selected.managerGroupIds, [managerGroup]);
+  assert.ok(Object.isFrozen(selected.managerGroupIds));
+  for (const groups of ['team@example.invalid', `${managerGroup},`, `${managerGroup},${managerGroup.toUpperCase()}`, Array(21).fill(managerGroup).join(',')]) {
+    assert.throws(() => loadConfig({ ...configEnv('/synthetic'), HTML_MANAGER_GROUP_IDS: groups }));
+  }
+  assert.throws(() => loadConfig({ ...configEnv('/synthetic'), HTML_MANAGER_OBJECT_IDS: undefined }));
 });

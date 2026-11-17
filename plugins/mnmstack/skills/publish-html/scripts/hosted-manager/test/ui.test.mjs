@@ -107,6 +107,14 @@ test('compact DOM library has selection/search/sort, truthful detail fields and 
   }
   assert.doesNotMatch(text(get('pages')), /Replace|Upload/);
 });
+test('policy summary shows configured manager grants and rule without resolving names or people', async t => {
+  const { get } = await dom(t, { access: { tenantId: 'synthetic-tenant', allowedGroupIds: ['reader-group'],
+    managerObjectIds: [], managerGroupIds: ['manager-group'], management: 'Reader AND (user OR group)',
+    authentication: 'live Graph', network: 'not-attested' } });
+  assert.match(text(get('policy')), /Manager users\nNone/);
+  assert.match(text(get('policy')), /Manager security groups\nmanager-group/);
+  assert.match(text(get('policy')), /Manager access\nReader AND \(user OR group\)/);
+});
 test('sorting is reversible and deterministic, with unknown dates always last and real epoch/older dates intact', () => {
   const pages = [
     { ...page, name: 'z.html', modifiedAt: null, size: 2 },

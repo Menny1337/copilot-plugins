@@ -98,6 +98,8 @@ def collect(t, resumed=False):
     t.answer("Choose reader groups", b" " + DOWN + b" " + ENTER)
     t.answer("Reader group selection")
     t.answer("Choose managers", b" " + DOWN + b" " + ENTER)
+    t.answer("Manager security groups", DOWN + ENTER)
+    t.answer("Choose manager security groups", b" " + DOWN + b" " + ENTER)
     t.answer("Choose approved client apps", b" " + DOWN + b" " + ENTER)
     t.answer("Log workspace: create or reuse?")
     t.answer("Log workspace name")
@@ -165,7 +167,7 @@ try:
         result = t.finish()
         assert result["status"] == "saved" and result["inventory"] is None
         answers = result["draft"]["answers"]
-        assert len(answers["readerGroups"]) == len(answers["managerObjectIds"]) == len(answers["allowedClientIds"]) == 2
+        assert len(answers["readerGroups"]) == len(answers["managerObjectIds"]) == len(answers["managerGroupIds"]) == len(answers["allowedClientIds"]) == 2
         assert answers["diagnostics"]["mode"] == "enabled"
         for disclosure in ("other users", "public ingestion/query", "restart", "hard spend cap"):
             assert disclosure in re.sub(r"\s+", " ", t.text()), disclosure

@@ -67,6 +67,37 @@ test('manager inventory/UI require configured manager AND reader; never expose s
   assert.equal((await send('/_manager/api/inventory', { headers: { 'x-ms-client-principal': '' } })).status, 401);
   for (const route of ['/private/transactions', '/writer.lock', '/prepare.json', '/backup.html']) assert.equal((await send(route)).status, 404);
 });
+test('group manager UI, inventory and mutations share live checks without bypassing origin or activation', async t => {
+  let member = true, reader = true;
+  const calls = [];
+  const fetchImpl = graphFetch({ oid: other, calls, groups: ids => ids.includes(group) ? reader ? [group] : [] : member ? [client] : [] });
+  const { send, store } = await host(t, { managerGroupIds: [client] }, fetchImpl);
+  const headers = principal(other);
+  assert.equal((await send('/_manager', { headers })).status, 200);
+  const inventory = JSON.parse((await send('/_manager/api/inventory', { headers })).text);
+  assert.deepEqual(inventory.access.managerGroupIds, [client]);
+  assert.deepEqual(inventory.access.managerObjectIds, [manager]);
+  assert.match(inventory.access.management, /Reader eligibility AND/);
+  const result = await send('/_manager/api/mutate', { method: 'POST', headers: { ...headers, ...mutateHeaders },
+    body: JSON.stringify(request('upload', null, html('group-manager'))) });
+  assert.equal(result.status, 200, result.text);
+  assert.equal((await store.records())[0].actor, other);
+  const before = calls.length;
+  assert.equal((await send('/_manager/api/mutate', { method: 'POST', headers: { ...headers, ...mutateHeaders, Origin: 'https://other.invalid' }, body: '{}' })).status, 403);
+  assert.equal(calls.length, before);
+  member = false;
+  for (const route of ['/_manager', '/_manager/api/inventory', '/_manager/api/mutate']) {
+    const response = await send(route, { method: route.endsWith('mutate') ? 'POST' : 'GET', headers: { ...headers, ...mutateHeaders },
+      ...(route.endsWith('mutate') ? { body: '{}' } : {}) });
+    assert.equal(response.status, 403); assert.equal(JSON.parse(response.text).code, 'manager');
+  }
+  member = true; reader = false;
+  assert.equal(JSON.parse((await send('/_manager/api/inventory', { headers })).text).code, 'reader');
+  const disabled = await host(t, { managerGroupIds: [client], mutationsEnabled: false },
+    graphFetch({ oid: other, groups: ids => ids }));
+  const denied = await disabled.send('/_manager/api/mutate', { method: 'POST', headers: { ...headers, ...mutateHeaders }, body: '{}' });
+  assert.equal(denied.status, 403); assert.equal(JSON.parse(denied.text).code, 'mutations-disabled');
+});
 test('API guards reject cross-origin, wrong host, wrong fetch-site/type, missing confirmation and oversized bodies', async t => {
   const { send, config } = await host(t);
   const body = JSON.stringify(request('upload', null, html('new')));
@@ -235,7 +266,7 @@ test('manager source never executes/embeds remote HTML; metadata is text-only', 
   assert.doesNotMatch(ui, /<iframe|<object|<embed/i);
   assert.doesNotMatch(source + ui, /localStorage|sessionStorage|x-manager-token|location\.hash/);
 });
-test('full offline own-API CLI -> loopback HTTP -> RSA/OBO/Graph -> transaction store', async t => {
+for (const grouped of [false, true]) test(`full offline own-API CLI -> loopback HTTP -> RSA/OBO/Graph -> transaction store (${grouped ? 'group' : 'explicit'} manager)`, async t => {
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const key = { ...pair.publicKey.export({ format: 'jwk' }), kid: 'offline-end-to-end' };
   const now = Math.floor(Date.now() / 1000);
@@ -253,9 +284,9 @@ test('full offline own-API CLI -> loopback HTTP -> RSA/OBO/Graph -> transaction 
       return json({ access_token: 'synthetic-obo-graph', token_type: 'Bearer' });
     }
     assert.equal(options.headers.Authorization, 'Bearer synthetic-obo-graph');
-    return graphFetch({ oid: manager, groups: [group] })(url, options);
+    return graphFetch({ oid: manager, groups: grouped ? ids => ids : [group] })(url, options);
   };
-  const { root, config, send } = await host(t, {}, fetchAuth);
+  const { root, config, send } = await host(t, grouped ? { managerObjectIds: [], managerGroupIds: [other] } : {}, fetchAuth);
   const file = path.join(root, 'report.html'); await writeFile(file, html('own-api end-to-end'));
   const image = path.join(root, 'report.png'); await writeFile(image, png());
   const deps = {
@@ -273,7 +304,7 @@ test('full offline own-API CLI -> loopback HTTP -> RSA/OBO/Graph -> transaction 
   const base = { origin, tenantId: tenant, apiClientId: client };
   const result = await runPublisher({ ...base, action: 'upload', file, confirm: 'report.html',
     thumbnail: image, 'thumbnail-html-sha256': digest(html('own-api end-to-end')) }, deps);
-  assert.equal(result.verified, true); assert.equal(authCalls.length, 10);
+  assert.equal(result.verified, true); assert.equal(authCalls.length, grouped ? 12 : 10);
   assert.equal(result.thumbnail.sha256, digest(png()));
   assert.deepEqual(await readFile(path.join(config.contentDir, 'report.html')), html('own-api end-to-end'));
   const page = (await runPublisher({ ...base, action: 'inventory' }, deps)).pages[0];

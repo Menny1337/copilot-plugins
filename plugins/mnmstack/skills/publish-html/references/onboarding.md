@@ -29,10 +29,25 @@ The sample uses `B1`; it does not authorize spending.
 For each resource, choose `create` with a name, or `reuse` with a name and its
 exact observed ARM ID/directory object GUID. All selected ARM resources must
 be in the selected resource group. Registration IDs are object IDs, not client
-IDs. Reader groups must be non-mail security groups. Manager users and
-delegated client applications must already exist. Supply their exact IDs;
+IDs. Reader groups must be non-mail security groups. Manager users, optional
+manager security groups and delegated client applications must already exist. Supply their exact IDs;
 setup verifies these references. The owner must check each person's actual access.
 New reader groups are empty. Group membership remains an owner operation.
+
+`managerObjectIds` keeps its existing user-only behavior. Optional
+`managerGroupIds` accepts 0-20 unique security-group object GUIDs, including
+mail-enabled security groups. Use `managerObjectIds: []` for group-only
+management; at least one user or group is required. Distribution lists,
+Microsoft 365 groups, email addresses and display names are not grant IDs.
+Identity setup verifies the exact group ID and security/mail properties
+through [Graph group metadata](https://learn.microsoft.com/en-us/graph/api/group-get?view=graph-rest-1.0)
+using the operator's existing access. Denied or invalid metadata stops setup;
+no broader consent or membership change is performed.
+
+Runtime checks use live transitive `/me/checkMemberGroups` membership with the
+existing delegated `User.Read` flow, not a copied user list. All managers must
+also meet reader requirements. See [hosted-manager.md](hosted-manager.md) for
+transport, nested-group, directory propagation and fail-closed behavior.
 
 Reuse does not authorize migration or access expansion. Reused registrations
 must already expose the correct callback, v2 `publish_as_user` scope and
@@ -78,7 +93,7 @@ Then use these finite stages:
 
 | Stage | Effect |
 | --- | --- |
-| `identity` | Configures owned registration/federation, exact EasyAuth audience, MI settings, explicit reader/manager IDs and corporate-only ingress. Mutations stay disabled; appsettings can restart the app. |
+| `identity` | Configures owned registration/federation, exact EasyAuth audience, MI settings, reader IDs, manager user/group IDs and corporate-only ingress. Mutations stay disabled; appsettings can restart the app. |
 | `consent` | Adds one exact delegated Graph `User.Read` or selected client's `publish_as_user` grant per approval. Repeat until the planner reports existing exact grants. No broad admin-consent command or application Graph permissions. |
 | `deployment` | Reviews and stages the exact runtime file manifest, including `start-host.mjs`, then verifies remote bytes and selects startup. It temporarily permits corporate-only SCM and must restore the original deny-only rules. No report-directory cleanup or application dependencies are installed. |
 | `diagnostics` | Creates/reuses a selected workspace, then separately configures exact log routing and trace settings. Included by default in new guided requests; structured requests keep their explicit choice. |
@@ -110,6 +125,12 @@ Unknown values stay null/unverified. Content, private-state and runtime release
 paths are filesystem locations on the App Service volume, not newly created
 Azure Storage accounts. Existing attached-volume metadata is recorded without
 access keys. Diagnostics capture stays unverified until separately evidenced.
+Older requests keep an omitted `managerGroupIds` field omitted. Reading them
+does not change target hashes, acceptance times or activation state. Existing
+host profiles keep their original observations and freshness checks, including
+the exact known pre-group runtime. They do not gain group support from a local
+CLI update. Any approved group rollout needs a matching host deployment,
+explicit policy review and new target-bound acceptance, not edited evidence.
 
 State writes retain a previous revision. A local exclusive lock fences only
 cooperating setup processes using this config, not administrators, other

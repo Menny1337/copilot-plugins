@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, symlink, chmod } fro
 import { fileURLToPath } from 'node:url';
 import { setup, parseArgs } from './setup-html.mjs';
 import { Azure, GRAPH_APP_ID, launcher, runtimeManifest, RUNTIME_FILES } from './onboarding/azure.mjs';
-import { armId, initialInventory, hash, validateRequest, readPrivate, withInventory, targetHash, publisherTarget,
+import { armId, initialInventory, hash, validateRequest, validateInventory, readPrivate, withInventory, targetHash, publisherTarget,
   protect, WINDOWS_ACL, GATES } from './onboarding/state.mjs';
 import { recordEvidence, applyStage } from './onboarding/stages.mjs';
 import { startHost, prepareStorage } from './hosted-manager/start-host.mjs';
@@ -211,6 +211,73 @@ test('full setup uses exact delegated consent payloads, attested runtime bytes a
   assert.throws(() => recordEvidence(inventory, { version: 1, targetSha256: targetHash(inventory),
     checks: [{ gate: 'native-manager-obo', result: 'passed', checkedAt: new Date().toISOString(), reference: 'token was issued, ready=true' }] }), /Publisher acceptance/);
   await assert.rejects(publisherTarget(f.config, 'upload'), /acceptance/);
+});
+test('optional manager groups preserve old inventory bindings and require real GUID grants', () => {
+  const old = initialInventory(request()), before = clone(old), target = targetHash(old);
+  validateInventory(old);
+  assert.deepEqual(old, before); assert.equal(targetHash(old), target);
+  assert.equal(Object.hasOwn(old.request, 'managerGroupIds'), false);
+  const selected = { ...request(), managerObjectIds: [], managerGroupIds: [guid(90).toUpperCase()] };
+  assert.equal(validateRequest(selected).managerGroupIds[0], guid(90));
+  assert.notEqual(initialInventory(selected).requestSha256, old.requestSha256);
+  for (const managerGroupIds of [null, 'team@example.invalid', ['Team'], ['team@example.invalid'], [manager, manager.toUpperCase()], Array(21).fill(manager)]) {
+    assert.throws(() => validateRequest({ ...request(), managerGroupIds }));
+  }
+  assert.throws(() => validateRequest({ ...request(), managerObjectIds: [], managerGroupIds: [] }));
+  assert.throws(() => validateRequest({ ...request(), managerObjectIds: [] }));
+});
+test('group-only setup verifies existing security groups, keeps delegated grants narrow and does not copy members', async t => {
+  const f = await fixture(t, { managerObjectIds: [], managerGroupIds: [guid(90), guid(91)] });
+  f.cloud.collections.groups.push(...[false, true].map((mailEnabled, i) => ({
+    id: guid(90 + i), displayName: `Synthetic manager security group ${i}`, securityEnabled: true, mailEnabled,
+  })));
+  await f.provision();
+  const preview = await f.call('plan', 'identity');
+  assert.equal(preview.operation.settings.HTML_MANAGER_OBJECT_IDS, '');
+  assert.equal(preview.operation.settings.HTML_MANAGER_GROUP_IDS, `${guid(90)},${guid(91)}`);
+  const refs = (await f.read()).dependencies.managerGroups;
+  assert.deepEqual(refs.map(group => group.id), [guid(90), guid(91)]);
+  assert.ok(refs.every(group => group.type === 'Microsoft.Graph/groups' && group.securityEnabled === true));
+  assert.ok(f.cloud.calls.filter(call => call.path?.endsWith('/' + guid(90))).every(call => !call.write));
+  await f.stage('identity'); await f.stage('consent'); await f.stage('consent');
+  assert.deepEqual(f.cloud.collections.oauth2PermissionGrants.map(grant => grant.scope), ['User.Read', 'publish_as_user']);
+  const inventory = await f.read();
+  assert.deepEqual(inventory.dependencies.managers, []);
+  assert.ok(Object.values(inventory.gates).every(gate => gate.status === 'pending'));
+  assert.equal(inventory.activation.status, 'pending');
+  assert.ok(!f.cloud.calls.some(call => /members|transitiveMembers/.test(call.path ?? '')));
+});
+test('setup rejects unavailable, mismatched and unsupported manager-group metadata before any identity write', async t => {
+  const f = await fixture(t, { managerGroupIds: [guid(90)] });
+  await f.provision();
+  const graph = f.cloud.azure.graph.bind(f.cloud.azure), before = f.cloud.writes().length;
+  for (const response of [
+    null, {}, { id: guid(91), securityEnabled: true, mailEnabled: false },
+    { id: guid(90), securityEnabled: false, mailEnabled: true },
+    { id: guid(90), '@odata.type': '#microsoft.graph.user', securityEnabled: true, mailEnabled: false },
+    { id: guid(90), securityEnabled: 'true', mailEnabled: false },
+    { id: guid(90), securityEnabled: true }, { id: guid(90), securityEnabled: true, mailEnabled: 'false' },
+    new Error('Synthetic directory denial'),
+  ]) {
+    f.cloud.azure.graph = (collection, options = {}) => {
+      if (collection === 'groups' && options.id === guid(90)) {
+        if (response instanceof Error) throw response;
+        return clone(response);
+      }
+      return graph(collection, options);
+    };
+    await assert.rejects(f.call('plan', 'identity'), /Manager group|directory denial/);
+    assert.equal(f.cloud.writes().length, before);
+  }
+});
+test('legacy frozen requests refuse unselected live manager-group grants instead of silently adopting them', async t => {
+  const f = await fixture(t);
+  await f.provision(); await f.stage('identity');
+  assert.equal(f.cloud.settings.HTML_MANAGER_GROUP_IDS, undefined);
+  f.cloud.settings.HTML_MANAGER_GROUP_IDS = guid(90);
+  const before = f.cloud.writes().length;
+  await assert.rejects(f.call('plan', 'consent'), /manager groups differ/);
+  assert.equal(f.cloud.writes().length, before);
 });
 test('recovery never retries uncertain creation and reconciles only the exact setup marker', async t => {
   for (let attempt = 0; attempt < 2; attempt++) {

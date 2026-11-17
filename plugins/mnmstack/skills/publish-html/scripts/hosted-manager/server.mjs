@@ -108,7 +108,12 @@ export async function createServer(config, dependencies = {}) {
         } else if (inventoryRoute && readMethod) {
           send(200, {
             ...await store.list(), origin: config.origin, mutationsEnabled: config.mutationsEnabled && config.legacyPublishersFrozen,
-            access: { tenantId: config.tenantId, allowedGroupIds: config.allowedGroupIds, scope: 'host-wide configured requirements, not per-person entitlement', authentication: 'Microsoft Entra + live Graph user/group check', network: 'Host ingress policy must remain unchanged; not attested by this inventory.' },
+            access: { tenantId: config.tenantId, allowedGroupIds: config.allowedGroupIds,
+              managerObjectIds: config.managerObjectIds, managerGroupIds: config.managerGroupIds ?? [],
+              scope: 'host-wide configured requirements, not per-person entitlement',
+              authentication: 'Microsoft Entra + live Graph user/group check',
+              management: 'Reader eligibility AND (explicit manager user OR live transitive manager security-group membership)',
+              network: 'Host ingress policy must remain unchanged; not attested by this inventory.' },
           });
         } else if (mutation) {
           if (!config.mutationsEnabled || !config.legacyPublishersFrozen) fail(403, 'mutations-disabled', 'Hosted mutations are disabled until approved publisher cutover.');

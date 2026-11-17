@@ -144,9 +144,11 @@ For new requests:
 3. Select create/reuse, resource group, region and paid Linux hosting tier.
    Reuse choices are scoped to that subscription/group or tenant. Directory
    menus show the first 50 results and offer exact known IDs for other entries.
-4. Space-select existing reader groups, manager users and approved delegated
-   client applications. You can also create reader groups. New groups are
-   empty; setup does not add members.
+4. Space-select existing reader groups, manager users, optional manager security
+   groups and approved delegated client applications. For group-only management,
+   choose no explicit manager users and select existing manager groups.
+   Grants use verified object GUIDs, not email addresses or names.
+   You can also create reader groups. New groups are empty; setup does not add members.
 5. Review the logging workspace, retention and daily quota. Logging is included
    by default in newly guided plans, without an opt-in question. The default
    retention is 30 days and the default quota is 1 GB/day, not a hard spend cap.
