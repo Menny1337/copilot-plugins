@@ -49,7 +49,7 @@ Flat alphabetical lookup. Click a name to jump to its source file.
 | [`pr-prepare`](plugins/pr-workflows/skills/pr-prepare/SKILL.md) | skill | `pr-workflows` | Assesses local changes for publication and, when authorized, publishes a new PR or refreshes an existing one for human review, including target integration and conflict… |
 | [`pr-review`](plugins/pr-workflows/skills/pr-review/SKILL.md) | skill | `pr-workflows` | Reviews pull requests for correctness and the smallest correct implementation, posting the review by default without editing code. |
 | [`pr-status`](plugins/pr-workflows/skills/pr-status/SKILL.md) | skill | `pr-workflows` | Reports a PR status snapshot covering current checks, approvals, unresolved feedback, conflicts, and merge blockers. Not for continuous monitoring or fixes. |
-| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) | skill | `pr-workflows` | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. |
+| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) 📚 | skill | `pr-workflows` | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. |
 | [`pr-watch`](plugins/pr-workflows/skills/pr-watch/SKILL.md) 📜 📚 | skill | `pr-workflows` | Monitors a PR, fixes CI failures, and handles review feedback until all CI checks pass and approval is valid. Use for ongoing ownership, not a one-time status check. Never merges. |
 | [`prd-to-work-items`](plugins/docs/skills/prd-to-work-items/SKILL.md) | skill | `docs` | Decompose and create vertical-slice work items from a PRD with dependency tracking. Use when breaking down a PRD, feature spec, or requirements document into trackable GitHub… |
 | [`presentation-critique`](plugins/presentation/skills/presentation-critique/SKILL.md) 🔒 | skill | `presentation` | Structured evaluation procedure for PowerPoint presentations against professional standards. |
@@ -143,7 +143,7 @@ _Source: [`plugins/pr-workflows/`](plugins/pr-workflows/)_
 | [`pr-prepare`](plugins/pr-workflows/skills/pr-prepare/SKILL.md) | Assesses local changes for publication and, when authorized, publishes a new PR or refreshes an existing one for human review, including target integration and conflict… | — |
 | [`pr-review`](plugins/pr-workflows/skills/pr-review/SKILL.md) | Reviews pull requests for correctness and the smallest correct implementation, posting the review by default without editing code. | — |
 | [`pr-status`](plugins/pr-workflows/skills/pr-status/SKILL.md) | Reports a PR status snapshot covering current checks, approvals, unresolved feedback, conflicts, and merge blockers. Not for continuous monitoring or fixes. | — |
-| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. | — |
+| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) 📚 | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. | — |
 | [`pr-watch`](plugins/pr-workflows/skills/pr-watch/SKILL.md) 📜 📚 | Monitors a PR, fixes CI failures, and handles review feedback until all CI checks pass and approval is valid. Use for ongoing ownership, not a one-time status check. Never merges. | — |
 
 ### `presentation`
@@ -272,7 +272,7 @@ _Source: [`plugins/duty/`](plugins/duty/)_
 | [`pr-prepare`](plugins/pr-workflows/skills/pr-prepare/SKILL.md) | `pr-workflows` | Assesses local changes for publication and, when authorized, publishes a new PR or refreshes an existing one for human review, including target integration and conflict… | — |
 | [`pr-review`](plugins/pr-workflows/skills/pr-review/SKILL.md) | `pr-workflows` | Reviews pull requests for correctness and the smallest correct implementation, posting the review by default without editing code. | — |
 | [`pr-status`](plugins/pr-workflows/skills/pr-status/SKILL.md) | `pr-workflows` | Reports a PR status snapshot covering current checks, approvals, unresolved feedback, conflicts, and merge blockers. Not for continuous monitoring or fixes. | — |
-| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) | `pr-workflows` | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. | — |
+| [`pr-validate`](plugins/pr-workflows/skills/pr-validate/SKILL.md) 📚 | `pr-workflows` | Validates a PR's intended behavior and regressions using relevant tests and runtime evidence. | — |
 | [`pr-watch`](plugins/pr-workflows/skills/pr-watch/SKILL.md) 📜 📚 | `pr-workflows` | Monitors a PR, fixes CI failures, and handles review feedback until all CI checks pass and approval is valid. Use for ongoing ownership, not a one-time status check. Never merges. | — |
 | [`prd-to-work-items`](plugins/docs/skills/prd-to-work-items/SKILL.md) | `docs` | Decompose and create vertical-slice work items from a PRD with dependency tracking. Use when breaking down a PRD, feature spec, or requirements document into trackable GitHub… | — |
 | [`presentation-critique`](plugins/presentation/skills/presentation-critique/SKILL.md) 🔒 | `presentation` | Structured evaluation procedure for PowerPoint presentations against professional standards. | critique presentation, review slides, presentation feedback, deck review, slide quality |

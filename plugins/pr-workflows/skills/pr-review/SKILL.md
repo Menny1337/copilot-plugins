@@ -52,15 +52,16 @@ requested work under its own authorization rules.
   Verify semantic equivalence, not just similar names. For version-dependent
   behavior, establish installed versions from manifests/lockfiles and check
   disputed claims against that version's source or supported documentation.
-- Do not edit source, install dependencies, commit, push, cast approval or
+- Do not edit source, commit, push, cast approval or
   request-changes votes, or resolve existing threads. Posting the review is
   in scope by default; it does not authorize fixes or other PR mutations.
-  Fetching refs and reading an isolated checkout are allowed; preserve unrelated
-  work. Allow bounded existing tests or checks needed to substantiate a finding
-  after inspecting their commands for unsafe side effects. Use an owned
-  environment, preserve source and unrelated work, and obtain authorization for
-  external mutations or sensitive access. Report commands, results, and blocked
-  checks; do not treat focused checks as comprehensive validation.
+  Fetching refs and preparing an isolated checkout are allowed; preserve unrelated
+  work. For bounded existing tests or checks needed to substantiate a finding,
+  first follow [environment preparation](../pr-validate/references/environment-setup.md)
+  to install needed dependencies and select compatible, current tools.
+  Obtain authorization for external mutations or sensitive access. Report
+  commands, results, and blocked checks; do not treat focused checks as
+  comprehensive validation.
 
 ### 3. Assess every added concept
 
